@@ -15,6 +15,7 @@ module AD_Coriolis_parameters
     real(rkind), dimension(:,:,:), allocatable :: utarget, vtarget, wtarget
 
     contains
+
 subroutine init_fringe_targets(inputfile, mesh)
     use kind_parameters,    only: rkind
     use constants,          only: zero, one, two, pi, half
@@ -29,7 +30,7 @@ subroutine init_fringe_targets(inputfile, mesh)
     real(rkind), dimension(:,:,:), pointer :: z
     real(rkind) :: Lx, Ly, Lz, uInflow, vInflow  
     real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid
-    integer :: i,j,k, ioUnit
+    integer :: ioUnit
     integer :: InflowProfileType
 
     namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, & 
@@ -47,23 +48,96 @@ subroutine init_fringe_targets(inputfile, mesh)
     wtarget = zero 
     zMid = Lz / two
     z => mesh(:,:,:,3)
-    !call get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, mesh(:,:,:,3), zMid, InflowProfileType, utarget, vtarget)    
-    select case(InflowProfileType)
-      case(0)
-          utarget = uInflow 
-          vtarget = zero
-      case(1)
-          utarget = uInflow*(one  + InflowProfileAmplit*tanh((z-zMid)/InflowProfileThick))
-          vtarget = zero
-      case(2)
-          utarget = uInflow*(one  + InflowProfileAmplit*tanh((z-zMid)/InflowProfileThick))
-          vtarget = vInflow * tanh((z-zMid)/InflowProfileThick);
-    end select
-
+    call get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, zMid, InflowProfileType, utarget, vtarget)   
 
     ! The velocity profile in z needs to go to slip wall at the top
     ! Both u and v need slip conditions
 
+end subroutine
+
+subroutine get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, zMid, InflowProfileType, u, v)
+    use kind_parameters, only: rkind
+    use constants,       only: zero, one, two, pi, half
+    
+    implicit none
+    real(rkind), dimension(:,:,:), intent(inout) :: u, v
+    real(rkind), dimension(:,:,:), intent(in) :: z
+    real(rkind), intent(in) :: InflowProfileAmplit, InflowProfileThick, zMid, uInflow, vInflow
+    integer, intent(in) :: InflowProfileType
+    integer:: i
+    real(rkind) :: a_max, g_min, g_max
+    real(rkind), dimension(:,:,:), allocatable :: alpha, g
+    real(rkind) :: buffer=8.0d-1
+
+    select case(InflowProfileType)
+      case(0)
+          u = uInflow 
+          v = zero
+      case(1)
+          u = uInflow*(one  + InflowProfileAmplit*tanh((z-zMid)/InflowProfileThick))
+          v = zero
+      case(2)
+          u = uInflow*(one  + InflowProfileAmplit*tanh((z-zMid)/InflowProfileThick))
+          v = vInflow * tanh((z-zMid)/InflowProfileThick);
+      case(3) 
+          u = uInflow*(one + (z-zMid)/InflowProfileThick)
+          v = zero
+          where (u<5.0d-1)
+                u = 5.0d-1
+          end where
+          where (u>1.5d0)
+                u = 1.5d0
+          end where
+      case(4) 
+          u = uInflow
+          v = vInflow * (zMid-z)/InflowProfileThick
+      case(5)
+          u = uInflow*(one + (z-zMid)/InflowProfileThick)
+          where (u<5.0d-1)
+                u = 5.0d-1
+          end where
+          where (u>1.5d0)
+                u = 1.5d0
+          end where
+          v = vInflow * (zMid-z)/InflowProfileThick
+      case(6)
+          alpha = (zMid-z)/InflowProfileThick*vInflow
+          a_max = (pi/two)*buffer
+          ! prevent any reverse flow from strong veer
+          where (alpha>a_max)
+                alpha = a_max
+          end where
+          where (alpha < -a_max)
+                alpha = -a_max
+          endwhere 
+          u = uInflow*cos(alpha)
+          v = uInflow*sin(alpha) 
+      case(7)
+          ! first compute the non-piecewise profiles g (vel  magnitude), alpha
+          ! (vel dir)
+          g = uInflow*((z-zMid)/InflowProfileThick + one)
+          alpha = (zMid-z)/InflowProfileThick*vInflow
+
+          ! limit by buffer (default 0.8)
+          a_max = (pi/two)*buffer
+          g_min = max(one-buffer, -abs(a_max/(vInflow+1d-18)) + one)
+          g_max = min(one+buffer, abs(a_max/(vInflow+1d-18)) + one)
+
+          ! ensure there is no reverse flow in the domain: enforce the bounds on
+          ! g=|u| and alpha set by buffer
+          do i=1, size(z,3)
+              if (g(1,1,i) < g_min) then
+                  g(:,:,i) = g_min
+                  alpha(:,:,i) = vInflow*(one-g_min)
+               else if (g(1,1,i) > g_max) then
+                   g(:,:,i) = g_max
+                   alpha(:,:,i) = vInflow*(one-g_max)
+              end if    
+          end do
+          ! set the velocity components u and v: 
+          u = g*cos(alpha)
+          v = g*sin(alpha)
+    end select
 end subroutine
 
 end module     
@@ -83,7 +157,7 @@ subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
     integer :: ix1, ixn, iy1, iyn, iz1, izn
     real(rkind)  :: Lx = one, Ly = one, Lz = one, G_alpha
     real(rkind) :: uInflow, vInflow  
-    real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid
+    real(rkind) :: InflowProfileAmplit, InflowProfileThick
     integer :: InflowProfileType
     namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, & 
                                 InflowProfileAmplit, InflowProfileThick, InflowProfileType
@@ -178,19 +252,9 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     
     wC = zero
     zMid = Lz / 2.d0
-    select case(InflowProfileType)
-      case(0)
-          u = uInflow 
-          v = zero
-      case(1)
-          u = uInflow*(one  + InflowProfileAmplit*tanh((z-zMid)/InflowProfileThick))
-          v = zero
-      case(2)
-          u = uInflow*(one  + InflowProfileAmplit*tanh((z-zMid)/InflowProfileThick))
-          v = vInflow * tanh((z-zMid)/InflowProfileThick);
-    end select
-
-    !call get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, zMid, InflowProfileType, u, v)    
+    
+    ! initialize inflow profile
+    call get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, zMid, InflowProfileType, u, v)
     
     !allocate(randArr(size(u,1),size(u,2),size(u,3)))
     !call gaussian_random(randArr,-one,one,seedu + 10*nrank)
@@ -385,28 +449,5 @@ subroutine setScalar_source(decompC, inpDirectory, mesh, scalar_id, scalarSource
 
     scalarSource = 0.d0
 end subroutine 
-
-subroutine get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, zMid, InflowProfileType, u, v)
-    use kind_parameters, only: rkind
-    use constants,          only: zero, one, two, pi, half
-    implicit none
-    real(rkind), dimension(:,:,:), intent(inout) :: u, v
-    real(rkind), dimension(:,:,:), intent(in) :: z
-    real(rkind), intent(in) :: InflowProfileAmplit, InflowProfileThick, zMid, uInflow, vInflow
-    integer, intent(in) :: InflowProfileType
-
-    select case(InflowProfileType)
-      case(0)
-          u = uInflow 
-          v = zero
-      case(1)
-          u = uInflow*(one  + InflowProfileAmplit*tanh((z-zMid)/InflowProfileThick))
-          v = zero
-      case(2)
-          u = uInflow*(one  + InflowProfileAmplit*tanh((z-zMid)/InflowProfileThick))
-          v = vInflow * tanh((z-zMid)/InflowProfileThick);
-    end select
-
-end subroutine
 
 
