@@ -9,8 +9,8 @@ module fringeMethod
 
    type :: fringe 
       private
-      logical                                       :: TargetsAssociated = .false. 
-      real(rkind), dimension(:,:,:), pointer        :: u_target, v_target, w_target, T_target, F_target
+      logical, public                                       :: TargetsAssociated = .false. 
+      real(rkind), public, dimension(:,:,:), pointer        :: u_target, v_target, w_target, T_target, F_target
       real(rkind), dimension(:,:,:), allocatable    :: Fringe_kernel_cells, Fringe_kernel_edges
       real(rkind)                                   :: Fringe_Lambda_x
       type(spectral),    pointer                    :: spectC, spectE
@@ -157,7 +157,7 @@ contains
       real(rkind), dimension(this%gpC%xsz(1),this%gpC%xsz(2),this%gpC%xsz(3)), intent(in), target           :: utarget, vtarget
       real(rkind), dimension(this%gpE%xsz(1),this%gpE%xsz(2),this%gpE%xsz(3)), intent(in), target           :: wtarget 
       real(rkind), dimension(this%gpC%xsz(1),this%gpC%xsz(2),this%gpC%xsz(3)), intent(in), optional, target :: Ttarget 
-  
+
       this%u_target => utarget
       this%v_target => vtarget
       this%w_target => wtarget
