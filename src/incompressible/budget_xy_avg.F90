@@ -1526,7 +1526,7 @@ contains
 
     subroutine AssembleBudget1(this)
         class(budgets_xy_avg), intent(inout) :: this
-        real(rkind) :: tmp1, tmp2
+        real(rkind), dimension(:,:,:), allocatable :: tmp1, tmp2
 
         ! Get the geostrophic forcing 
         call this%igrid_sim%get_geostrophic_forcing(tmp1, tmp2)         ! Forcing in x and y directions respectively 
@@ -1542,9 +1542,9 @@ contains
         this%budget_1(:,3) = this%budget_1(:,3) + this%tmp_meanC
 
         call this%get_xy_meanC_from_fhatC(this%ucor, this%tmp_meanC)
-        this%budget_1(:,4) = this%budget_1(:,4) + this%tmp_meanC - tmp1 ! Remove the geostrophic forcing term
+        this%budget_1(:,4) = this%budget_1(:,4) + this%tmp_meanC - tmp1(1,1,:) ! Remove the geostrophic forcing term
 
-        this%budget_1(:,5) = this%budget_1(:,5) + tmp1
+        this%budget_1(:,5) = this%budget_1(:,5) + tmp1(1,1,:)
 
         call this%get_xy_meanC_from_fhatC(this%uturb, this%tmp_meanC)
         this%budget_1(:,6) = this%budget_1(:,6) + this%tmp_meanC
@@ -1560,9 +1560,9 @@ contains
         this%budget_1(:,9) = this%budget_1(:,9) + this%tmp_meanC
 
         call this%get_xy_meanC_from_fhatC(this%vcor, this%tmp_meanC)
-        this%budget_1(:,10) = this%budget_1(:,10) + this%tmp_meanC - tmp2 ! Remove the geostrophic forcing term
+        this%budget_1(:,10) = this%budget_1(:,10) + this%tmp_meanC - tmp2(1,1,:) ! Remove the geostrophic forcing term
 
-        this%budget_1(:,11) = this%budget_1(:,11) + tmp2
+        this%budget_1(:,11) = this%budget_1(:,11) + tmp2(1,1,:)
 
         ! Get z- momentum equation 
         call this%get_xy_meanE_from_fhatE(this%wc, this%tmp_meanE)
@@ -1630,7 +1630,7 @@ contains
     subroutine AssembleBudget3(this)
         use IncompressibleGrid, only: wBC_bottom, wBC_top 
         class(budgets_xy_avg), intent(inout) :: this
-        real(rkind) :: tmp1, tmp2
+        real(rkind), dimension(:,:,:), allocatable :: tmp1, tmp2
         
         ! First get the mean statistics
         !this%U_mean = this%budget_0(:,1)/real(this%counter+1,rkind)
