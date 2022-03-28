@@ -1,7 +1,7 @@
 ! Template for PadeOps
 
-#include "AD_Coriolis_files/initialize.F90"       
-#include "AD_Coriolis_files/temporalHook.F90"  
+#include "AD_coriolis_shear_files/initialize.F90"
+#include "AD_coriolis_shear_files/temporalHook.F90"
 
 program AD_Coriolis
     use mpi
