@@ -1,10 +1,15 @@
-    pure subroutine get_geostrophic_forcing(this, Fg_x, Fg_y)
+    subroutine get_geostrophic_forcing(this, Fg_x, Fg_y)
         class(igrid), intent(in) :: this
-        real(rkind), intent(out) :: Fg_x, Fg_y
-        real(rkind) :: gx, gy 
-
-        gx = this%G_GEOSTROPHIC*cos(this%G_ALPHA*pi/180.d0)
-        gy = this%G_GEOSTROPHIC*sin(this%G_ALPHA*pi/180.d0)
+        real(rkind), dimension(:,:,:), allocatable, intent(out) :: Fg_x, Fg_y
+        real(rkind), dimension(:,:,:), pointer :: gx, gy 
+        
+        if (this%fringe_x%TargetsAssociated) then
+            gx => this%fringe_x%u_target
+            gy => this%fringe_x%v_target
+        else
+            gx = this%G_GEOSTROPHIC*cos(this%G_ALPHA*pi/180.d0)
+            gy = this%G_GEOSTROPHIC*sin(this%G_ALPHA*pi/180.d0)
+        end if
 
         Fg_x = -this%coriolis_omegaZ*(two/this%Ro)*gy
         Fg_y =  this%coriolis_omegaZ*(two/this%Ro)*gx
@@ -18,6 +23,7 @@
        complex(rkind), dimension(:,:,:), pointer :: ybuffE, ybuffC1, ybuffC2, zbuffC, zbuffE
        complex(rkind), dimension(this%sp_gpC%ysz(1),this%sp_gpC%ysz(2),this%sp_gpC%ysz(3)), intent(inout) :: urhs, vrhs
        complex(rkind), dimension(this%sp_gpE%ysz(1),this%sp_gpE%ysz(2),this%sp_gpE%ysz(3)), intent(inout) :: wrhs
+       real(rkind), dimension(:,:,:), pointer :: u_target, v_target
        !real(rkind) :: frameAngle!, latitude
 
        ybuffE => this%cbuffyE(:,:,:,1)
@@ -37,14 +43,49 @@
                this%coriolis_omegaZ = sin(this%latitude*pi/180.d0)
                this%coriolis_omegaY = cos(this%latitude*pi/180.d0)*cos(this%frameAngle*pi/180.d0)
            end if
-           this%rbuffxC(:,:,:,1) = this%G_GEOSTROPHIC*cos(this%G_ALPHA*pi/180.d0)
-           call this%spectC%fft(this%rbuffxC(:,:,:,1),this%Gxhat)
-           this%rbuffxE(:,:,:,1) = this%G_GEOSTROPHIC*cos(this%G_ALPHA*pi/180.d0)
-           call this%spectE%fft(this%rbuffxE(:,:,:,1),this%Gxhat_Edge)
-           this%rbuffxC(:,:,:,1) = this%G_GEOSTROPHIC*sin(this%G_ALPHA*pi/180.d0)
-           call this%spectC%fft(this%rbuffxC(:,:,:,1),this%Gyhat)
-           this%rbuffxE(:,:,:,1) = this%G_GEOSTROPHIC*sin(this%G_ALPHA*pi/180.d0)
-           call this%spectE%fft(this%rbuffxE(:,:,:,1),this%Gyhat_Edge)
+
+           ! MODIFYING GEOSTROPHIC BEGINS HERE: 
+          
+           if (this%fringe_x%TargetsAssociated) then
+               u_target => this%fringe_x%u_target
+               v_target => this%fringe_x%v_target
+               
+               this%rbuffxC(:,:,:,1) = u_target 
+               call this%spectC%fft(this%rbuffxC(:,:,:,1),this%Gxhat)
+               this%rbuffxE(:,:,:,1) = u_target
+               call this%spectE%fft(this%rbuffxE(:,:,:,1),this%Gxhat_Edge)
+               this%rbuffxC(:,:,:,1) = v_target
+               call this%spectC%fft(this%rbuffxC(:,:,:,1),this%Gyhat)
+               this%rbuffxE(:,:,:,1) = v_target
+               call this%spectE%fft(this%rbuffxE(:,:,:,1),this%Gyhat_Edge)
+           else
+               this%rbuffxC(:,:,:,1) = this%G_GEOSTROPHIC*cos(this%G_ALPHA*pi/180.d0)
+               call this%spectC%fft(this%rbuffxC(:,:,:,1),this%Gxhat)
+               this%rbuffxE(:,:,:,1) = this%G_GEOSTROPHIC*cos(this%G_ALPHA*pi/180.d0)
+               call this%spectE%fft(this%rbuffxE(:,:,:,1),this%Gxhat_Edge)
+               this%rbuffxC(:,:,:,1) = this%G_GEOSTROPHIC*sin(this%G_ALPHA*pi/180.d0)
+               call this%spectC%fft(this%rbuffxC(:,:,:,1),this%Gyhat)
+               this%rbuffxE(:,:,:,1) = this%G_GEOSTROPHIC*sin(this%G_ALPHA*pi/180.d0)
+               call this%spectE%fft(this%rbuffxE(:,:,:,1),this%Gyhat_Edge)
+           end if
+
+!           this%rbuffxC(:,:,:,1) = u_target 
+!           call this%spectC%fft(this%rbuffxC(:,:,:,1),this%Gxhat)
+!           this%rbuffxE(:,:,:,1) = u_target
+!           call this%spectE%fft(this%rbuffxE(:,:,:,1),this%Gxhat_Edge)
+!           this%rbuffxC(:,:,:,1) = v_target
+!           call this%spectC%fft(this%rbuffxC(:,:,:,1),this%Gyhat)
+!           this%rbuffxE(:,:,:,1) = v_target
+!           call this%spectE%fft(this%rbuffxE(:,:,:,1),this%Gyhat_Edge)
+
+!           this%rbuffxC(:,:,:,1) = this%G_GEOSTROPHIC*cos(this%G_ALPHA*pi/180.d0)
+!           call this%spectC%fft(this%rbuffxC(:,:,:,1),this%Gxhat)
+!           this%rbuffxE(:,:,:,1) = this%G_GEOSTROPHIC*cos(this%G_ALPHA*pi/180.d0)
+!           call this%spectE%fft(this%rbuffxE(:,:,:,1),this%Gxhat_Edge)
+!           this%rbuffxC(:,:,:,1) = this%G_GEOSTROPHIC*sin(this%G_ALPHA*pi/180.d0)
+!           call this%spectC%fft(this%rbuffxC(:,:,:,1),this%Gyhat)
+!           this%rbuffxE(:,:,:,1) = this%G_GEOSTROPHIC*sin(this%G_ALPHA*pi/180.d0)
+!           call this%spectE%fft(this%rbuffxE(:,:,:,1),this%Gyhat_Edge)
        end if
        ! u equation 
        ybuffC1    = (two/this%Ro)*(-this%coriolis_omegaY*this%whatC - this%coriolis_omegaZ*(this%GyHat - this%vhat))
