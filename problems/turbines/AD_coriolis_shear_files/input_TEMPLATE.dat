@@ -1,9 +1,9 @@
 &INPUT
 inputdir                      = "EDIT: DIRECTORY"  ! Directory for any input files
 outputdir                     = "EDIT: DIRECTORY"   ! Directory for all output files
-nx                            = 256         ! Number of points in X
-ny                            = 256         ! Number of points in Y
-nz                            = 128         ! Number of points in Z
+nx                            = 512         ! Number of points in X
+ny                            = 512         ! Number of points in Y
+nz                            = 256         ! Number of points in Z
 tstop                         = 50000.D0    ! Physical time to stop the simulation
 CFL                           = 1.4D0       ! CFL criterion for calculating the time step (Set to negative to disable)
 dt                            = 0.001D0     ! Fixed time step value (only used if CFL is set to negative)
@@ -133,7 +133,7 @@ budgetType                    = 1                   ! See type descriptions in b
 budgets_dir                   = "EDIT: DIRECTORY"   ! Write in default output directory
 tidx_compute                  = 5                   ! How often should budgets be computed?  
 tidx_dump                     = 1000                ! How often should budget files be written to disk? 
-tidx_budget_start             = 500                 ! Start budget computation from this timestep onward
+tidx_budget_start             = 1500                 ! Start budget computation from this timestep onward
 restart_budgets               = .FALSE.   	    ! use existing budget file to restart budget calculations? 
 restart_rid                   = 1         	    ! Restart budget file run index
 restart_tid                   = 35000    	    ! Restart budget file time index
