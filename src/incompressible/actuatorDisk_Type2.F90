@@ -267,7 +267,8 @@ subroutine get_RHS(this, u, v, w, rhsxvals, rhsyvals, rhszvals, inst_val)
     real(rkind) :: usp_sq, force
 
     call this%getMeanU(u,v,w)
-    usp_sq = this%uface**2 + this%vface**2 + this%wface**2
+!    usp_sq = this%uface**2 + this%vface**2 + this%wface**2
+    usp_sq = this%uface**2  ! changed for yawed case
     force = -this%pfactor*this%normfactor*0.5d0*this%cT*(pi*(this%diam**2)/4.d0)*usp_sq
    
     !do j = 1,size(this%xs)
