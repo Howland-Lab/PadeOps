@@ -1,6 +1,7 @@
 #module purge
 #module load cmake/3.16.1 intel/19.1.1 impi/19.0.9
-module load cmake/3.8.2 intel/18.0.0
+#module load cmake/3.8.2 intel/18.0.0
+module load cmake/3.16.1 intel/18.0.0
 export COMPILER_ID=Intel
 export FC=mpiifort
 export CC=mpiicc
