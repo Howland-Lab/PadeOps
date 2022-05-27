@@ -17,6 +17,7 @@ module AD_Coriolis_parameters
     contains
 
 subroutine init_fringe_targets(inputfile, mesh)
+    use exits, only: message
     use kind_parameters,    only: rkind
     use constants,          only: zero, one, two, pi, half
     use gridtools,          only: alloc_buffs
@@ -28,13 +29,14 @@ subroutine init_fringe_targets(inputfile, mesh)
     character(len=*),                intent(in)    :: inputfile
     real(rkind), dimension(:,:,:,:), intent(in), target    :: mesh
     real(rkind), dimension(:,:,:), pointer :: z
-    real(rkind) :: Lx, Ly, Lz, uInflow, vInflow  
+    real(rkind) :: Lx, Ly, Lz, uInflow, vInflow, yaw 
     real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid
     integer :: ioUnit
     integer :: InflowProfileType
+    logical :: useGeostrophicForcing
 
     namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, & 
-                                InflowProfileAmplit, InflowProfileThick, InflowProfileType
+                                InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -48,21 +50,21 @@ subroutine init_fringe_targets(inputfile, mesh)
     wtarget = zero 
     zMid = Lz / two
     z => mesh(:,:,:,3)
-    call get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, zMid, InflowProfileType, utarget, vtarget)   
+    call get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, zMid, InflowProfileType, yaw, utarget, vtarget)   
 
     ! The velocity profile in z needs to go to slip wall at the top
     ! Both u and v need slip conditions
 
 end subroutine
 
-subroutine get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, zMid, InflowProfileType, u, v)
+subroutine get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, zMid, InflowProfileType, yaw, u, v)
     use kind_parameters, only: rkind
     use constants,       only: zero, one, two, pi, half
     
     implicit none
     real(rkind), dimension(:,:,:), intent(inout) :: u, v
     real(rkind), dimension(:,:,:), intent(in) :: z
-    real(rkind), intent(in) :: InflowProfileAmplit, InflowProfileThick, zMid, uInflow, vInflow
+    real(rkind), intent(in) :: InflowProfileAmplit, InflowProfileThick, zMid, uInflow, vInflow, yaw
     integer, intent(in) :: InflowProfileType
     integer:: i
     real(rkind) :: a_max, g_min, g_max
@@ -137,6 +139,10 @@ subroutine get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, z
           ! set the velocity components u and v: 
           u = g*cos(alpha)
           v = g*sin(alpha)
+      case(8)
+          ! Uniform yawed inflow
+          u = uInflow*cos(yaw*pi/180.d0)
+          v = -uInflow*sin(yaw*pi/180.d0)
     end select
 end subroutine
 
@@ -155,12 +161,12 @@ subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
     integer :: i,j,k, ioUnit
     character(len=*),                intent(in)    :: inputfile
     integer :: ix1, ixn, iy1, iyn, iz1, izn
-    real(rkind)  :: Lx = one, Ly = one, Lz = one, G_alpha
+    real(rkind)  :: Lx = one, Ly = one, Lz = one, yaw
     real(rkind) :: uInflow, vInflow  
     real(rkind) :: InflowProfileAmplit, InflowProfileThick
     integer :: InflowProfileType
     namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, & 
-                                InflowProfileAmplit, InflowProfileThick, InflowProfileType
+                                InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -220,13 +226,13 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     real(rkind), dimension(:,:,:), pointer :: u, v, w, wC, x, y, z
     real(rkind), dimension(:,:,:), allocatable :: randArr, ybuffC, ybuffE, zbuffC, zbuffE
     integer :: nz, nzE
-    real(rkind)  :: Lx = one, Ly = one, Lz = one, G_alpha
+    real(rkind)  :: Lx = one, Ly = one, Lz = one, G_alpha, yaw
     real(rkind) :: uInflow, vInflow  
     real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid
     integer :: InflowProfileType
     
     namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, & 
-                                InflowProfileAmplit, InflowProfileThick, InflowProfileType
+                                InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -254,7 +260,7 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     zMid = Lz / 2.d0
     
     ! initialize inflow profile
-    call get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, zMid, InflowProfileType, u, v)
+    call get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, zMid, InflowProfileType, yaw, u, v)
     
     !allocate(randArr(size(u,1),size(u,2),size(u,3)))
     !call gaussian_random(randArr,-one,one,seedu + 10*nrank)
@@ -310,9 +316,9 @@ subroutine set_planes_io(xplanes, yplanes, zplanes)
 
     allocate(xplanes(nxplanes), yplanes(nyplanes), zplanes(nzplanes))
 
-    xplanes = [154, 256]
-    yplanes = [256]
-    zplanes = [127]
+    xplanes = [308, 512]
+    yplanes = [512]
+    zplanes = [256]
 
 end subroutine
 
@@ -334,13 +340,13 @@ subroutine setInhomogeneousNeumannBC_Temp(inputfile, wTh_surf)
     character(len=*),                intent(in)    :: inputfile
     real(rkind), intent(out) :: wTh_surf
     integer :: ioUnit 
-    real(rkind) :: ThetaRef, Lx, Ly, Lz
+    real(rkind) :: ThetaRef, Lx, Ly, Lz, yaw
     logical :: initPurturbations = .false. 
     real(rkind) :: uInflow, vInflow  
     real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid
     integer :: InflowProfileType
     namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, & 
-                                InflowProfileAmplit, InflowProfileThick, InflowProfileType
+                                InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw
      
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -357,13 +363,13 @@ subroutine setDirichletBC_Temp(inputfile, Tsurf, dTsurf_dt)
 
     character(len=*),                intent(in)    :: inputfile
     real(rkind), intent(out) :: Tsurf, dTsurf_dt
-    real(rkind) :: ThetaRef, Lx, Ly, Lz, G_alpha
+    real(rkind) :: ThetaRef, Lx, Ly, Lz, G_alpha, yaw
     integer :: iounit
     real(rkind) :: uInflow, vInflow  
     real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid
     integer :: InflowProfileType
     namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, & 
-                                InflowProfileAmplit, InflowProfileThick, InflowProfileType
+                                InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw
     
     Tsurf = zero; dTsurf_dt = zero; ThetaRef = one
     
@@ -382,14 +388,14 @@ subroutine set_Reference_Temperature(inputfile, Tref)
     implicit none 
     character(len=*),                intent(in)    :: inputfile
     real(rkind), intent(out) :: Tref
-    real(rkind) :: Lx, Ly, Lz, G_alpha
+    real(rkind) :: Lx, Ly, Lz, G_alpha, yaw
     integer :: iounit
     real(rkind) :: uInflow, vInflow  
     real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid
     integer :: InflowProfileType
     
     namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, & 
-                                InflowProfileAmplit, InflowProfileThick, InflowProfileType
+                                InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
