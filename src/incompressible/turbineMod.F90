@@ -753,10 +753,12 @@ end subroutine
 
 subroutine write_turbine_power(this, TID, outputdir, runID)
     use basic_io
+
     class(TurbineArray), intent(inout), target :: this
     integer :: i, runID, TID
     character(len=*), intent(in) :: outputdir
     character(len=clen) :: filename, tempname
+    real(rkind), dimension(2) :: uface
 
     do i = 1,this%nTurbines
         if (this%ADM_Type==2) then
@@ -764,7 +766,24 @@ subroutine write_turbine_power(this, TID, outputdir, runID)
                write(tempname,"(A3,I2.2,A2,I6.6,A6,I2.2,A4)") "Run",runID,"_t", TID, "_turbP",i,".pow"
                filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
                call write_2d_ascii(this%turbArrayADM_T2(i)%powerTime(1:this%turbArrayADM_T2(i)%tInd-1,:),filename)  
+               ! this%turbArrayADM_T2(i)%tInd = 1
+               
+               ! Take two: 
+               write(tempname,"(A3,I2.2,A2,I6.6,A6,I2.2,A4)") "Run",runID,"_t", TID, "_turbU",i,".vel"
+               filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
+               call write_2d_ascii(this%turbArrayADM_T2(i)%uTime(1:this%turbArrayADM_T2(i)%tInd-1,:),filename)  
+
+               write(tempname,"(A3,I2.2,A2,I6.6,A6,I2.2,A4)") "Run",runID,"_t", TID, "_turbV",i,".vel"
+               filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
+               call write_2d_ascii(this%turbArrayADM_T2(i)%vTime(1:this%turbArrayADM_T2(i)%tInd-1,:),filename)  
+
                this%turbArrayADM_T2(i)%tInd = 1
+               ! Write the instantaneous rotor-averaged velocities as well
+!               write(tempname, "(A3, I2.2, A2, I6.6, A6, I2.2, A4)") "Run",runID,"_t",TID,"_turbU",i,".vel"
+!!               filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
+!               uface(1) = this%turbArrayADM_T2(i)%uface
+!               uface(2) = this%turbArrayADM_T2(i)%vface
+!               call write_1d_ascii(uface, filename)
            end if
         end if
     end do
