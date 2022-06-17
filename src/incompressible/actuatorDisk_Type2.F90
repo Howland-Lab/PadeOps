@@ -30,6 +30,8 @@ module actuatorDisk_T2mod
         real(rkind), dimension(:), allocatable :: xs, ys, zs
         integer, dimension(:,:), allocatable :: startEnds
         real(rkind), dimension(:,:), allocatable :: powerTime
+        real(rkind), dimension(:, :), allocatable :: uTime
+        real(rkind), dimension(:, :), allocatable :: vTime
 
         ! Grid Info
         integer :: nxLoc, nyLoc, nzLoc 
@@ -197,6 +199,8 @@ subroutine init(this, inputDir, ActuatorDisk_T2ID, xG, yG, zG)
     this%smearing_base = this%smearing_base/correction_factor
     if((this%Am_I_Split .and. this%myComm_nrank==0) .or. (.not. this%Am_I_Split)) then
            allocate(this%powerTime(1000000,1))
+           allocate(this%uTime(1000000, 1))
+           allocate(this%vTime(1000000, 1))
     end if
 
     call message(2, "Smearing grid parameter, ntry", ntry)
@@ -294,6 +298,8 @@ subroutine get_RHS(this, u, v, w, rhsxvals, rhsyvals, rhszvals, inst_val)
                                  ! somewhere besides turbineMod which corrupts
                                  ! the power measurements!
             this%powerTime(this%tInd,1) = -force*sqrt(usp_sq)
+            this%uTime(this%tInd, 1) = this%uface
+            this%vTime(this%tInd, 1) = this%vface
             this%tInd = this%tInd + 1
         end if
       end if
