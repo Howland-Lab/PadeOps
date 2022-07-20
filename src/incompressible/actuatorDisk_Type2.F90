@@ -283,7 +283,6 @@ subroutine get_RHS(this, u, v, w, rhsxvals, rhsyvals, rhszvals, inst_val)
     rhsxvals = rhsxvals + force*this%smearing_base 
     rhsyvals = zero
     rhszvals = zero
-
     !if (present(inst_val)) then
       if((this%Am_I_Split .and. this%myComm_nrank==0) .or. (.not. this%Am_I_Split)) then
         inst_val(1) = force
