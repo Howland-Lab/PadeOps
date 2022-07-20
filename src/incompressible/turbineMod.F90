@@ -8,6 +8,7 @@ module turbineMod
     use actuatorDisk_RotMod, only: actuatorDisk_Rot
     use actuatorLineMod, only: actuatorLine
     use actuatorDisk_YawMod, only: actuatorDisk_yaw
+    use actuatorDisk_FilteredMod, only: actuatorDisk_filtered
     use dynamicYawMod, only: dynamicYaw
     use exits, only: GracefulExit, message
     use spectralMod, only: spectral  
@@ -40,6 +41,7 @@ module turbineMod
         type(actuatorDisk_Rot), allocatable, dimension(:) :: turbArrayADM_Rot
         type(actuatorLine), allocatable, dimension(:) :: turbArrayALM
         type(actuatorDisk_yaw), allocatable, dimension(:) :: turbArrayADM_Tyaw
+        type(actuatorDisk_filtered), allocatable, dimension(:) :: turbArrayADM_fil
         type(dynamicYaw) :: dyaw
 
         type(decomp_info), pointer :: gpC, sp_gpC, gpE, sp_gpE
@@ -168,7 +170,7 @@ subroutine init(this, inputFile, gpC, gpE, spectC, spectE, cbuffyC, cbuffYE, cbu
     complex(rkind), dimension(:,:,:,:), target, intent(inout) :: cbuffyC, cbuffyE, cbuffzC, cbuffzE
     real(rkind), dimension(:,:,:,:), intent(in) :: mesh
     real(rkind), intent(in) :: dx, dy, dz
-    logical :: useWindTurbines = .TRUE., useDynamicYaw = .FALSE. ! .FALSE. implies ALM
+    logical :: useWindTurbines = .TRUE., useDynamicYaw = .FALSE. 
     real(rkind) :: xyzPads(6)
     logical :: ADM = .TRUE., WriteTurbineForce  ! .FALSE. implies ALM
     ! Dynamic yaw stuff
@@ -212,7 +214,7 @@ subroutine init(this, inputFile, gpC, gpE, spectC, spectE, cbuffyC, cbuffYE, cbu
     this%Tf = this%yawUpdateInterval
     this%hubIndex = 1
 
-    ! Initialize the yaw and tilf
+    ! Initialize the yaw and tilt
     allocate(this%gamma(this%nTurbines))
     allocate(this%gamma_nm1(this%nTurbines))
     allocate(this%theta(this%nTurbines))
@@ -295,6 +297,21 @@ subroutine init(this, inputFile, gpC, gpE, spectC, spectE, cbuffyC, cbuffYE, cbu
          this%hubIndex = nint(this%turbArrayADM_Tyaw(1)%zLoc / dz)
          this%windAngle = 0.d0
          call message(0,"YAWING WIND TURBINE (Type 4) array initialized")
+
+      case (5)
+         ! Allocate turbine array + buffers (unused 07/)
+         allocate (this%turbArrayADM_fil(this%nTurbines))
+         allocate (this%rbuff(this%gpC%xsz(1), this%gpC%xsz(2), this%gpC%xsz(3)))
+         allocate (this%blanks(this%gpC%xsz(1), this%gpC%xsz(2), this%gpC%xsz(3)))
+         allocate (this%speed(this%gpC%xsz(1), this%gpC%xsz(2), this%gpC%xsz(3)))
+         allocate (this%scalarSource(this%gpC%xsz(1), this%gpC%xsz(2), this%gpC%xsz(3)))
+         do i = 1, this%nTurbines
+             call this%turbArrayADM_fil(i)%init(turbInfoDir, i, mesh(:,:,:,1), mesh(:,:,:,2), mesh(:,:,:,3))
+             call this%turbArrayADM_fil(i)%link_memory_buffers(this%rbuff, this%blanks, this%speed, this%scalarSource)
+             this%gamma(i) = this%turbArrayADM_fil(i)%yaw
+             this%theta(i) = 0.d0
+         end do
+         call message(0,"WIND TURBINE FILTERED ADM (Type 5) array initialized")
       end select 
     else
       call GracefulExit("Actuator Line implementation temporarily disabled. Talk to Aditya if you want to know why.",423)
@@ -353,6 +370,10 @@ subroutine destroy(this)
     case (4)
       do i = 1, this%nTurbines
         call this%turbArrayADM_Tyaw(i)%destroy()
+      end do
+    case (5)
+      do i = 1, this%nTurbines
+        call this%turbArrayADM_fil(i)%destroy()
       end do
     end select
       !deallocate(this%turbArrayADM)
@@ -729,6 +750,13 @@ subroutine getForceRHS(this, dt, u, v, wC, urhs, vrhs, wrhs, newTimeStep, inst_h
                    this%gamma_nm1 = this%gamma
                end if
                this%step=this%step+1
+           case (5)
+               do i = 1, this%nTurbines
+                    call this%turbArrayADM_fil(i)%get_RHS(u,v,wC,this%fx,this%fy,this%fz, this%gamma(i), this%theta(i))
+                    ! temporarily write debug files
+                    tmp = this%turbArrayADM_fil(i)%get_power()
+                    write(*,*) "     ** TURB OUTPUT POWER: ", tmp
+               end do
            end select 
     end if 
 
@@ -780,7 +808,7 @@ subroutine write_turbine_power(this, TID, outputdir, runID)
                this%turbArrayADM_T2(i)%tInd = 1
                ! Write the instantaneous rotor-averaged velocities as well
 !               write(tempname, "(A3, I2.2, A2, I6.6, A6, I2.2, A4)") "Run",runID,"_t",TID,"_turbU",i,".vel"
-!!               filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
+!               filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
 !               uface(1) = this%turbArrayADM_T2(i)%uface
 !               uface(2) = this%turbArrayADM_T2(i)%vface
 !               call write_1d_ascii(uface, filename)
