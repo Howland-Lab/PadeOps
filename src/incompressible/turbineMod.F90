@@ -177,7 +177,6 @@ subroutine init(this, inputFile, gpC, gpE, spectC, spectE, cbuffyC, cbuffYE, cbu
     character(len=clen) :: inputDirDyaw = "/home1/05294/mhowland/dynamicYawFiles/dynamicYaw.inp"
     real(rkind), dimension(:), allocatable :: xLoc, yLoc
     integer :: yawUpdateInterval = 1000
-
     integer :: i, ierr, ADM_Type = 2
 
     namelist /WINDTURBINES/ useWindTurbines, num_turbines, ADM, turbInfoDir, ADM_Type, & 
@@ -187,7 +186,7 @@ subroutine init(this, inputFile, gpC, gpE, spectC, spectE, cbuffyC, cbuffYE, cbu
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
     read(unit=ioUnit, NML=WINDTURBINES)
     close(ioUnit)
-
+    
     this%gpC => gpC
     this%spectC => spectC
     this%sp_gpC => this%spectC%spectdecomp
@@ -753,9 +752,6 @@ subroutine getForceRHS(this, dt, u, v, wC, urhs, vrhs, wrhs, newTimeStep, inst_h
            case (5)
                do i = 1, this%nTurbines
                     call this%turbArrayADM_fil(i)%get_RHS(u,v,wC,this%fx,this%fy,this%fz, this%gamma(i), this%theta(i))
-                    ! temporarily write debug files
-                    tmp = this%turbArrayADM_fil(i)%get_power()
-                    write(*,*) "     ** TURB OUTPUT POWER: ", tmp
                end do
            end select 
     end if 
@@ -786,33 +782,42 @@ subroutine write_turbine_power(this, TID, outputdir, runID)
     integer :: i, runID, TID
     character(len=*), intent(in) :: outputdir
     character(len=clen) :: filename, tempname
-    real(rkind), dimension(2) :: uface
+!    real(rkind), dimension(2) :: uface
 
     do i = 1,this%nTurbines
         if (this%ADM_Type==2) then
-           if (allocated(this%turbArrayADM_T2(i)%powerTime)) then
-               write(tempname,"(A3,I2.2,A2,I6.6,A6,I2.2,A4)") "Run",runID,"_t", TID, "_turbP",i,".pow"
-               filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
-               call write_2d_ascii(this%turbArrayADM_T2(i)%powerTime(1:this%turbArrayADM_T2(i)%tInd-1,:),filename)  
-               ! this%turbArrayADM_T2(i)%tInd = 1
-               
-               ! Take two: 
-               write(tempname,"(A3,I2.2,A2,I6.6,A6,I2.2,A4)") "Run",runID,"_t", TID, "_turbU",i,".vel"
-               filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
-               call write_2d_ascii(this%turbArrayADM_T2(i)%uTime(1:this%turbArrayADM_T2(i)%tInd-1,:),filename)  
-
-               write(tempname,"(A3,I2.2,A2,I6.6,A6,I2.2,A4)") "Run",runID,"_t", TID, "_turbV",i,".vel"
-               filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
-               call write_2d_ascii(this%turbArrayADM_T2(i)%vTime(1:this%turbArrayADM_T2(i)%tInd-1,:),filename)  
-
-               this%turbArrayADM_T2(i)%tInd = 1
-               ! Write the instantaneous rotor-averaged velocities as well
-!               write(tempname, "(A3, I2.2, A2, I6.6, A6, I2.2, A4)") "Run",runID,"_t",TID,"_turbU",i,".vel"
-!               filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
-!               uface(1) = this%turbArrayADM_T2(i)%uface
-!               uface(2) = this%turbArrayADM_T2(i)%vface
-!               call write_1d_ascii(uface, filename)
-           end if
+            if (allocated(this%turbArrayADM_T2(i)%powerTime)) then
+                write(tempname,"(A3,I2.2,A2,I6.6,A6,I2.2,A4)") "Run",runID,"_t", TID, "_turbP",i,".pow"
+                filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
+                call write_2d_ascii(this%turbArrayADM_T2(i)%powerTime(1:this%turbArrayADM_T2(i)%tInd-1,:),filename)  
+                ! this%turbArrayADM_T2(i)%tInd = 1
+                
+                ! Take two: 
+                write(tempname,"(A3,I2.2,A2,I6.6,A6,I2.2,A4)") "Run",runID,"_t", TID, "_turbU",i,".vel"
+                filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
+                call write_2d_ascii(this%turbArrayADM_T2(i)%uTime(1:this%turbArrayADM_T2(i)%tInd-1,:),filename)  
+ 
+                write(tempname,"(A3,I2.2,A2,I6.6,A6,I2.2,A4)") "Run",runID,"_t", TID, "_turbV",i,".vel"
+                filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
+                call write_2d_ascii(this%turbArrayADM_T2(i)%vTime(1:this%turbArrayADM_T2(i)%tInd-1,:),filename)  
+                 
+                this%turbArrayADM_T2(i)%tInd = 1
+            end if
+        elseif (this%ADM_Type==5) then
+!            if (allocated(this%turbArrayADM_fil(i)%powerTime)) then
+                write(tempname,"(A3,I2.2,A2,I6.6,A6,I2.2,A4)") "Run",runID,"_t", TID, "_turbP",i,".pow"
+                filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
+                call write_1d_ascii(this%turbArrayADM_fil(i)%powerTime(1:this%turbArrayADM_fil(i)%tInd-1),filename)  
+                 
+                write(tempname,"(A3,I2.2,A2,I6.6,A6,I2.2,A4)") "Run",runID,"_t", TID, "_turbU",i,".vel"
+                filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
+                call write_1d_ascii(this%turbArrayADM_fil(i)%uTime(1:this%turbArrayADM_fil(i)%tInd-1),filename)  
+ 
+                write(tempname,"(A3,I2.2,A2,I6.6,A6,I2.2,A4)") "Run",runID,"_t", TID, "_turbV",i,".vel"
+                filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
+                call write_1d_ascii(this%turbArrayADM_fil(i)%vTime(1:this%turbArrayADM_fil(i)%tInd-1),filename)  
+                this%turbArrayADM_fil(i)%tInd = 1
+!            end if 
         end if
     end do
     
