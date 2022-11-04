@@ -31,6 +31,8 @@ contains
             call message_min_max(1,"Bounds for v:", p_minval(minval(igp%v)), p_maxval(maxval(igp%v)))
             call message_min_max(1,"Bounds for w:", p_minval(minval(igp%w)), p_maxval(maxval(igp%w)))
             call message_min_max(1,"Bounds for T:", p_minval(minval(igp%T)), p_maxval(maxval(igp%T)))
+            call message(1, "Current angle controller Phi:", igp%angCont_yaw%getPhi())
+            call message(1, "Frame angle:" , igp%frameAngle)
             if (igp%useCFL) then
                 call message(1,"Current dt:",igp%dt)
             end if
