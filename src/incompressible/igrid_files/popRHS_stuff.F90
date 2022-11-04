@@ -283,6 +283,7 @@
            call this%angCont_yaw%update_RHS_control(this%dt, this%u_rhs, this%v_rhs, &
                          this%w_rhs, this%u, this%v, this%newTimeStep, this%angleHubHeight, this%wFilt, this%deltaGalpha, this%zHubIndex, this%angleTrigger)
            this%totalAngle = this%totalAngle + this%angleHubHeight
+           this%angleHubHeight = 1.d0  ! HOTFIX - do not use angleHubHeight for the hub height wind angle
        end if 
 
        ! Step 10: Populate RHS for scalars
