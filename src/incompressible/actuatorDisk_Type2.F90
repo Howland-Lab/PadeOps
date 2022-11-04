@@ -339,7 +339,7 @@ subroutine sample_on_circle(R,xcen, ycen, xloc,yloc,np)
     real(rkind), dimension(:), allocatable, intent(out) :: xloc, yloc
     real(rkind), dimension(:), allocatable :: xtmp, ytmp, rtmp
     integer :: idx, i, j, nsz, iidx
-
+    
     allocate(xline(np),yline(np))
     allocate(xtmp(np**2),ytmp(np**2), rtmp(np**2), tag(np**2))
     
