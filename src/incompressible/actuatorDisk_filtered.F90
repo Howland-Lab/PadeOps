@@ -1,7 +1,7 @@
 module actuatorDisk_FilteredMod
     use kind_parameters, only: rkind, clen
     use constants, only: imi, zero,one,two,three,half,fourth, pi, kappa
-    !use decomp_2d
+    use decomp_2d
     use exits, only: GracefulExit, message
     use mpi 
     use reductions, only: p_maxval, p_sum
@@ -20,13 +20,15 @@ module actuatorDisk_FilteredMod
         ! Implementation of Shapiro et al. (2019) Filtered ADM
         ! Kirby Heck 07/20/2022
 
-        ! Actuator Disk_T2 Info
-        integer :: xLoc_idx, ActutorDisk_T2ID
+        ! Actuator Disk Info
+        integer :: xLoc_idx, ActutorDisk_T2ID, tInd = 1
         real(rkind) :: yaw, tilt, ut, powerBaseline, hubDirection
-        real(rkind) :: xLoc, yLoc, zLoc, dx, dy, dz
+        real(rkind) :: xLoc, yLoc, zLoc, dx, dy, dz, dV
         real(rkind) :: diam, cT, pfactor, normfactor, OneBydelSq, Cp, thick
         real(rkind) :: uface = 0.d0, vface = 0.d0, wface = 0.d0
         real(rkind), dimension(:), allocatable :: xs, ys, zs
+        real(rkind), dimension(:), allocatable :: powerTime, uTime, vTime
+        logical :: useDynamicYaw
 
         ! Grid Info
         integer :: nxLoc, nyLoc, nzLoc 
@@ -61,20 +63,21 @@ module actuatorDisk_FilteredMod
 
 contains
 
-subroutine init(this, inputDir, ActuatorDisk_T2ID, xG, yG, zG)
+subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG)
     class(actuatorDisk_filtered), intent(inout) :: this
     real(rkind), intent(in), dimension(:,:,:), target :: xG, yG, zG
-    integer, intent(in) :: ActuatorDisk_T2ID
+    integer, intent(in) :: ActuatorDisk_ID
     character(len=*), intent(in) :: inputDir
     character(len=clen) :: tempname, fname
     integer :: ioUnit
     real(rkind) :: xLoc=1.d0, yLoc=1.d0, zLoc=0.1d0
-    real(rkind) :: diam=0.08d0, cT=0.65d0, yaw=0.d0, tilt=0.d0, Cp = 0.3
-    real(rkind) :: thick=1.5d0
+    real(rkind) :: diam=0.08d0, cT=0.65d0, yaw=0.d0, tilt=0.d0!, Cp = 0.3
+    real(rkind) :: thickness=1.5d0, filterWidth=0.5, time2initialize=0d0, tmp
+    logical :: useCorrection=.TRUE., useDynamicYaw=.TRUE.
 
     ! Read input file for this turbine    
-    namelist /ACTUATOR_DISK/ xLoc, yLoc, zLoc, diam, cT, yaw, tilt
-    write(tempname,"(A13,I4.4,A10)") "ActuatorDisk_", ActuatorDisk_T2ID, "_input.inp"
+    namelist /ACTUATOR_DISK/ xLoc, yLoc, zLoc, diam, cT, yaw, tilt, filterWidth, useCorrection, useDynamicYaw, thickness
+    write(tempname,"(A13,I4.4,A10)") "ActuatorDisk_", ActuatorDisk_ID, "_input.inp"
     fname = InputDir(:len_trim(InputDir))//"/"//trim(tempname)
 
     ioUnit = 55
@@ -82,13 +85,17 @@ subroutine init(this, inputDir, ActuatorDisk_T2ID, xG, yG, zG)
     read(unit=ioUnit, NML=ACTUATOR_DISK)
     close(ioUnit)
     
+    call message(1, "Initializing Actuator Disk (ADM Type=5) number", ActuatorDisk_ID)
+    call tic()
+    
     ! link grids and read inputs 
     this%dx=xG(2,1,1)-xG(1,1,1)
     this%dy=yG(1,2,1)-yG(1,1,1)
     this%dz=zG(1,1,2)-zG(1,1,1)
+    this%dV = this%dx*this%dy*this%dz
     this%xLoc = xLoc; this%yLoc = yLoc; this%zLoc = zLoc
     this%cT = cT; this%diam = diam; this%yaw = yaw
-    this%ut = 1.d0; this%Cp = Cp
+    this%ut = 1.d0!; this%Cp = Cp
     
     this%nxLoc = size(xG,1); this%nyLoc = size(xG,2); this%nzLoc = size(xG,3)
     
@@ -102,29 +109,39 @@ subroutine init(this, inputDir, ActuatorDisk_T2ID, xG, yG, zG)
     this%memory_buffers_linked = .false.
     this%xLine = xG(:,1,1); this%yLine = yG(1,:,1); this%zLine = zG(1,1,:)
     
-    ! Set thickness
-    this%thick = thick*this%dx
-    this%delta = two*sqrt(this%dx**2 + this%dy**2 + this%dz**2)
+    allocate(this%powerTime(1000))  ! copied from ADM T2
+    allocate(this%uTime(1000))  
+    allocate(this%vTime(1000))
 
-    ! gaussian convolution for weighting function
-    call get_weights(this, this%smearing_base, this%ys, this%zs)
+    ! Set thickness
+    this%thick = thickness*this%dx
+    this%delta = filterWidth*this%diam 
+                 ! two*sqrt(this%dx**2 + this%dy**2 + this%dz**2)
+
+    ! Get (unrotated) turbine location points
+    call sample_on_circle(this%diam, this%yLoc, this%zLoc, this%ys, this%zs, this%dy, this%dz)
     allocate(this%xs(size(this%ys)))
     this%xs = this%xLoc
-!    write(*,*) "      ** length of xs: ", size(this%xs)
-!    write(*,*) "      ** length of xLine: ", size(this%xLine)
-!    write(*,*) "      ** length of yLine: ", size(this%yLine)
-!    write(*,*) "      ** length of zLine: ", size(this%zLine)
-!    write(*,*) "      ** size of grid: ", size(this%xG)
-!    write(*,*) "      ** size of smearing base: ", size(this%smearing_base)
      
     ! Correction factor (taylor series approx.)
-    this%M = one / (one + this%cT/two*this%delta/sqrt(3.d0*pi)/this%diam)
+    if (useCorrection) then
+        this%M = one / (one + this%cT/two*this%delta/sqrt(3.d0*pi)/this%diam)
+    else
+        this%M = one
+    end if 
+    
+    this%useDynamicYaw = useDynamicYaw
+    if (this%useDynamicYaw) then
+        call message(2, "Using Dynamic Yaw")
+    else
+        call message(2, "Using static turbine, may not run in parallel due to memory allocation conflicts. (07/27/22)")
+    end if
+    
+    call message(2, "Smearing grid parameter, Delta", this%delta)
+    call toc(mpi_comm_world, time2initialize)
+    call message(2, "Time (seconds) to initialize", time2initialize)
 end subroutine 
 
-! Basically unused at this point... fix later? 
-! (Residual; only `speed` is used)
-! Need to create pointers instead of allocating fresh memory for scaling (in
-! terms of numturbines) and performance (allocating/deallocating is expensive)
 subroutine link_memory_buffers(this, rbuff, blanks, speed, scalarSource)
     class(actuatordisk_filtered), intent(inout) :: this
     real(rkind), dimension(:,:,:), intent(in), target :: rbuff, blanks, speed, scalarSource
@@ -133,6 +150,10 @@ subroutine link_memory_buffers(this, rbuff, blanks, speed, scalarSource)
     this%scalarSource => scalarSource
     this%blanks => blanks
     this%memory_buffers_linked = .true. 
+    
+    if (.not. this%useDynamicyaw) then
+        call get_weights(this, this%xs, this%ys, this%zs)!, this%scalarSource)
+    end if
 end subroutine 
 
 subroutine destroy(this)
@@ -173,7 +194,7 @@ subroutine get_R2(this, ys, zs, R2)
     yy = this%yG(1, :, :)
     zz = this%zG(1, :, :)
     cbuff = -6.d0 / (this%delta**2)
-    ! we need to do the integral, iterate through points on disk face: 
+    ! we need to compute the integral, iterate through points on disk face: 
     do j = 1, size(ys)
         stamp = exp(cbuff*((ys(j)-yy)**2 + (zs(j)-zz)**2))
         R2 = R2 + stamp
@@ -183,35 +204,31 @@ subroutine get_R2(this, ys, zs, R2)
     R2 = R2*cbuff  ! weight accordingly to the sampling density in sample_on_circle()
 end subroutine
 
-subroutine get_weights(this, R, ys, zs)
+subroutine get_weights(this, xs, ys, zs)
     class(actuatordisk_filtered), intent(inout) :: this
-    real(rkind), dimension(:), allocatable, intent(out) :: ys, zs
-    real(rkind), dimension(:,:,:), intent(out), allocatable :: R
+    real(rkind), dimension(:), allocatable :: xs, ys, zs
+!    real(rkind), dimension(:,:,:), intent(out), allocatable :: R
+!    real(rkind), dimension(this%nxLoc,this%nyLoc,this%nzLoc), intent(out) :: R
+    real(rkind), dimension(:,:,:), pointer :: R
     real(rkind), dimension(this%nyLoc, this%nzLoc) :: R2
     real(rkind), dimension(this%nxLoc) :: R1
-    real(rkind), dimension(this%nyLoc, this%nzLoc) :: yy, zz
-    ! R can be made non-allocatable; its dimension is known
+!    real(rkind), dimension(this%nyLoc, this%nzLoc) :: yy, zz
     
-    yy = this%yG(1,:,:)
-    zz = this%zG(1,:,:)
-    call sample_on_circle(this%diam, this%yLoc, this%zLoc, ys, zs, this%dy, this%dz)
+    ! TODO: FIX to use xs as well
     call this%get_R2(ys,zs,R2)
     call this%get_R1(R1) 
 
-    allocate(R(size(R1),size(R2,1),size(R2,2)))
+    R => this%scalarSource
     R = spread(spread(R1,2,this%nyLoc),3,this%nzLoc) &
         * spread(R2, 1, this%nxLoc)
+   
     ! minimum threshold tolerance
     where (R < 1.d-10)
         R = 0
     end where
 
-!    write(*,*) "      ** R1 integration:", sum(R1)*this%dx
-!    write(*,*) "      ** dx: ", this%dx
-!    write(*,*) "      ** R2 integration:", p_sum(R2)*this%dy*this%dz 
-!    write(*,*) "      ** Correction Factor:", p_sum(R)*this%dx*this%dy*this%dz
     ! normalize so R integrates to 1 exactly
-    R = R / (p_sum(R)*this%dx*this%dy*this%dz)
+    R = R / (p_sum(R)*this%dV) !this%dx*this%dy*this%dz)
 end subroutine
 
 ! sample a circle with points spaced dx, dy apart and centered at xcen, ycen
@@ -224,7 +241,7 @@ subroutine sample_on_circle(diam, xcen, ycen, xloc, yloc, dx, dy)
     real(rkind), dimension(:), allocatable, intent(out) :: xloc, yloc
     real(rkind), dimension(:), allocatable :: xtmp, ytmp, rtmp
     integer :: idx, i, j, nsz, iidx, nx_per_R, ny_per_R, nx, ny, np
-
+    
     R = diam/two
     nx_per_R = ceiling(R/dx); ny_per_R = ceiling(R/dy)
     nx = nx_per_R*2 + 1
@@ -241,15 +258,15 @@ subroutine sample_on_circle(diam, xcen, ycen, xloc, yloc, dx, dy)
     yline = (/(i, i=-ny_per_R, ny_per_R)/) * dy
     
     ! reshapes xline, yline: 
-!    idx = 1
-!    do j = 1,ny
-!        do i = 1,nx
-!            xtmp(idx) = xline(i); ytmp(idx) = yline(j)
-!            idx = idx + 1
-!        end do 
-!    end do
-    xtmp = reshape(spread(xline, 1, ny), [np])
-    ytmp = reshape(spread(yline, 2, nx), [np])
+!    xtmp = reshape(spread(xline, 1, ny), [np])
+!    ytmp = reshape(spread(yline, 2, nx), [np])  ! why doesn't reshape() work? 
+    idx = 1
+    do j = 1,ny
+        do i = 1,nx
+            xtmp(idx) = xline(i); ytmp(idx) = yline(j)
+            idx = idx + 1
+        end do 
+    end do
     rtmp = sqrt(xtmp**2 + ytmp**2) 
     tag = 0
     where (rtmp < R) 
@@ -270,54 +287,14 @@ subroutine sample_on_circle(diam, xcen, ycen, xloc, yloc, dx, dy)
     xloc = xloc + xcen; yloc = yloc + ycen 
 end subroutine
 
-! REWRITTEN TO FOLLOW ADM TYPE 2 (this does not work in parallel
-!subroutine sample_on_circle(diam, xLoc, yLoc, xx, yy, xs, ys)
-!    ! computes gridpoints on a circle for the given meshgrid xx, yy
-!    real(rkind), intent(in) :: diam
-!    real(rkind), intent(in) :: xLoc, yLoc
-!    real(rkind), dimension(:,:), intent(in) :: xx, yy
-!    real(rkind), dimension(:), intent(inout), allocatable :: xs, ys
-!    integer :: i, j, nx, ny, npts
-!    real(rkind), dimension(:,:), allocatable :: rbuff, tag_face
-!    real(rkind), dimension(:), allocatable :: xflat, yflat, tagflat
-!
-!    nx = size(xx,1) 
-!    ny = size(xx,2)
-!    
-!    allocate(tag_face(nx,ny))
-!    allocate(rbuff(nx,ny))
-!    rbuff = sqrt((xx-xLoc)**2 + (yy-yLoc)**2)
-!
-!    tag_face = 0
-!    where (rbuff < diam/two)
-!        tag_face = 1
-!    end where
-!    npts = sum(tag_face)  ! only allocate enough for the local processor's face nodes
-!    write(*,*) "      ** sample_on_circle(): sum vs psum", sum(tag_face), p_sum(tag_face)
-!    
-!    allocate(xs(npts)); allocate(ys(npts))
-!    allocate(xflat(nx*ny)); allocate(yflat(nx*ny)); allocate(tagflat(nx*ny))
-!
-!    xflat = reshape(xx, [nx*ny])
-!    yflat = reshape(yy, [nx*ny])
-!    tagflat = reshape(tag_face, [nx*ny])    
-!
-!    j = 0
-!    do i = 1,size(tagflat)  ! linear index through tag_face
-!        if (tagflat(i) == 1) then
-!            j = j + 1
-!            xs(j) = xflat(i)
-!            ys(j) = yflat(i)
-!        end if
-!    end do
-!end subroutine
-
+! Right hand side forcing term for the ADM
 subroutine get_RHS(this, u, v, w, rhsxvals, rhsyvals, rhszvals, gamma_negative, theta)
     class(actuatordisk_filtered), intent(inout) :: this
     real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc), intent(inout) :: rhsxvals, rhsyvals, rhszvals
     real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc), intent(in)    :: u, v, w
+    real(rkind), dimension(:), allocatable :: xs, ys, zs
     real(rkind), intent(in) :: gamma_negative, theta
-    real(rkind) :: usp_sq, force!, gamma
+    real(rkind) :: usp_sq, force, vface!, gamma
     real(rkind), dimension(3,1) :: n=[1,0,0] !xn, Ft
     !real(rkind), dimension(3,3) :: R, T
     !real(rkind) ::  numPoints, x, y, z, scalarSource, sumVal
@@ -330,20 +307,31 @@ subroutine get_RHS(this, u, v, w, rhsxvals, rhsyvals, rhszvals, gamma_negative, 
 
         ! this%speed = sqrt(u**2 + v**2 + w**2)  !which one to use?     
         this%speed = u 
-    
+        if (this%useDynamicYaw) then
+            call sample_on_circle(this%diam, this%yLoc, this%zLoc, ys, zs, this%dy, this%dz)
+            allocate(xs(size(this%ys)))
+            xs = this%xLoc
+            call get_weights(this, xs, ys, zs)
+        end if
+        
         ! Mean speed at the turbine, corrected with factor M
-        this%ut = this%M*p_sum(this%smearing_base*u)*this%dx*this%dy*this%dz
+        this%ut = this%M*p_sum(this%scalarSource*u)*this%dV !this%dx*this%dy*this%dz
 !        ! debugging
 !        write(*,*) "      ** get_RHS(): disk velocity is", this%ut
 !        write(*,*) "      ** sum of disk velocities is", p_sum(this%smearing_base * u)
         usp_sq = (this%ut)**2
         force = -0.5d0*this%cT*(pi*(this%diam**2)/4.d0)*usp_sq
-!        write(*,*) "      ** Force: ", force
-!        write(*,*) "      ** Integrated force: ", sum(force*this%smearing_base)
-!        write(*,*) "      ** Integrate weights: ", sum(this%smearing_base)       
-        rhsxvals = rhsxvals + force * n(1,1) * this%smearing_base
-        rhsyvals = rhsyvals + force * n(2,1) * this%smearing_base
-        rhszvals = rhszvals + force * n(3,1) * this%smearing_base
+        
+        rhsxvals = rhsxvals + force * n(1,1) * this%scalarSource
+        rhsyvals = rhsyvals + force * n(2,1) * this%scalarSource
+        rhszvals = rhszvals + force * n(3,1) * this%scalarSource
+        
+        if (usp_sq /= 0.d0) then
+            this%powerTime(this%tInd) = this%get_power()
+            this%uTime(this%tInd) = this%ut
+            this%vTime(this%tInd) = p_sum(this%scalarSource*v)*this%dV !this%dx*this%dy*this%dz
+            this%tInd = this%tInd + 1
+        end if
     end if
 
 end subroutine
@@ -437,7 +425,7 @@ subroutine get_RHS_old(this, u, v, w, rhsxvals, rhsyvals, rhszvals, gamma_negati
             end do
         end do
         ! this part needs to be done at the end of the loops
-        sumVal = p_sum(this%scalarSource) * this%dx*this%dy*this%dz
+        sumVal = p_sum(this%scalarSource) * this%dV !this%dx*this%dy*this%dz
         this%scalarSource = this%scalarSource / sumVal
         ! Get the mean velocities at the turbine face
         this%speed = u*n(1,1) + v*n(2,1) + w*n(3,1)
