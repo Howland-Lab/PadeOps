@@ -444,7 +444,7 @@ contains
                           useGeostrophicForcing, G_geostrophic, G_alpha, dpFdx,dpFdy,dpFdz,assume_fplane,latitude,useHITForcing, useScalars, frameAngle, buoyancyDirection, useHITRealSpaceLinearForcing, HITForceTimeScale
         namelist /BCs/ PeriodicInZ, topWall, botWall, useSpongeLayer, zstSponge, SpongeTScale, sponge_type, botBC_Temp, topBC_Temp, useTopAndBottomSymmetricSponge, useFringe, usedoublefringex, useControl
         namelist /WINDTURBINES/ useWindTurbines, num_turbines, ADM, turbInfoDir, ADM_Type, powerDumpDir, useDynamicYaw, &
-                                yawUpdateInterval, inputDirDyaw 
+                                yawUpdateInterval, inputDirDyaw
         namelist /NUMERICS/ AdvectionTerm, ComputeStokesPressure, NumericalSchemeVert, &
                             UseDealiasFilterVert, t_DivergenceCheck, TimeSteppingScheme, InitSpinUp, &
                             useExhaustiveFFT, dealiasFact, scheme_xy, donot_dealias, dealiasType 
@@ -1287,7 +1287,7 @@ contains
                        this%rbuffxC, this%rbuffxE, this%cbuffyC, this%cbuffyE, & 
                        this%rbuffyC, this%rbuffzC, this%restartPhi) 
        end if
-       this%angleHubHeight = 1.d0       
+       this%angleHubHeight = 1.d0      
        this%totalAngle = 0.d0
        this%wFilt = 0.d0
        this%deltaGalpha = 0.d0
