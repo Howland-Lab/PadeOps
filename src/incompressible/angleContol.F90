@@ -69,16 +69,20 @@ contains
          call transpose_y_to_z(this%rbuffyC(:,:,:,1),this%rbuffzC(:,:,:,2),this%gpC)
          !phi_n = p_sum(sum(this%rbuffzC(:,:,this%z_ref,1))) / (real(nx,rkind) * real(ny,rkind))      
          vM = p_sum(sum(this%rbuffzC(:,:,this%z_ref,2))) / (real(nx,rkind) * real(ny,rkind))        
+!         call message(1, "update_RHS_control: computed uM", uM)
+!         call message(1, "update_RHS_control: computed vM", vM)
          phi_n = atan2(vM, uM)
          z_hub = this%z_ref
+         call message(1, "update_RHS_control: computed phi_n", phi_n)
          trigger = this%angleTrigger 
-
-      if (newTimestep .AND. abs(phi_n * 180.d0 / pi) > this%angleTrigger) then
+         call message(1, "update_RHS_control: phi_ref: ", this%phi_ref)
+      if (newTimestep .AND. abs((phi_n - this%phi_ref) * 180.d0 / pi) > this%angleTrigger) then
          
          if (this%controlType == 1) then
             ! Meneveau 2014 psuedo force paper
             ! Rotation rate
             wControl_n = (phi_n - this%phi) / dt 
+            call message(1, "ENTERED FRAME ANGLE CONTROLLER CODE")
             ! Update the total angle and stored angles
             !totalAngle = totalAngle + (phi_n - this%phi)
             this%phi = phi_n
@@ -189,7 +193,7 @@ contains
       this%rbuffzC => rbuffzC
       this%beta = beta
       this%sigma = sigma
-      this%phi_ref = phi_ref * pi / 180.d0
+      this%phi_ref = phi_ref * pi / 180.d0  ! reference angle, in RADIANS
       this%z_ref = z_ref
       this%wFilt = 0.d0     
       this%alpha = alpha
