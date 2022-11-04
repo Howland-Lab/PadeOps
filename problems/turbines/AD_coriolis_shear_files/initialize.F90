@@ -81,7 +81,7 @@ subroutine get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, z
       case(2)
           u = uInflow*(one  + InflowProfileAmplit*tanh((z-zMid)/InflowProfileThick))
           v = vInflow * tanh((z-zMid)/InflowProfileThick);
-      case(3) 
+      case(3)  ! shear only (deprecated)
           u = uInflow*(one + (z-zMid)/InflowProfileThick)
           v = zero
           where (u<5.0d-1)
@@ -90,10 +90,10 @@ subroutine get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, z
           where (u>1.5d0)
                 u = 1.5d0
           end where
-      case(4) 
+      case(4)  ! veer only (deprecated)
           u = uInflow
           v = vInflow * (zMid-z)/InflowProfileThick
-      case(5)
+      case(5)  ! shear only
           u = uInflow*(one + (z-zMid)/InflowProfileThick)
           where (u<5.0d-1)
                 u = 5.0d-1
@@ -102,7 +102,7 @@ subroutine get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, z
                 u = 1.5d0
           end where
           v = vInflow * (zMid-z)/InflowProfileThick
-      case(6)
+      case(6)  ! veer only
           alpha = (zMid-z)/InflowProfileThick*vInflow
           a_max = (pi/two)*buffer
           ! prevent any reverse flow from strong veer
