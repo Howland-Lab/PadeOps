@@ -1,19 +1,23 @@
     subroutine get_geostrophic_forcing(this, Fg_x, Fg_y)
         class(igrid), intent(in) :: this
-        real(rkind), dimension(:,:,:), allocatable, intent(out) :: Fg_x, Fg_y
-        real(rkind), dimension(:,:,:), pointer :: gx, gy 
+!        real(rkind), dimension(:,:,:), allocatable, intent(out) :: Fg_x, Fg_y
+        real(rkind), dimension(this%gpC%xsz(1),this%gpC%xsz(2),this%gpC%xsz(3)), intent(out) :: Fg_x, Fg_y
+        real(rkind), dimension(:,:,:), pointer :: gx_vec, gy_vec
+        real(rkind) :: gx, gy 
         
-        if (this%fringe_x%TargetsAssociated) then
-            gx => this%fringe_x%u_target
-            gy => this%fringe_x%v_target
+        if (not(this%useConstantG) .and. (this%fringe_x%TargetsAssociated)) then
+            ! adds a coriolis term that changes in Z
+            gx_vec => this%fringe_x%u_target
+            gy_vec => this%fringe_x%v_target
+            Fg_x = -this%coriolis_omegaZ*(two/this%Ro)*gy_vec
+            Fg_y =  this%coriolis_omegaZ*(two/this%Ro)*gx_vec
         else
+            ! traditional coriolis term
             gx = this%G_GEOSTROPHIC*cos(this%G_ALPHA*pi/180.d0)
             gy = this%G_GEOSTROPHIC*sin(this%G_ALPHA*pi/180.d0)
+            Fg_x = -this%coriolis_omegaZ*(two/this%Ro)*gy
+            Fg_y =  this%coriolis_omegaZ*(two/this%Ro)*gx
         end if
-
-        Fg_x = -this%coriolis_omegaZ*(two/this%Ro)*gy
-        Fg_y =  this%coriolis_omegaZ*(two/this%Ro)*gx
-
 
     end subroutine 
 
@@ -46,7 +50,7 @@
 
            ! MODIFYING GEOSTROPHIC BEGINS HERE: 
           
-           if (this%fringe_x%TargetsAssociated) then
+           if (not(this%useConstantG) .and. (this%fringe_x%TargetsAssociated)) then
                u_target => this%fringe_x%u_target
                v_target => this%fringe_x%v_target
                
