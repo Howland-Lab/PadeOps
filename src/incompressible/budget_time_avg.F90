@@ -611,17 +611,17 @@ contains
        
         if (this%useCoriolis) then
             ! Get the geostrophic forcing 
-            call this%igrid_sim%get_geostrophic_forcing(tmp1, tmp2)         ! Forcing in x and y directions respectively 
+            call this%igrid_sim%get_geostrophic_forcing(this%igrid_sim%rbuffxC(:,:,:,2), this%igrid_sim%rbuffxC(:,:,:,3))         ! Forcing in x and y directions respectively
             ! Coriolis term, X       
             call this%igrid_sim%spectC%ifft(this%ucor,this%igrid_sim%rbuffxC(:,:,:,1))
-            this%budget_1(:,:,:,11) = this%budget_1(:,:,:,11) + this%igrid_sim%rbuffxC(:,:,:,1) - tmp1 ! Remove the geostrophic forcing term
+            this%budget_1(:,:,:,11) = this%budget_1(:,:,:,11) + this%igrid_sim%rbuffxC(:,:,:,1) - this%igrid_sim%rbuffxC(:,:,:,2) ! Remove the geostrophic forcing term
             ! Geostrophic term, X
-            this%budget_1(:,:,:,12) = this%budget_1(:,:,:,12) + tmp1
+            this%budget_1(:,:,:,12) = this%budget_1(:,:,:,12) + this%igrid_sim%rbuffxC(:,:,:,2)
             ! Coriolis term, Y       
             call this%igrid_sim%spectC%ifft(this%vcor,this%igrid_sim%rbuffxC(:,:,:,1))
-            this%budget_1(:,:,:,13) = this%budget_1(:,:,:,13) + this%igrid_sim%rbuffxC(:,:,:,1) - tmp2 ! Remove the geostrophic forcing term
+            this%budget_1(:,:,:,13) = this%budget_1(:,:,:,13) + this%igrid_sim%rbuffxC(:,:,:,1) - this%igrid_sim%rbuffxC(:,:,:,3) ! Remove the geostrophic forcing term
             ! Geostrophic term, Y
-            this%budget_1(:,:,:,14) = this%budget_1(:,:,:,14) + tmp2
+            this%budget_1(:,:,:,14) = this%budget_1(:,:,:,14) + this%igrid_sim%rbuffxC(:,:,:,3)
         end if 
         
     end subroutine
