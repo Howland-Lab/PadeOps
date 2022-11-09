@@ -73,16 +73,15 @@ contains
 !         call message(1, "update_RHS_control: computed vM", vM)
          phi_n = atan2(vM, uM)
          z_hub = this%z_ref
-         call message(1, "update_RHS_control: computed phi_n", phi_n)
          trigger = this%angleTrigger 
-         call message(1, "update_RHS_control: phi_ref: ", this%phi_ref)
+         !call message(1, "update_RHS_control: computed phi_n", phi_n)
+         !call message(1, "update_RHS_control: phi_ref: ", this%phi_ref)
       if (newTimestep .AND. abs((phi_n - this%phi_ref) * 180.d0 / pi) > this%angleTrigger) then
          
          if (this%controlType == 1) then
             ! Meneveau 2014 psuedo force paper
             ! Rotation rate
             wControl_n = (phi_n - this%phi) / dt 
-            call message(1, "ENTERED FRAME ANGLE CONTROLLER CODE")
             ! Update the total angle and stored angles
             !totalAngle = totalAngle + (phi_n - this%phi)
             this%phi = phi_n
