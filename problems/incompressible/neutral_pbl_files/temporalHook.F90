@@ -17,11 +17,20 @@ contains
 
     subroutine doTemporalStuff(igp)
         class(igrid), intent(inout) :: igp 
-      
+        character(len=8) :: date
+        character(len=10) :: time
+        character(len=19) :: datetime
+         
         if (mod(igp%step,nt_print2screen) == 0) then
             maxDiv = maxval(igp%divergence)
             DomMaxDiv = p_maxval(maxDiv)
             call message(0,"Time",igp%tsim)
+
+            ! add date and time printout, KHS 11/14/2022
+            call date_and_time(date, time)
+            datetime = date//"_"//time(1:2)//":"//time(3:4)//":"//time(5:10)
+            call message(0, "Date and time: "//datetime)
+
             call message(1,"u_star:",igp%sgsmodel%get_ustar())
             call message(1,"TIDX:",igp%step)
             call message(1,"MaxDiv:",DomMaxDiv)
@@ -31,8 +40,10 @@ contains
             call message_min_max(1,"Bounds for v:", p_minval(minval(igp%v)), p_maxval(maxval(igp%v)))
             call message_min_max(1,"Bounds for w:", p_minval(minval(igp%w)), p_maxval(maxval(igp%w)))
             call message_min_max(1,"Bounds for T:", p_minval(minval(igp%T)), p_maxval(maxval(igp%T)))
-            call message(1, "Current angle controller Phi:", igp%angCont_yaw%getPhi())
-            call message(1, "Frame angle:" , igp%frameAngle)
+            if (igp%useControl) then
+                call message(1, "Current angle controller Phi:", igp%angCont_yaw%getPhi())
+                call message(1, "Frame angle:" , igp%frameAngle)
+            end if
             if (igp%useCFL) then
                 call message(1,"Current dt:",igp%dt)
             end if
