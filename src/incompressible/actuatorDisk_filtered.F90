@@ -13,9 +13,6 @@ module actuatorDisk_FilteredMod
     private
     public :: actuatorDisk_filtered
      
-!    real(rkind), parameter :: alpha_Smooth = 1.d0 ! 0.9d0 ! Exonential smoothing constant
-!    integer, parameter :: xReg = 8, yReg = 8, zReg = 8
-
     type :: actuatorDisk_filtered
         ! Implementation of Shapiro et al. (2019) Filtered ADM
         ! Kirby Heck 07/20/2022
@@ -24,9 +21,9 @@ module actuatorDisk_FilteredMod
         integer :: xLoc_idx, ActutorDisk_T2ID, tInd = 1
         real(rkind) :: yaw, tilt, ut, powerBaseline, hubDirection
         real(rkind) :: xLoc, yLoc, zLoc, dx, dy, dz, dV
-        real(rkind) :: diam, cT, pfactor, normfactor, OneBydelSq, Cp, thick
+        real(rkind) :: diam, cT, pfactor, normfactor, OneBydelSq, Cp, thick, npts
         real(rkind) :: uface = 0.d0, vface = 0.d0, wface = 0.d0
-        real(rkind), dimension(:), allocatable :: xs, ys, zs
+        real(rkind), dimension(:), allocatable :: xs, ys, zs  ! list of UNYAWED points for the ADM
         real(rkind), dimension(:), allocatable :: powerTime, uTime, vTime
         logical :: useDynamicYaw
 
@@ -39,7 +36,8 @@ module actuatorDisk_FilteredMod
         
         ! Pointers to memory buffers 
         logical :: memory_buffers_linked = .false.
-        real(rkind), dimension(:,:,:), pointer :: rbuff, blanks, speed, scalarSource
+!        real(rkind), dimension(:,:,:), pointer :: rbuff, blanks, speed, scalarSource
+        real(rkind), dimension(:,:,:), allocatable :: rbuff, blanks, speed, scalarSource
         ! MPI communicator stuff
         logical :: Am_I_Active, Am_I_Split
         integer :: color, myComm, myComm_nproc, myComm_nrank
@@ -48,15 +46,16 @@ module actuatorDisk_FilteredMod
         procedure :: init
         procedure :: destroy
         procedure :: get_RHS
-        procedure :: get_RHS_old
+!        procedure :: get_RHS_old
         procedure :: get_R1
         procedure :: get_R2
+        procedure :: get_R
         procedure :: get_weights
 !        procedure :: get_RHS_withPower
-        procedure :: link_memory_buffers
-        procedure, private :: AD_force_point
+!        procedure :: link_memory_buffers
+!        procedure, private :: AD_force_point
         procedure :: get_power
-        procedure :: dumpPower
+!        procedure :: dumpPower
 !        procedure :: dumpPowerUpdate
     end type
 
@@ -69,11 +68,11 @@ subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG)
     integer, intent(in) :: ActuatorDisk_ID
     character(len=*), intent(in) :: inputDir
     character(len=clen) :: tempname, fname
-    integer :: ioUnit
+    integer :: ioUnit, ierr
     real(rkind) :: xLoc=1.d0, yLoc=1.d0, zLoc=0.1d0
     real(rkind) :: diam=0.08d0, cT=0.65d0, yaw=0.d0, tilt=0.d0!, Cp = 0.3
-    real(rkind) :: thickness=1.5d0, filterWidth=0.5, time2initialize=0d0, tmp
-    logical :: useCorrection=.TRUE., useDynamicYaw=.TRUE.
+    real(rkind) :: thickness=1.5d0, filterWidth=0.5, time2initialize=0.d0
+    logical :: useCorrection=.TRUE., useDynamicYaw=.FALSE.
 
     ! Read input file for this turbine    
     namelist /ACTUATOR_DISK/ xLoc, yLoc, zLoc, diam, cT, yaw, tilt, filterWidth, useCorrection, useDynamicYaw, thickness
@@ -103,23 +102,40 @@ subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG)
     allocate(this%xLine(size(xG,1)))
     allocate(this%yLine(size(xG,2)))
     allocate(this%zLine(size(xG,3)))
-    allocate(this%rbuff(size(xG,1), size(xG,2), size(xG,3)))
     
     this%xG => xG; this%yG => yG; this%zG => zG
-    this%memory_buffers_linked = .false.
     this%xLine = xG(:,1,1); this%yLine = yG(1,:,1); this%zLine = zG(1,1,:)
+
+    ! allocate memory buffers
+    allocate(this%rbuff(this%nxLoc, this%nyLoc, this%nzLoc))
+    allocate(this%blanks(this%nxLoc, this%nyLoc, this%nzLoc))
+    allocate(this%speed(this%nxLoc, this%nyLoc, this%nzLoc))
+    allocate(this%scalarsource(this%nxLoc, this%nyLoc, this%nzLoc))
     
-    allocate(this%powerTime(1000))  ! copied from ADM T2
-    allocate(this%uTime(1000))  
-    allocate(this%vTime(1000))
+    ! copied from ADM T2
+    this%Am_I_Split = .TRUE. ! TODO: Fix me later by flagging where the turbine is
+    if (this%Am_I_Split) then
+        call MPI_COMM_SPLIT(mpi_comm_world, this%color, nrank, this%mycomm, ierr)
+        call MPI_COMM_RANK(this%mycomm, this%myComm_nrank, ierr) 
+        call MPI_COMM_SIZE(this%mycomm, this%myComm_nproc, ierr)
+    end if 
+    
+    ! this ensures that only ONE turbine is keeping track of power and writing to disk
+    if((this%Am_I_Split .and. this%myComm_nrank==0) .or. (.not. this%Am_I_Split)) then
+!        write(*,*) "Only one allocated? YES/NO"
+        allocate(this%powerTime(1000000))  
+        allocate(this%uTime(1000000))  
+        allocate(this%vTime(1000000))
+    end if
 
     ! Set thickness
     this%thick = thickness*this%dx
     this%delta = filterWidth*this%diam 
-                 ! two*sqrt(this%dx**2 + this%dy**2 + this%dz**2)
 
     ! Get (unrotated) turbine location points
     call sample_on_circle(this%diam, this%yLoc, this%zLoc, this%ys, this%zs, this%dy, this%dz)
+    this%npts = size(this%ys,1)
+    call message(1, "NUMBER OF POINTS: ", this%npts)
     allocate(this%xs(size(this%ys)))
     this%xs = this%xLoc
      
@@ -134,34 +150,40 @@ subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG)
     if (this%useDynamicYaw) then
         call message(2, "Using Dynamic Yaw")
     else
-        call message(2, "Using static turbine, may not run in parallel due to memory allocation conflicts. (07/27/22)")
+        call message(2, "Using static turbine.")
+        call get_weights(this) 
     end if
     
     call message(2, "Smearing grid parameter, Delta", this%delta)
+    call message(2, "Smearing grid parameter, Thickness", this%thick)
+    call message(2, "Turbine location:")
+    call message(3, "x = ", this%xLoc)
+    call message(3, "y = ", this%yLoc)
+    call message(3, "z = ", this%zLoc)
     call toc(mpi_comm_world, time2initialize)
     call message(2, "Time (seconds) to initialize", time2initialize)
 end subroutine 
 
-subroutine link_memory_buffers(this, rbuff, blanks, speed, scalarSource)
-    class(actuatordisk_filtered), intent(inout) :: this
-    real(rkind), dimension(:,:,:), intent(in), target :: rbuff, blanks, speed, scalarSource
-    this%rbuff => rbuff
-    this%speed => speed
-    this%scalarSource => scalarSource
-    this%blanks => blanks
-    this%memory_buffers_linked = .true. 
-    
-    if (.not. this%useDynamicyaw) then
-        call get_weights(this, this%xs, this%ys, this%zs)!, this%scalarSource)
-    end if
-end subroutine 
+!subroutine link_memory_buffers(this, rbuff, blanks, speed, scalarSource)
+!    class(actuatordisk_filtered), intent(inout) :: this
+!    real(rkind), dimension(:,:,:), intent(in), target :: rbuff, blanks, speed, scalarSource
+!    this%rbuff => rbuff
+!    this%speed => speed
+!    this%scalarSource => scalarSource
+!    this%blanks => blanks
+!    this%memory_buffers_linked = .true. 
+!    
+!    if (.not. this%useDynamicyaw) then
+!        call get_weights(this)  ! get_weights assigns scalarSource to the forcing kernel
+!    end if
+!end subroutine 
 
 subroutine destroy(this)
     class(actuatordisk_filtered), intent(inout) :: this
 
-    this%memory_buffers_linked = .false.
-    
-    nullify(this%rbuff, this%blanks, this%speed, this%scalarSource)
+!    this%memory_buffers_linked = .false.
+!    deallocate(this%rbuff, this%blanks, this%speed, this%scalarSource) 
+!    nullify(this%rbuff, this%blanks, this%speed, this%scalarSource)
     nullify(this%xG, this%yG, this%zG)
 end subroutine 
 
@@ -170,12 +192,12 @@ subroutine get_R1(this, R1)
     class(actuatordisk_filtered), intent(inout) :: this
     real(rkind), dimension(this%nxLoc), intent(out) :: R1
     real(rkind), dimension(this%nxLoc) :: xLine
-    real(rkind) :: cbuff
+    real(rkind) :: tmp
 
     xLine = this%xLine - this%xLoc 
-    cbuff = sqrt(6.d0)/this%delta
-    R1 = erf(cbuff*(xLine + this%thick/two)) - &
-         erf(cbuff*(xLine - this%thick/two))
+    tmp = sqrt(6.d0)/this%delta
+    R1 = erf(tmp*(xLine + this%thick/two)) - &
+         erf(tmp*(xLine - this%thick/two))
     R1 = R1 / (two*this%thick)
 end subroutine
 
@@ -185,7 +207,7 @@ subroutine get_R2(this, ys, zs, R2)
     real(rkind), dimension(this%nyLoc, this%nzLoc), intent(out) :: R2
     real(rkind), dimension(this%nyLoc, this%nzLoc) :: yy, zz
     real(rkind), dimension(:), intent(in), allocatable :: ys, zs
-    real(rkind) :: cbuff
+    real(rkind) :: tmp
     real(rkind), dimension(this%nyLoc, this%nzLoc) :: stamp
     integer :: j
     
@@ -193,42 +215,76 @@ subroutine get_R2(this, ys, zs, R2)
     stamp = zero
     yy = this%yG(1, :, :)
     zz = this%zG(1, :, :)
-    cbuff = -6.d0 / (this%delta**2)
+    tmp = -6.d0 / (this%delta**2)
     ! we need to compute the integral, iterate through points on disk face: 
     do j = 1, size(ys)
-        stamp = exp(cbuff*((ys(j)-yy)**2 + (zs(j)-zz)**2))
+        stamp = exp(tmp*((ys(j)-yy)**2 + (zs(j)-zz)**2))
         R2 = R2 + stamp
     end do
 
-    cbuff = this%dy*this%dz*24.d0 / (pi**2 * this%diam**2 * this%delta**2)
-    R2 = R2*cbuff  ! weight accordingly to the sampling density in sample_on_circle()
+    tmp = this%dy*this%dz*24.d0 / (pi**2 * this%diam**2 * this%delta**2)
+    R2 = R2*tmp  ! weight accordingly to the sampling density in sample_on_circle()
 end subroutine
 
-subroutine get_weights(this, xs, ys, zs)
+! Use this generic Greens function for yawed turbines
+subroutine get_R(this)
     class(actuatordisk_filtered), intent(inout) :: this
-    real(rkind), dimension(:), allocatable :: xs, ys, zs
-!    real(rkind), dimension(:,:,:), intent(out), allocatable :: R
-!    real(rkind), dimension(this%nxLoc,this%nyLoc,this%nzLoc), intent(out) :: R
-    real(rkind), dimension(:,:,:), pointer :: R
+    real(rkind) :: yrad, trad, xs, ys, zs, C1, xtmp, ytmp, ztmp  ! rotations, in radians
+    real(rkind), dimension(this%npts) :: xi, yi, zi
+    integer :: k
+    
+    ! First, rotate all the points with the yaw and tilt
+    call message(1, "Building kernel for turbine yaw:", this%yaw)
+    yrad = this%yaw*pi/180.d0
+    trad = this%tilt*pi/180.d0
+    do k = 1, this%npts
+        xs = this%xs(k); ys = this%ys(k); zs = this%zs(k)
+        ! apply yaw rotation, +z = positive yaw (e.g., Howland, et al. 2022)
+        xtmp = (xs-this%xLoc)*cos(yrad) - (ys-this%yLoc)*sin(yrad) + this%xLoc
+        ytmp = (xs-this%xLoc)*sin(yrad) + (ys-this%yLoc)*cos(yrad) + this%yLoc
+        ztmp = zs
+        
+        ! then apply tilt rotation, +y = positive tilt (e.g., Bossuyt, et al. 2021)
+        xi(k) = (xtmp-this%xLoc)*cos(trad) + (ztmp-this%zLoc)*sin(trad) + this%xLoc
+        yi(k) = ytmp
+        zi(k) = -(xtmp-this%xLoc)*sin(trad) + (ztmp-this%zLoc)*cos(trad) + this%zLoc
+    end do
+    
+    ! now xi, yi, zi are the rotated coordinates, assemble w/Greens function 
+    ! this may take a while... 
+    C1 = (6.d0/pi/this%delta**2)**(three/two)
+    do k = 1, this%npts
+        this%rbuff = (this%xG-xi(k))**2 + (this%yG-yi(k))**2 + (this%zG-zi(k))**2
+        this%scalarsource = this%scalarsource + C1*exp(-6.d0*this%rbuff/this%delta**2) 
+    end do
+    
+    ! scalarsource NOT necessarily normalized to integrate to 1 (yet), do this in get_weights()
+end subroutine
+
+subroutine get_weights(this)
+    class(actuatordisk_filtered), intent(inout) :: this
     real(rkind), dimension(this%nyLoc, this%nzLoc) :: R2
     real(rkind), dimension(this%nxLoc) :: R1
-!    real(rkind), dimension(this%nyLoc, this%nzLoc) :: yy, zz
     
-    ! TODO: FIX to use xs as well
-    call this%get_R2(ys,zs,R2)
-    call this%get_R1(R1) 
-
-    R => this%scalarSource
-    R = spread(spread(R1,2,this%nyLoc),3,this%nzLoc) &
-        * spread(R2, 1, this%nxLoc)
-   
+    if (abs(this%yaw) < 1e-3) then
+        ! aligned with the x-direction, use the "quick" kernel creation
+        !call this%get_R2(this%ys, this%zs,R2)
+        !call this%get_R1(R1) 
+        !this%scalarsource = spread(spread(R1,2,this%nyLoc),3,this%nzLoc) &
+        !                    * spread(R2, 1, this%nxLoc)
+        call this%get_R()  ! TEMPORARY ALT - NEVER USE QUICK KERNEL
+    else
+        ! build the kernel from 3D gaussian kernel
+        call this%get_R()
+    end if
+     
     ! minimum threshold tolerance
-    where (R < 1.d-10)
-        R = 0
+    where (this%scalarsource < 1.d-10)
+        this%scalarsource = 0
     end where
 
     ! normalize so R integrates to 1 exactly
-    R = R / (p_sum(R)*this%dV) !this%dx*this%dy*this%dz)
+    this%scalarsource = this%scalarsource / (p_sum(this%scalarsource)*this%dV) 
 end subroutine
 
 ! sample a circle with points spaced dx, dy apart and centered at xcen, ycen
@@ -285,183 +341,66 @@ subroutine sample_on_circle(diam, xcen, ycen, xloc, yloc, dx, dy)
     end do
 
     xloc = xloc + xcen; yloc = yloc + ycen 
+    deallocate(xtmp, ytmp, rtmp, tag)  ! deallocate temporary variables
 end subroutine
 
 ! Right hand side forcing term for the ADM
-subroutine get_RHS(this, u, v, w, rhsxvals, rhsyvals, rhszvals, gamma_negative, theta)
+subroutine get_RHS(this, u, v, w, rhsxvals, rhsyvals, rhszvals, yaw, theta)
     class(actuatordisk_filtered), intent(inout) :: this
     real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc), intent(inout) :: rhsxvals, rhsyvals, rhszvals
     real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc), intent(in)    :: u, v, w
-    real(rkind), dimension(:), allocatable :: xs, ys, zs
-    real(rkind), intent(in) :: gamma_negative, theta
+    real(rkind), intent(in) :: yaw, theta
     real(rkind) :: usp_sq, force, vface!, gamma
-    real(rkind), dimension(3,1) :: n=[1,0,0] !xn, Ft
-    !real(rkind), dimension(3,3) :: R, T
-    !real(rkind) ::  numPoints, x, y, z, scalarSource, sumVal
-    !real(rkind) :: xnew,ynew,znew,cgamma,sgamma,ctheta,stheta,x2,y2,z2
-    !integer :: i,j,k
-    
-    ! NOT IMPLEMENTED YET: YAWING (DYNAMIC OR OTHERWISE)
-    
-    if (this%memory_buffers_linked) then
+    real(rkind), dimension(3,1) :: n=[1,0,0], tau=[0,1,0] !xn, Ft
+    real(rkind), dimension(3,3) :: R, T
 
-        ! this%speed = sqrt(u**2 + v**2 + w**2)  !which one to use?     
-        this%speed = u 
-        if (this%useDynamicYaw) then
-            call sample_on_circle(this%diam, this%yLoc, this%zLoc, ys, zs, this%dy, this%dz)
-            allocate(xs(size(this%ys)))
-            xs = this%xLoc
-            call get_weights(this, xs, ys, zs)
-        end if
-        
-        ! Mean speed at the turbine, corrected with factor M
-        this%ut = this%M*p_sum(this%scalarSource*u)*this%dV !this%dx*this%dy*this%dz
-!        ! debugging
-!        write(*,*) "      ** get_RHS(): disk velocity is", this%ut
-!        write(*,*) "      ** sum of disk velocities is", p_sum(this%smearing_base * u)
-        usp_sq = (this%ut)**2
-        force = -0.5d0*this%cT*(pi*(this%diam**2)/4.d0)*usp_sq
-        
-        rhsxvals = rhsxvals + force * n(1,1) * this%scalarSource
-        rhsyvals = rhsyvals + force * n(2,1) * this%scalarSource
-        rhszvals = rhszvals + force * n(3,1) * this%scalarSource
-        
+    ! update yaw and tilt of the turbine
+    if (.not. this%useDynamicYaw .and. (this%yaw - yaw*180.d0/pi)>1.d-8) then
+        call GracefulExit("Turbine prescribed yaw changed, but useDynamicYaw is OFF", 423)
+    end if
+   
+    this%yaw = yaw*180.d0/pi
+    this%tilt = theta*180.d0/pi  ! For now, these are stored in degrees but input in radians ...?
+
+    n = reshape([1,0,0], shape(n))  ! reset the normal vector
+    tau = reshape([0, 1, 0], shape(tau))  ! also reset the tangent vector
+
+    R = reshape([cos(yaw), -sin(yaw), 0.d0, &
+                 sin(yaw), cos(yaw), 0.d0, &
+                 0.d0, 0.d0, 1.d0], shape(R), order=[2, 1])
+    T = reshape([cos(theta), zero, sin(theta), &
+                 zero, one, zero, &
+                 -sin(theta), zero, cos(theta)], shape(T), order=[2, 1])
+    n = matmul(T, matmul(R, n))
+    tau = matmul(T, matmul(R, tau))
+
+    this%speed = u*n(1,1) + v*n(2,1) + w*n(3,1)
+    if (this%useDynamicYaw) then
+        call get_weights(this) 
+    end if
+
+    ! Mean speed at the turbine, corrected with factor M
+    this%ut = this%M*p_sum(this%scalarSource*this%speed)*this%dV
+    vface = p_sum(this%scalarSource*(u*tau(1,1) + v*tau(2,1) + w*tau(3,1)))*this%dV
+    usp_sq = (this%ut)**2
+    force = -0.5d0*this%cT*(pi*(this%diam**2)/4.d0)*usp_sq
+
+    rhsxvals = rhsxvals + force * n(1,1) * this%scalarSource
+    rhsyvals = rhsyvals + force * n(2,1) * this%scalarSource
+    rhszvals = rhszvals + force * n(3,1) * this%scalarSource
+
+    if (allocated(this%powerTime)) then   ! check allocated so only one processor writes data
+    !        if((this%Am_I_Split .and. this%myComm_nrank==0) .or. (.not. this%Am_I_Split)) then
         if (usp_sq /= 0.d0) then
             this%powerTime(this%tInd) = this%get_power()
             this%uTime(this%tInd) = this%ut
-            this%vTime(this%tInd) = p_sum(this%scalarSource*v)*this%dV !this%dx*this%dy*this%dz
+            this%vTime(this%tInd) = vface
             this%tInd = this%tInd + 1
         end if
     end if
 
 end subroutine
 
-!subroutine get_RHS_withPower(this, u, v, w, rhsxvals, rhsyvals, rhszvals, gamma_negative, theta, wind_dir, dirType, ref_turbine)
-!    class(actuatordisk_filtered), intent(inout) :: this
-!    real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc), intent(inout) :: rhsxvals, rhsyvals, rhszvals
-!    real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc), intent(in)    :: u, v, w
-!    logical, intent(in) :: ref_turbine
-!    real(rkind), intent(in) :: gamma_negative, theta, wind_dir
-!    real(rkind) :: usp_sq, force, gamma, gamma_local
-!    real(rkind), dimension(3,3) :: R, T
-!    real(rkind), dimension(3,1) :: xn, Ft, n
-!    real(rkind) ::  numPoints, x, y, z, scalarSource, sumVal
-!    real(rkind) :: xnew, ynew, znew, cgamma, sgamma, ctheta, stheta, x2, y2, z2
-!    integer :: ! i,j,k
-!    real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc) :: rhsxvalsg, rhsyvalsg, rhszvalsg
-!    real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc) :: ug, vg, wg
-!    integer, intent(in) :: dirType
-!
-!    ug = u; vg = v; wg = w; rhsxvalsg = rhsxvals; rhsyvalsg = rhsyvals; rhszvalsg = rhszvals;
-!    if (dirType==1) then
-!        gamma_local = wind_dir * pi / 180.d0
-!    elseif (dirType==2) then
-!        gamma_local = this%hubDirection * pi / 180.d0
-!    endif
-!
-!    ! Compute the actuator disk forcing and power
-!    if (ref_turbine ) then
-!        ! Use reference turbine adjacent to the leading turbine as the power
-!        ! reference
-!        call this%get_RHS(u, v, w, rhsxvals, rhsyvals, rhszvals, gamma_negative, theta)
-!        this%powerBaseline = this%get_power() 
-!    else
-!        ! Use a ghost turbine with zero yaw as the reference turbine
-!        ! Ghost turbine with zero yaw/tilt
-!        call this%get_RHS(ug, vg, wg, rhsxvalsg, rhsyvalsg, rhszvalsg, gamma_local, theta*0.d0) 
-!        this%powerBaseline = this%get_power()
-!        ! Now run the model with the appropriate yaw misalignment to return the
-!        ! correct values
-!        call this%get_RHS(u, v, w, rhsxvals, rhsyvals, rhszvals, gamma_negative, theta) 
-!    end if
-!
-!end subroutine
-
-! residual from actuatordisk_yaw.f90
-subroutine get_RHS_old(this, u, v, w, rhsxvals, rhsyvals, rhszvals, gamma_negative, theta)
-    class(actuatordisk_filtered), intent(inout) :: this
-    real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc), intent(inout) :: rhsxvals, rhsyvals, rhszvals
-    real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc), intent(in)    :: u, v, w
-    real(rkind), intent(in) :: gamma_negative, theta
-    real(rkind) :: usp_sq, force, gamma
-    real(rkind), dimension(3,3) :: R, T
-    real(rkind), dimension(3,1) :: xn, Ft, n
-    real(rkind) ::  numPoints, x, y, z, scalarSource, sumVal
-    real(rkind) :: xnew, ynew, znew, cgamma, sgamma, ctheta, stheta, x2, y2, z2
-    integer :: i,j,k
-     
-    if (this%memory_buffers_linked) then
-        ! Normal vector: gamma = yaw misalignment, theta = tilt angle
-        ! Adjust the yaw misalignment angle as per the convention of
-        ! Howland et al. 2019 and Shapiro et al. 2019
-        gamma = -gamma_negative
-        xn = reshape([1.0d0, 0.d0, 0.d0], shape(xn))
-        R = reshape([cos(gamma), sin(gamma), 0.d0, -sin(gamma), cos(gamma), 0.d0, 0.d0, 0.d0, 1.d0], shape(R))
-        T = reshape([1.d0, 0.d0, 0.d0, 0.d0, cos(theta), sin(theta), 0.d0, -sin(theta), cos(theta)], shape(T)) 
-        n = matmul(matmul(transpose(R), transpose(T)), xn)
-        
-        ! Above this is fast
-        ! Translate and rotate domain
-        ctheta = cos(theta); stheta = sin(theta)
-        cgamma = cos(gamma); sgamma = sin(gamma)
-        this%scalarSource = 0.d0
-
-        do k = 1,size(this%xG,3)
-            z = this%zG(1,1,k) - this%zLoc
-            do j = 1,size(this%xG,2)
-                y = this%yG(1,j,1) - this%yLoc
-                !$omp simd
-                do i = 1,size(this%xG,1)  
-                  x = this%xG(i,1,1) - this%xLoc
-                  xnew = x * cgamma - y * sgamma
-                  ynew = x * sgamma + y * cgamma
-                  znew = z
-                  x2 = xnew
-                  y2 = ynew*ctheta - znew*stheta
-                  z2 = ynew*stheta + znew*ctheta
-                  call this%AD_force_point(x2, y2, z2, scalarSource)
-                  this%scalarSource(i,j,k) = scalarSource
-                end do
-            end do
-        end do
-        ! this part needs to be done at the end of the loops
-        sumVal = p_sum(this%scalarSource) * this%dV !this%dx*this%dy*this%dz
-        this%scalarSource = this%scalarSource / sumVal
-        ! Get the mean velocities at the turbine face
-        this%speed = u*n(1,1) + v*n(2,1) + w*n(3,1)
-        !write(*,*) 'n'
-        !write(*,*) n(1,1)
-        !write(*,*) n(2,1)
-        !write(*,*) n(3,1)
-        this%blanks = 1.d0
-        do k = 1,size(this%xG,3)
-            do j = 1, size(this%xG,2)
-                do i = 1,size(this%xG,1)
-                    if (abs(this%scalarSource(i,j,k))<1D-10) then
-                        this%blanks(i,j,k) = 0.d0
-                    end if
-                end do
-            end do
-        end do
-        numPoints = p_sum(this%blanks)
-        this%rbuff = this%blanks*this%speed
-        this%ut = p_sum(this%rbuff)/numPoints    
-        this%hubDirection = atan2(p_sum(this%blanks*v), p_sum(this%blanks*u)) * 180.d0 / pi
-        ! Mean speed at the turbine
-        usp_sq = (this%ut)**2
-        force = -0.5d0*this%cT*(pi*(this%diam**2)/4.d0)*usp_sq
-        Ft = reshape([force, 0.d0, 0.d0], shape(Ft))
-        Ft = matmul(matmul(transpose(R), transpose(T)), Ft)
-        ! Can we avoid the above matmul? Just write it out
-        rhsxvals = rhsxvals + Ft(1,1) * this%scalarSource 
-        rhsyvals = rhsyvals + Ft(2,1) * this%scalarSource
-        rhszvals = rhszvals + Ft(3,1) * this%scalarSource 
-
-    end if 
-
-end subroutine
-
-! residual from actuatordisk_yaw.f90
 !pure function get_power(this) result(power)
 function get_power(this) result(power)
     class(actuatordisk_filtered), intent(in) :: this
@@ -472,179 +411,5 @@ function get_power(this) result(power)
     ! New power assumes induction theory and uses CT' = CP'
     power = 0.5d0*this%cT*(pi*(this%diam**2)/4.d0)*this%ut**3
 end function
-
-! residual from actuatordisk_yaw.f90
-subroutine AD_force_point(this, X, Y, Z, scalarSource)
-    class(actuatordisk_filtered), intent(inout) :: this
-    real(rkind), intent(out) :: scalarSource
-    real(rkind), intent(in) :: X,Y,Z
-    real(rkind) :: delta_r = 0.8d0, delta, R!, sumVal
-    real(rkind) :: tmp, tmp2
-    !real(rkind) :: diamFactor = 1.75d0 ! works well for fine grids
-    !real(rkind) :: diamFactor = 2.5d0, smear_x = 1.0d0 ! works well for coarse grids
-    ! New parameters, 11/7/19
-    real(rkind) :: diamFactor = 1.75d0, smear_x = 0.5d0
-
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    ! Do everything in the i,j,k loop in the rhs call
-
-    ! X,Y,Z are shifted to xc, yc, zx zero center as per AD location
-    R = this%diam / 2.d0 * diamFactor ! Added to try and smear the forcing out more
-    tmp = sqrt((Y/(R))**2 + (Z/(R))**2)
-    tmp = (tmp-1.d0)/delta_r + 1.d0
-    call Sfunc_point(tmp, tmp2)
-    tmp = 1.d0 - tmp2
-    delta = (this%dx)*smear_x
-    scalarSource = tmp * (1.d0/(delta*sqrt(2.d0*pi))) * exp(-0.5d0*(X**2)/(delta**2))
-
-end subroutine
-
-! residual from actuatordisk_yaw.f90
-pure subroutine Sfunc_point(x, val)
-    !class(actuatordisk_yaw), intent(inout) :: this
-    real(rkind), intent(in)  :: x
-    real(rkind), intent(out) :: val
-    
-    val = 1.d0 / (1.d0 + exp(min(1.d0/(x-1.d0+1D-18) + 1.d0/(x + 1D-18), 50.d0)))
-    if (x>1.d0) then
-        val = 1.d0
-    end if
-    if (x<0.d0) then
-        val = 0.d0
-    end if
-
-end subroutine
-
-! residual from actuatordisk_yaw.f90
-subroutine dumpPower(this, outputfile, tempname)
-    class(actuatordisk_filtered), intent(inout) :: this
-    character(len=*),    intent(in)            :: outputfile, tempname
-    integer :: fid = 1234
-    character(len=clen) :: fname
-
-    ! Write power
-    fname = outputfile(:len_trim(outputfile))//"/"//trim(tempname)
-    !open(fid,file=trim(fname), form='unformatted',action='write',position='append')
-    open(fid,file=trim(fname), form='formatted', action='write',position='append')
-    write(fid, *) this%get_power()
-    close(fid)
-
-end subroutine    
-
-! residual from actuatordisk_yaw.f90
-!subroutine dumpPowerUpdate(this, outputfile, tempname, & 
-!                           powerUpdate, dirUpdate, Phat, Phat_fit, yaw, yawOld, & 
-!                           meanP, kw, sigma, phat_yaw, i, pBaseline, &
-!                           hubDirection, Popti, stdP, alpha_m, dirStd, turbNum)
-!    class(actuatordisk_filtered), intent(inout) :: this
-!    character(len=*),    intent(in)            :: outputfile, tempname
-!    integer :: fid = 1234
-!    integer, intent(in) :: i, turbNum
-!    character(len=clen) :: fname, tempname2
-!    real(rkind), dimension(:), intent(in) :: powerUpdate, dirUpdate, Phat, Phat_fit, yaw, yawOld, meanP
-!    real(rkind), dimension(:), intent(in) :: kw, sigma, phat_yaw, pBaseline, hubDirection
-!    real(rkind), dimension(:), intent(in) :: Popti, stdP
-!    real(rkind), intent(in) :: alpha_m, dirStd
-!
-!    ! Write power
-!    write(tempname2,"(A5,I3.3,A6,I3.3,A4)") "Pvec_",i,"_turb_",turbNum,".txt"
-!    fname = outputfile(:len_trim(outputfile))//"/tdata/"//trim(tempname2)
-!    open(fid,file=trim(fname), form='formatted')
-!    write(fid, *) powerUpdate
-!    close(fid)
-!    ! Write wind direction
-!    write(tempname2,"(A7,I3.3,A6,I3.3,A4)") "Dirvec_",i,"_turb_",turbNum,".txt"
-!    fname = outputfile(:len_trim(outputfile))//"/tdata/"//trim(tempname2)
-!    open(fid,file=trim(fname), form='formatted')
-!    write(fid, *) dirUpdate
-!    close(fid)
-!    ! Write Phat (this one also included wind condition distributions)
-!    write(tempname2,"(A5,I3.3,A4)") "Phat_",i,".txt"
-!    fname = outputfile(:len_trim(outputfile))//"/"//trim(tempname2)
-!    open(fid,file=trim(fname), form='formatted')
-!    write(fid, *) Phat
-!    close(fid)
-!    ! Write Phat_fit
-!    write(tempname2,"(A5,I3.3,A4)") "Pfit_",i,".txt"
-!    fname = outputfile(:len_trim(outputfile))//"/"//trim(tempname2)
-!    open(fid,file=trim(fname), form='formatted')
-!    write(fid, *) Phat_fit
-!    close(fid)
-!    ! Write yaw opti
-!    write(tempname2,"(A8,I3.3,A4)") "YawOpti_",i,".txt"
-!    fname = outputfile(:len_trim(outputfile))//"/"//trim(tempname2)
-!    open(fid,file=trim(fname), form='formatted')
-!    write(fid, *) yaw
-!    close(fid)
-!    ! Write yaw original in this time interval
-!    write(tempname2,"(A12,I3.3,A4)") "YawInterval_",i,".txt"
-!    fname = outputfile(:len_trim(outputfile))//"/"//trim(tempname2)
-!    open(fid,file=trim(fname), form='formatted')
-!    write(fid, *) yawOld
-!    close(fid)
-!    ! Write mean power in this time interval
-!    write(tempname2,"(A6,I3.3,A4)") "MeanP_",i,".txt"
-!    fname = outputfile(:len_trim(outputfile))//"/"//trim(tempname2)
-!    open(fid,file=trim(fname), form='formatted')
-!    write(fid, *) meanP / pBaseline(1)
-!    close(fid)
-!    ! Write std power in this time interval
-!    write(tempname2,"(A5,I3.3,A4)") "stdP_",i,".txt"
-!    fname = outputfile(:len_trim(outputfile))//"/"//trim(tempname2)
-!    open(fid,file=trim(fname), form='formatted')
-!    write(fid, *) stdP / pBaseline(1)
-!    close(fid)
-!    ! Write kw in this time interval
-!    write(tempname2,"(A3,I3.3,A4)") "kw_",i,".txt"
-!    fname = outputfile(:len_trim(outputfile))//"/"//trim(tempname2)
-!    open(fid,file=trim(fname), form='formatted')
-!    write(fid, *) kw
-!    close(fid)
-!    ! Write sigma in this time interval
-!    write(tempname2,"(A6,I3.3,A4)") "sigma_",i,".txt"
-!    fname = outputfile(:len_trim(outputfile))//"/"//trim(tempname2)
-!    open(fid,file=trim(fname), form='formatted')
-!    write(fid, *) sigma
-!    close(fid)
-!    ! Write phat_yaw in this time interval
-!    write(tempname2,"(A8,I3.3,A4)") "phatYaw_",i,".txt"
-!    fname = outputfile(:len_trim(outputfile))//"/"//trim(tempname2)
-!    open(fid,file=trim(fname), form='formatted')
-!    write(fid, *) phat_yaw
-!    close(fid)
-!    ! Write hub direction in this time interval
-!    write(tempname2,"(A7,I3.3,A4)") "hubDir_",i,".txt"
-!    fname = outputfile(:len_trim(outputfile))//"/"//trim(tempname2)
-!    open(fid,file=trim(fname), form='formatted')
-!    write(fid, *) hubDirection
-!    close(fid)
-!    ! Write popti in this time interval
-!    write(tempname2,"(A6,I3.3,A4)") "pOpti_",i,".txt"
-!    fname = outputfile(:len_trim(outputfile))//"/"//trim(tempname2)
-!    open(fid,file=trim(fname), form='formatted')
-!    write(fid, *) Popti
-!    close(fid)
-!    ! Write full power vector to file
-!    !write(tempname2,"(A5,I3.3,A4)") "Pvec_",i,".txt"
-!    !fname = outputfile(:len_trim(outputfile))//"/"//trim(tempname2)
-!    !open(fid,file=trim(fname), form='formatted')
-!    !write(fid, *) powerUpdate
-!    !close(fid)
-!
-!    ! Data associated with the wind direction stationarity statistics
-!    ! Write alpha_m in this time interval
-!    write(tempname2,"(A7,I3.3,A4)") "alpham_",i,".txt"
-!    fname = outputfile(:len_trim(outputfile))//"/"//trim(tempname2)
-!    open(fid,file=trim(fname), form='formatted')
-!    write(fid, *) alpha_m
-!    close(fid)
-!    ! Write dirStd in this time interval
-!    write(tempname2,"(A7,I3.3,A4)") "dirstd_",i,".txt"
-!    fname = outputfile(:len_trim(outputfile))//"/"//trim(tempname2)
-!    open(fid,file=trim(fname), form='formatted')
-!    write(fid, *) dirStd
-!    close(fid)
-!
-!end subroutine    
 
 end module 
