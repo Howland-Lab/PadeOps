@@ -12,7 +12,7 @@ module neutral_pbl_parameters
     real(rkind) :: randomScaleFact = 0.002_rkind ! 0.2% of the mean value
     integer :: nxg, nyg, nzg
     
-    real(rkind), parameter :: xdim = 400._rkind, udim =5._rkind
+    real(rkind), parameter :: xdim = 240._rkind, udim = 12._rkind
     real(rkind), parameter :: timeDim = xdim/udim
 
 end module     
@@ -72,11 +72,12 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     allocate(ztmp(decompC%xsz(1),decompC%xsz(2),decompC%xsz(3)))
     allocate(Tpurt(decompC%xsz(1),decompC%xsz(2),decompC%xsz(3)))
     ztmp = z*xDim
-    T = 0.003d0*(ztmp - 700.d0) + 300.d0
-    where(ztmp < 700.d0)
-        T = 300.d0
-    end where
-    T = T + 0.0001d0*ztmp
+    !T = 0.003d0*(ztmp - 700.d0) + 300.d0
+    !where(ztmp < 700.d0)
+    !    T = 300.d0
+    !end where
+    !T = T + 0.0001d0*ztmp
+    T = 0.003d0*ztmp + 300.d0
 
     ! Add random numbers
     allocate(randArr(size(T,1),size(T,2),size(T,3)))
@@ -88,7 +89,7 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     end do
     deallocate(randArr)
 
-    where (ztmp > 50.d0)
+    where (ztmp > 100.d0)
         Tpurt = zero
     end where
     T = T + Tpurt
