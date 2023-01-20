@@ -298,19 +298,19 @@ subroutine init(this, inputFile, gpC, gpE, spectC, spectE, cbuffyC, cbuffYE, cbu
          call message(0,"YAWING WIND TURBINE (Type 4) array initialized")
 
       case (5)
-         ! Allocate turbine array + buffers (unused 07/)
+         ! Allocate turbine array + buffers
          allocate (this%turbArrayADM_fil(this%nTurbines))
-         allocate (this%rbuff(this%gpC%xsz(1), this%gpC%xsz(2), this%gpC%xsz(3)))
-         allocate (this%blanks(this%gpC%xsz(1), this%gpC%xsz(2), this%gpC%xsz(3)))
-         allocate (this%speed(this%gpC%xsz(1), this%gpC%xsz(2), this%gpC%xsz(3)))
-         allocate (this%scalarSource(this%gpC%xsz(1), this%gpC%xsz(2), this%gpC%xsz(3)))
+         ! allocate (this%rbuff(this%gpC%xsz(1), this%gpC%xsz(2), this%gpC%xsz(3)))
+         ! allocate (this%blanks(this%gpC%xsz(1), this%gpC%xsz(2), this%gpC%xsz(3)))
+         ! allocate (this%speed(this%gpC%xsz(1), this%gpC%xsz(2), this%gpC%xsz(3)))
+         ! allocate (this%scalarSource(this%gpC%xsz(1), this%gpC%xsz(2), this%gpC%xsz(3)))
          do i = 1, this%nTurbines
              call this%turbArrayADM_fil(i)%init(turbInfoDir, i, mesh(:,:,:,1), mesh(:,:,:,2), mesh(:,:,:,3))
-             call this%turbArrayADM_fil(i)%link_memory_buffers(this%rbuff, this%blanks, this%speed, this%scalarSource)
-             this%gamma(i) = this%turbArrayADM_fil(i)%yaw
+             !call this%turbArrayADM_fil(i)%link_memory_buffers(this%rbuff, this%blanks, this%speed, this%scalarSource)
+             this%gamma(i) = this%turbArrayADM_fil(i)%yaw*pi/180.d0  ! stored in RADIANS
              this%theta(i) = 0.d0
          end do
-         call message(0,"WIND TURBINE FILTERED ADM (Type 5) array initialized")
+         call message(0,"FILTERED ADM WIND TURBINE (Type 5) array initialized")
       end select 
     else
       call GracefulExit("Actuator Line implementation temporarily disabled. Talk to Aditya if you want to know why.",423)
@@ -751,6 +751,7 @@ subroutine getForceRHS(this, dt, u, v, wC, urhs, vrhs, wrhs, newTimeStep, inst_h
                this%step=this%step+1
            case (5)
                do i = 1, this%nTurbines
+                    call message(2, "Turbine yaw: ", this%gamma(i))
                     call this%turbArrayADM_fil(i)%get_RHS(u,v,wC,this%fx,this%fy,this%fz, this%gamma(i), this%theta(i))
                end do
            end select 
@@ -804,7 +805,7 @@ subroutine write_turbine_power(this, TID, outputdir, runID)
                 this%turbArrayADM_T2(i)%tInd = 1
             end if
         elseif (this%ADM_Type==5) then
-!            if (allocated(this%turbArrayADM_fil(i)%powerTime)) then
+            if (allocated(this%turbArrayADM_fil(i)%powerTime)) then
                 write(tempname,"(A3,I2.2,A2,I6.6,A6,I2.2,A4)") "Run",runID,"_t", TID, "_turbP",i,".pow"
                 filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
                 call write_1d_ascii(this%turbArrayADM_fil(i)%powerTime(1:this%turbArrayADM_fil(i)%tInd-1),filename)  
@@ -817,7 +818,7 @@ subroutine write_turbine_power(this, TID, outputdir, runID)
                 filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
                 call write_1d_ascii(this%turbArrayADM_fil(i)%vTime(1:this%turbArrayADM_fil(i)%tInd-1),filename)  
                 this%turbArrayADM_fil(i)%tInd = 1
-!            end if 
+            end if 
         end if
     end do
     
