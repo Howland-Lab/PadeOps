@@ -96,7 +96,7 @@ module budgets_xy_avg_mod
    ! 6. SGS + Viscous dissipation
    ! 7. Buoyancy contribution
    ! 8. Coriolis exchange
-   ! 9. Actuatir disk sink/source
+   ! 9. Actuator disk sink/source
 
    type :: budgets_xy_avg
         private
@@ -1526,7 +1526,8 @@ contains
 
     subroutine AssembleBudget1(this)
         class(budgets_xy_avg), intent(inout) :: this
-        real(rkind), dimension(:,:,:), allocatable :: tmp1, tmp2
+!        real(rkind), dimension(:,:,:), allocatable :: tmp1, tmp2
+        real(rkind), dimension(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)) :: tmp1, tmp2
 
         ! Get the geostrophic forcing 
         call this%igrid_sim%get_geostrophic_forcing(tmp1, tmp2)         ! Forcing in x and y directions respectively 
@@ -1630,7 +1631,9 @@ contains
     subroutine AssembleBudget3(this)
         use IncompressibleGrid, only: wBC_bottom, wBC_top 
         class(budgets_xy_avg), intent(inout) :: this
-        real(rkind), dimension(:,:,:), allocatable :: tmp1, tmp2
+!        real(rkind), dimension(:,:,:), allocatable :: tmp1, tmp2 
+!        KSH changed 01/20/23 to match modified G(z) inflow
+        real(rkind), dimension(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)) :: tmp1, tmp2
         
         ! First get the mean statistics
         !this%U_mean = this%budget_0(:,1)/real(this%counter+1,rkind)
