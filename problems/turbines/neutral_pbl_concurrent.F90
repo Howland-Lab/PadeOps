@@ -17,7 +17,7 @@ program neutral_pbl_concurrent
     type(igrid), allocatable, target :: primary, precursor 
     character(len=clen) :: inputfile, primary_inputFile, precursor_inputFile
     integer :: ierr, ioUnit
-    type(budgets_time_avg) :: budg_tavg
+    type(budgets_time_avg) :: budg_tavg, pre_budg_tavg  ! added precursor budgets
     real(rkind) :: dt1, dt2, dt
     logical :: synchronize_RK_fringe = .true.
 
@@ -51,6 +51,8 @@ program neutral_pbl_concurrent
     end if 
 
     call budg_tavg%init(primary_inputfile, primary)   !<-- Budget class initialization 
+    call pre_budg_tavg%init(precursor_inputfile, precursor)
+    
     call primary%WindTurbineArr%link_reference_domain_for_control(primary%u, primary%v, primary%rbuffyC, primary%rbuffzC, primary%gpC)
 
     call message("==========================================================")
@@ -87,6 +89,7 @@ program neutral_pbl_concurrent
        end if
        
        call budg_tavg%doBudgets()       
+       call pre_budg_tavg%doBudgets()       
 
        call doTemporalStuff(primary,   1)                                        
        call doTemporalStuff(precursor,2)                                        
@@ -94,6 +97,7 @@ program neutral_pbl_concurrent
     end do 
 
     call budg_tavg%destroy()           !<-- release memory taken by the budget class 
+    call pre_budg_tavg%destroy()
 
     call precursor%finalize_io()          
     call primary%finalize_io()         
