@@ -51,8 +51,9 @@ module budgets_time_avg_mod
    ! 28: <vT>
    ! 29: <wT>
    ! 30: <TT>
-   ! 31: Scalar means (31-> 31+num_scalars)
-   ! 31+x: Scalar variances(31+num_scalars+1:32+2*num_scalars)
+   ! 31: <wb> buoyancy term for TKE and uiuj budgets
+   ! 32: Scalar means (32-> 32+num_scalars)
+   ! 32+x: Scalar variances(32+num_scalars+1:33+2*num_scalars)
 
    ! BUDGET_1 term indices:  
    ! 1:  X eqn - Advection/convection term
@@ -96,10 +97,63 @@ module budgets_time_avg_mod
    ! 5. SGS + viscous transport     (E+F)
    ! 6. SGS + viscous dissipation   (H+I)
    ! 7. Actuator disk/Turbine sink  (J)
-
+   ! 8. Buoyancy
 
    ! BUDGET_4_ij term indices: 
-   ! <incomplete/not-needed for now>
+   ! 1. <u'u'> : Shear Production           - N/A,      dump
+   ! 2. <u'u'> : convective transport       - N/A,      dump
+   ! 3. <u'u'> : Turbulent transport        - assemble, dump
+   ! 4. <u'u'> : Pressure strain            - assemble, dump
+   ! 5. <u'u'> : Pressure transport         - assemble, dump
+   ! 6. <u'u'> : SGS + Viscous transport    - assemble, dump
+   ! 7. <u'u'> : SGS + Viscous dissipation  - assemble, dump
+   ! 8. <u'u'> : Buoyancy contribution      - N/A,      N/A
+   ! 9. <u'u'> : Coriolis exchange          - assemble, dump
+   ! 10. <u'u'> : Actuator disk sink/source - assemble, dump
+
+   ! 11. <v'v'> : Shear Production          - N/A,      dump 
+   ! 12. <v'v'> : convective transport      - N/A,      dump 
+   ! 13. <v'v'> : Turbulent transport       - assemble, dump
+   ! 14. <v'v'> : Pressure strain           - assemble, dump
+   ! 15. <v'v'> : Pressure transport        - assemble, dump
+   ! 16. <v'v'> : SGS + Viscous transport   - assemble, dump
+   ! 17. <v'v'> : SGS + Viscous dissipation - assemble, dump
+   ! 18. <v'v'> : Buoyancy contribution     - N/A,      N/A
+   ! 19. <v'v'> : Coriolis exchange         - assemble, dump
+   ! 20. <v'v'> : Actuator disk sink/source - assemble, dump
+
+   ! 21. <u'w'> : Shear Production          - N/A,      dump
+   ! 22. <u'w'> : convective transport      - N/A,      dump
+   ! 23. <u'w'> : Turbulent transport       - assemble, dump
+   ! 24. <u'w'> : Pressure strain           - assemble, dump 
+   ! 25. <u'w'> : Pressure transport        - assemble, dump
+   ! 27. <u'w'> : SGS + Viscous transport   - assemble, 
+   ! 28. <u'w'> : SGS + Viscous dissipation - assemble, 
+   ! 29. <u'w'> : Buoyancy contribution     - assemble,
+   ! 30. <u'w'> : Coriolis exchange         - assemble,
+   ! 31. <u'w'> : Actuator disk sink/source - assemble, 
+
+   ! 19. <v'w'> : Shear Production          - N/A,      dump
+   ! 22. <v'w'> : convective transport      - N/A,      dump
+   ! 20. <v'w'> : Turbulent transport       - assemble, dump
+   ! 21. <v'w'> : Pressure strain           - assemble, dump
+   ! 22. <v'w'> : Pressure transport        - assemble, dump
+   ! 23. <v'w'> : SGS + Viscous transport   - assemble, dump
+   ! 24. <v'w'> : SGS + Viscous dissipation - assemble, dump
+   ! 25. <v'w'> : Buoyancy contribution     - assemble, dump
+   ! 26. <v'w'> : Coriolis exchange         - assemble, dump
+   ! 27. <v'w'> : Actuator disk sink/source - assemble, dump
+
+   ! 28. <w'w'> : Shear Production          - N/A,      dump
+   ! 22. <w'w'> : convective transport      - N/A,      dump
+   ! 29. <w'w'> : Turbulent transport       - assemble, dump
+   ! 30. <w'w'> : Pressure strain           - assemble, dump
+   ! 31. <w'w'> : Pressure transport        - assemble, dump
+   ! 32. <w'w'> : SGS + Viscous transport   - assemble, dump
+   ! 33. <w'w'> : SGS + Viscous dissipation - assemble, dump
+   ! 34. <w'w'> : Buoyancy contribution     - assemble, dump
+   ! 35. <w'w'> : Coriolis exchange         - assemble, dump
+   ! 36. <w'w'> : Actuator disk sink/source - N/A,      dump
 
    type :: budgets_time_avg
         private
@@ -109,7 +163,7 @@ module budgets_time_avg_mod
         complex(rkind), dimension(:,:,:), allocatable :: uvisc, vvisc, wvisc, ucor, vcor, wcor, wb 
         type(igrid), pointer :: igrid_sim 
         
-        real(rkind), dimension(:,:,:,:), allocatable :: budget_0, budget_1, budget_2, budget_3
+        real(rkind), dimension(:,:,:,:), allocatable :: budget_0, budget_1, budget_2, budget_3, budget_4_11, budget_4_22, budget_4_33, budget_4_13, budget_4_23
         integer :: counter
         character(len=clen) :: budgets_dir
 
@@ -125,7 +179,7 @@ module budgets_time_avg_mod
         logical :: splitPressureDNS
 
     contains
-        procedure           :: init
+        procedure           :: init        
         procedure           :: destroy
         procedure           :: ResetBudget
         procedure           :: DoBudgets
@@ -133,7 +187,10 @@ module budgets_time_avg_mod
         procedure, private  :: updateBudget
         procedure, private  :: DumpBudget
         procedure, private  :: restartBudget
+        procedure, private  :: restart_budget_field
+        procedure, private  :: restart_budget_4_field
         procedure, private  :: dump_budget_field 
+        procedure, private  :: dump_budget4_field 
         
         procedure, private  :: AssembleBudget0
         procedure, private  :: DumpBudget0 
@@ -146,7 +203,19 @@ module budgets_time_avg_mod
         
         procedure, private  :: AssembleBudget3
         procedure, private  :: DumpBudget3
-        
+
+        procedure, private  :: AssembleBudget4_11 
+        procedure, private  :: AssembleBudget4_22        
+        procedure, private  :: AssembleBudget4_33 
+        procedure, private  :: AssembleBudget4_13
+        procedure, private  :: AssembleBudget4_23 
+
+        procedure, private  :: DumpBudget4_11
+        procedure, private  :: DumpBudget4_22
+        procedure, private  :: DumpBudget4_33
+        procedure, private  :: DumpBudget4_13
+        procedure, private  :: DumpBudget4_23
+
         procedure, private  :: AssembleScalarStats
         procedure, private  :: DumpScalarStats
         
@@ -212,10 +281,10 @@ contains
             ! Always assume that you are stratified
 
                 if (this%HaveScalars) then
-                    allocate(this%budget_0(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),30+2*this%igrid_sim%n_scalars))
+                    allocate(this%budget_0(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),31+2*this%igrid_sim%n_scalars))
                 else
-                    allocate(this%budget_0(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),30))
-                end if 
+                    allocate(this%budget_0(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),31))
+                end if
                 allocate(this%budget_2(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),09))
                 allocate(this%budget_1(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),15))
             !else
@@ -224,13 +293,18 @@ contains
             !    allocate(this%budget_1(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
             !end if
             allocate(this%budget_3(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),08))
+            allocate(this%budget_4_11(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
+            allocate(this%budget_4_22(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
+            allocate(this%budget_4_13(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
+            allocate(this%budget_4_23(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
+            allocate(this%budget_4_33(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
 
             if ((trim(budgets_dir) .eq. "null") .or.(trim(budgets_dir) .eq. "NULL")) then
                 this%budgets_dir = igrid_sim%outputDir
             end if 
 
             if (restart_budgets) then
-                call GracefulExit("To be done",1234)
+!                call GracefulExit("To be done",1234)
                 call this%RestartBudget(restart_rid, restart_tid, restart_counter)
             else
                 call this%resetBudget()
@@ -335,6 +409,15 @@ contains
             call this%AssembleBudget0()
             call this%AssembleBudget1()
             call this%AssembleBudget3()
+        case(4)
+            call this%AssembleBudget0()
+            call this%AssembleBudget1()
+            call this%AssembleBudget3()
+            call this%AssembleBudget4_11()
+            call this%AssembleBudget4_22()
+            call this%AssembleBudget4_33()
+            call this%AssembleBudget4_13()
+            call this%AssembleBudget4_23()
         end select
 
         call this%AssembleScalarStats()
@@ -366,6 +449,15 @@ contains
         ! Budget 3: 
         if (this%budgetType>2) then
             call this%dumpbudget3()
+        end if 
+
+        ! Budget 4: 
+        if (this%budgetType>3) then
+            call this%dumpbudget4_11()
+            call this%dumpbudget4_22()
+            call this%dumpbudget4_33()
+            call this%dumpbudget4_13()
+            call this%dumpbudget4_23()
         end if 
 
         ! Scalar and Turbine Stats
@@ -496,6 +588,9 @@ contains
         this%budget_0(:,:,:,3) = this%budget_0(:,:,:,3) + this%igrid_sim%wC
         if (this%isStratified) then
             this%budget_0(:,:,:,26) = this%budget_0(:,:,:,26) + this%igrid_sim%T
+            call this%igrid_sim%spectE%ifft(this%wb,this%igrid_sim%rbuffxE(:,:,:,1))
+            call this%interp_Edge2Cell(this%igrid_sim%rbuffxE(:,:,:,1), this%igrid_sim%rbuffxC(:,:,:,1))
+            this%budget_0(:,:,:,31) = this%budget_0(:,:,:,31) - this%igrid_sim%rbuffxC(:,:,:,1)
         end if 
 
         ! STEP 2: Get Reynolds stresses (IMPORTANT: need to correct for fluctuation before dumping)
@@ -847,6 +942,12 @@ contains
         call this%igrid_sim%spectC%ifft(this%vturb,this%igrid_sim%rbuffxC(:,:,:,1))
         this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + this%igrid_sim%v*this%igrid_sim%rbuffxC(:,:,:,1)
  
+        ! 8. Buoyancy transfer: 
+        call this%igrid_sim%spectE%ifft(this%wb,this%igrid_sim%rbuffxE(:,:,:,1))
+        call this%interp_Edge2Cell(this%igrid_sim%rbuffxE(:,:,:,1), this%igrid_sim%rbuffxC(:,:,:,1))
+        this%budget_3(:,:,:,8) = this%budget_3(:,:,:,8) + this%igrid_sim%wC*this%igrid_sim%rbuffxC(:,:,:,1)
+
+
     end subroutine 
     
     subroutine DumpBudget3(this)
@@ -854,7 +955,7 @@ contains
         integer :: idx
         real(rkind), dimension(:,:,:), pointer :: Umn, Vmn, Wmn, R11, R12, R13, R22, R23, R33
         real(rkind), dimension(:,:,:), pointer :: Pmn, tau11, tau12, tau13, tau22, tau23, tau33
-        real(rkind), dimension(:,:,:), pointer :: buff, buff2
+        real(rkind), dimension(:,:,:), pointer :: buff, buff2, theta
 
 
         ! Get the average from sum
@@ -874,12 +975,13 @@ contains
         Pmn => this%budget_0(:,:,:,10);   tau11 => this%budget_0(:,:,:,11);   tau12 => this%budget_0(:,:,:,12)
         tau13 => this%budget_0(:,:,:,13); tau22 => this%budget_0(:,:,:,14);   tau23 => this%budget_0(:,:,:,15)
         tau33 => this%budget_0(:,:,:,16); buff => this%igrid_sim%rbuffxC(:,:,:,1); buff2 => this%igrid_sim%rbuffxC(:,:,:,2)
+        theta => this%budget_0(:,:,:,31)
 
         ! 1. TKE production              (G)
         this%budget_3(:,:,:,1) = -this%budget_2(:,:,:,1)
 
         ! 2. convective transport        (B)
-        buff2 = half*(R11*R11 + R22*R22 + R33*R33)
+        buff2 = half*(R11 + R22 + R33)
         call this%ddx_R2R(buff2,buff); this%budget_3(:,:,:,2) = -Umn*buff
         call this%ddy_R2R(buff2,buff); this%budget_3(:,:,:,2) = this%budget_3(:,:,:,2) - Vmn*buff
         call this%ddz_R2R(buff2,buff); this%budget_3(:,:,:,2) = this%budget_3(:,:,:,2) - Wmn*buff
@@ -891,14 +993,17 @@ contains
         this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) - this%budget_2(:,:,:,4)
 
         ! 5. SGS + viscous transport     (E+F)
-        this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) - this%budget_3(:,:,:,6) - this%budget_2(:,:,:,5) - this%budget_2(:,:,:,6)
+        this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) - this%budget_3(:,:,:,6) - this%budget_2(:,:,:,5) 
+
+        !- this%budget_2(:,:,:,6) kktodo
 
         ! 6. SGS + viscous dissipation   (H+I)
         this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) - this%budget_2(:,:,:,6)
-
         ! 7. Actuator disk/Turbine sink  (J)
         this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) - Umn*this%budget_1(:,:,:,4)
 
+        ! 8. Buoyancy
+        this%budget_3(:,:,:,8) = this%budget_3(:,:,:,8) - Wmn*theta
 
         ! Dump the full budget 
         do idx = 1,size(this%budget_3,4)
@@ -910,12 +1015,12 @@ contains
         ! important throughout this subroutine, particularly indices 5 and 6)
         this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + Umn*this%budget_1(:,:,:,4)
         this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + this%budget_2(:,:,:,6)
-        this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) + this%budget_3(:,:,:,6) + this%budget_2(:,:,:,5) + this%budget_2(:,:,:,6)
+        this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) + this%budget_3(:,:,:,6) + this%budget_2(:,:,:,5) !+ this%budget_2(:,:,:,6) kktodo
         this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + this%budget_2(:,:,:,4)
         this%budget_3(:,:,:,3) = this%budget_3(:,:,:,3) + this%budget_3(:,:,:,2) + this%budget_2(:,:,:,2) + this%budget_2(:,:,:,3)
         
 
-        nullify(Umn,Vmn,Wmn,R11,R12,R13,R22,R23,R33,Pmn,tau11,tau12,tau13,tau22,tau23,tau33,buff,buff2)
+        nullify(Umn,Vmn,Wmn,R11,R12,R13,R22,R23,R33,Pmn,tau11,tau12,tau13,tau22,tau23,tau33,buff,buff2,theta)
 
         ! Go back to sum
         this%budget_3 = this%budget_3*(real(this%counter,rkind) + 1.d-18)
@@ -929,6 +1034,989 @@ contains
         this%budget_0 = this%budget_0*(real(this%counter,rkind) + 1.d-18)
 
     end subroutine 
+
+    ! ---------------------- Budget 4 ------------------------
+    ! ----------------------  <u'u'>  ------------------------
+    subroutine AssembleBudget4_11(this)
+        class(budgets_time_avg), intent(inout) :: this
+
+        call this%igrid_sim%sgsmodel%populate_tauij_E_to_C()
+
+        ! 3. Turbulent transport 
+        call this%igrid_sim%spectC%ifft(this%uc,this%igrid_sim%rbuffxC(:,:,:,3))
+        this%budget_4_11(:,:,:,3) = this%budget_4_11(:,:,:,3) + 2.d0*this%igrid_sim%u*this%igrid_sim%rbuffxC(:,:,:,3)
+
+        ! 4. pressure strain rate 
+        call this%ddx_R2R(this%igrid_sim%u, this%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_4_11(:,:,:,4) = this%budget_4_11(:,:,:,4) + 2.d0*this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%pressure
+
+        ! 5. pressure transport
+        call this%igrid_sim%spectC%ifft(this%px,this%igrid_sim%rbuffxC(:,:,:,1))
+        this%budget_4_11(:,:,:,5) = this%budget_4_11(:,:,:,5) + 2.d0*this%igrid_sim%u*this%igrid_sim%rbuffxC(:,:,:,1)
+ 
+        ! 6. sgs + viscous transport
+        call this%igrid_sim%spectC%ifft(this%usgs,this%igrid_sim%rbuffxC(:,:,:,1)) 
+        this%budget_4_11(:,:,:,6) = this%budget_4_11(:,:,:,6) + 2.d0*this%igrid_sim%u*this%igrid_sim%rbuffxC(:,:,:,1)
+
+        ! sgs + viscous dissipation
+        call this%ddx_R2R(this%igrid_sim%u, this%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_4_11(:,:,:,7) = this%budget_4_11(:,:,:,7) + 2.d0*this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%tauSGS_ij(:,:,:,1)
+
+        call this%ddy_R2R(this%igrid_sim%u, this%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_4_11(:,:,:,7) = this%budget_4_11(:,:,:,7) + 2.d0*this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%tauSGS_ij(:,:,:,2)
+
+        call this%ddz_R2R(this%igrid_sim%u, this%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_4_11(:,:,:,7) = this%budget_4_11(:,:,:,7) + 2.d0*this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%tauSGS_ij(:,:,:,3)
+
+
+        ! Buoyancy transfer: 
+        ! Doesn't show up 
+
+        ! Coriolis transfer: 
+        call this%igrid_sim%spectC%ifft(this%ucor,this%igrid_sim%rbuffxC(:,:,:,3))
+        this%budget_4_11(:,:,:,9) = this%budget_4_11(:,:,:,9) + 2.d0*this%igrid_sim%u*this%igrid_sim%rbuffxC(:,:,:,3)
+
+        ! Actuator disk source/sink: 
+        call this%igrid_sim%spectC%ifft(this%uturb,this%igrid_sim%rbuffxC(:,:,:,3))
+        this%budget_4_11(:,:,:,10) = this%budget_4_11(:,:,:,10) + 2.d0*this%igrid_sim%u*this%igrid_sim%rbuffxC(:,:,:,3)
+
+    end subroutine
+
+subroutine DumpBudget4_11(this)
+        class(budgets_time_avg), intent(inout), target :: this
+        integer :: idx
+        real(rkind), dimension(:,:,:), pointer :: Umn, Vmn, Wmn, R11, R12, R13, R22, R23, R33
+        real(rkind), dimension(:,:,:), pointer :: Pmn, tau11, tau12, tau13, tau22, tau23, tau33
+        real(rkind), dimension(:,:,:), pointer :: buff, buff2
+
+        ! Get the average from sum
+        this%budget_0 = this%budget_0/(real(this%counter,rkind) + 1.d-18)
+        this%budget_0(:,:,:,4)  = this%budget_0(:,:,:,4)  - this%budget_0(:,:,:,1)*this%budget_0(:,:,:,1) ! R11
+        this%budget_0(:,:,:,5)  = this%budget_0(:,:,:,5)  - this%budget_0(:,:,:,1)*this%budget_0(:,:,:,2) ! R12
+        this%budget_0(:,:,:,6)  = this%budget_0(:,:,:,6)  - this%budget_0(:,:,:,1)*this%budget_0(:,:,:,3) ! R13
+        this%budget_0(:,:,:,7)  = this%budget_0(:,:,:,7)  - this%budget_0(:,:,:,2)*this%budget_0(:,:,:,2) ! R22
+        this%budget_0(:,:,:,8)  = this%budget_0(:,:,:,8)  - this%budget_0(:,:,:,2)*this%budget_0(:,:,:,3) ! R23
+        this%budget_0(:,:,:,9)  = this%budget_0(:,:,:,9)  - this%budget_0(:,:,:,3)*this%budget_0(:,:,:,3) ! R33
+        this%budget_1 = this%budget_1/(real(this%counter,rkind) + 1.d-18)
+        this%budget_3 = this%budget_3/(real(this%counter,rkind) + 1.d-18)
+        this%budget_4_11 = this%budget_4_11/(real(this%counter,rkind) + 1.d-18)
+
+        Umn => this%budget_0(:,:,:,1);    Vmn => this%budget_0(:,:,:,2);      Wmn => this%budget_0(:,:,:,3);
+        R11 => this%budget_0(:,:,:,4);    R12 => this%budget_0(:,:,:,5);      R13 => this%budget_0(:,:,:,6)
+        R22 => this%budget_0(:,:,:,7);    R23 => this%budget_0(:,:,:,8);      R33 => this%budget_0(:,:,:,9)
+        Pmn => this%budget_0(:,:,:,10);   tau11 => this%budget_0(:,:,:,11);   tau12 => this%budget_0(:,:,:,12)
+        tau13 => this%budget_0(:,:,:,13); tau22 => this%budget_0(:,:,:,14);   tau23 => this%budget_0(:,:,:,15)
+        tau33 => this%budget_0(:,:,:,16); buff => this%igrid_sim%rbuffxC(:,:,:,1); buff2 => this%igrid_sim%rbuffxC(:,:,:,2)
+
+        ! 1. shear production and 7. SGS and viscous dissipation
+        call this%ddx_R2R(Umn, buff); 
+        this%budget_4_11(:,:,:,1) = -2.d0*R11*buff 
+        this%budget_4_11(:,:,:,7) = this%budget_4_11(:,:,:,7) - 2.d0*tau11*buff
+
+        call this%ddy_R2R(Umn, buff)
+        this%budget_4_11(:,:,:,1) = this%budget_4_11(:,:,:,1) - 2.d0*R12*buff
+        this%budget_4_11(:,:,:,7) = this%budget_4_11(:,:,:,7) - 2.d0*tau12*buff
+
+        call this%ddz_R2R(Umn, buff)
+        this%budget_4_11(:,:,:,1) = this%budget_4_11(:,:,:,1) - 2.d0*R13*buff
+        this%budget_4_11(:,:,:,7) = this%budget_4_11(:,:,:,7) - 2.d0*tau13*buff
+
+        ! 2. advective transport        (B)
+        buff2 = R11
+        call this%ddx_R2R(buff2,buff); this%budget_4_11(:,:,:,2) = -Umn*buff
+        call this%ddy_R2R(buff2,buff); this%budget_4_11(:,:,:,2) = this%budget_4_11(:,:,:,2) - Vmn*buff
+        call this%ddz_R2R(buff2,buff); this%budget_4_11(:,:,:,2) = this%budget_4_11(:,:,:,2) - Wmn*buff
+
+        ! 3. turbulent transport         
+        this%budget_4_11(:,:,:,3) = this%budget_4_11(:,:,:,3) - this%budget_4_11(:,:,:,2) - 2.d0*Umn*this%budget_1(:,:,:,1) &
+             - this%budget_4_11(:,:,:,1)
+
+        ! 4. Pressure strain
+        call this%ddx_R2R(Umn, buff) 
+        this%budget_4_11(:,:,:,4) = this%budget_4_11(:,:,:,4) - 2.d0*Pmn*buff
+
+        ! 5. Pressure transport
+        this%budget_4_11(:,:,:,5) = this%budget_4_11(:,:,:,5) - 2.d0*Umn*this%budget_1(:,:,:,2) - this%budget_4_11(:,:,:,4)
+
+
+        ! 6. SGS + viscous transport 
+        this%budget_4_11(:,:,:,6) = this%budget_4_11(:,:,:,6) - this%budget_4_11(:,:,:,7) - 2.d0*Umn*this%budget_1(:,:,:,3)
+
+        ! 8. Buoyancy
+        ! N/A
+
+        ! 9. Coriolis
+        this%budget_4_11(:,:,:,9) = this%budget_4_11(:,:,:,9) - 2.d0*(Umn*(this%budget_1(:,:,:,11) + this%budget_1(:,:,:,12)))
+        
+        ! 10. Actuator disk/Turbine sink 
+        this%budget_4_11(:,:,:,10) = this%budget_4_11(:,:,:,10) - 2.d0*Umn*this%budget_1(:,:,:,4)
+
+
+        ! Dump the full budget 
+        do idx = 1,size(this%budget_4_11,4)
+            call this%dump_budget4_field(this%budget_4_11(:,:,:,idx),idx,4,11)
+        end do 
+
+
+        ! Revert arrays to the correct state for Assemble (Order is very
+        ! important throughout this subroutine, particularly indices 6 and 7)
+        
+        ! actuator disk
+        this%budget_4_11(:,:,:,10) = this%budget_4_11(:,:,:,10) + 2.d0*Umn*this%budget_1(:,:,:,4)
+        
+        ! coriolis
+        this%budget_4_11(:,:,:,9) = this%budget_4_11(:,:,:,9) + 2.d0*(Umn*(this%budget_1(:,:,:,11) + this%budget_1(:,:,:,12)))
+        
+        ! SGS + viscous transport
+        this%budget_4_11(:,:,:,6) = this%budget_4_11(:,:,:,6) + this%budget_4_11(:,:,:,7) + 2.d0*Umn*this%budget_1(:,:,:,3)
+
+        ! SGS + viscous dissipation
+        call this%ddx_R2R(Umn, buff)
+        this%budget_4_11(:,:,:,7) = this%budget_4_11(:,:,:,7) + 2.d0*tau11*buff
+        call this%ddy_R2R(Umn, buff)
+        this%budget_4_11(:,:,:,7) = this%budget_4_11(:,:,:,7) + 2.d0*tau12*buff
+        call this%ddz_R2R(Umn, buff)
+        this%budget_4_11(:,:,:,7) = this%budget_4_11(:,:,:,7) + 2.d0*tau13*buff
+        
+        ! pressure transport
+        this%budget_4_11(:,:,:,5) = this%budget_4_11(:,:,:,5) + 2.d0*Umn*this%budget_1(:,:,:,2) + this%budget_4_11(:,:,:,4)
+        
+        ! 4. Pressure strain
+        call this%ddx_R2R(Umn, buff) 
+        this%budget_4_11(:,:,:,4) = this%budget_4_11(:,:,:,4) + 2.d0*Pmn*buff
+        
+        ! 3. turbulent transport         
+        this%budget_4_11(:,:,:,3) = this%budget_4_11(:,:,:,3) + this%budget_4_11(:,:,:,2) + 2.d0*Umn*this%budget_1(:,:,:,1) &
+             + this%budget_4_11(:,:,:,1)
+
+        nullify(Umn,Vmn,Wmn,R11,R12,R13,R22,R23,R33,Pmn,tau11,tau12,tau13,tau22,tau23,tau33,buff,buff2)
+
+        ! Go back to sum
+        this%budget_4_11 = this%budget_4_11*(real(this%counter,rkind) + 1.d-18)
+        this%budget_3 = this%budget_3*(real(this%counter,rkind) + 1.d-18)
+        this%budget_1 = this%budget_1*(real(this%counter,rkind) + 1.d-18)
+        this%budget_0(:,:,:,4)  = this%budget_0(:,:,:,4)  + this%budget_0(:,:,:,1)*this%budget_0(:,:,:,1) ! R11
+        this%budget_0(:,:,:,5)  = this%budget_0(:,:,:,5)  + this%budget_0(:,:,:,1)*this%budget_0(:,:,:,2) ! R12
+        this%budget_0(:,:,:,6)  = this%budget_0(:,:,:,6)  + this%budget_0(:,:,:,1)*this%budget_0(:,:,:,3) ! R13
+        this%budget_0(:,:,:,7)  = this%budget_0(:,:,:,7)  + this%budget_0(:,:,:,2)*this%budget_0(:,:,:,2) ! R22
+        this%budget_0(:,:,:,8)  = this%budget_0(:,:,:,8)  + this%budget_0(:,:,:,2)*this%budget_0(:,:,:,3) ! R23
+        this%budget_0(:,:,:,9)  = this%budget_0(:,:,:,9)  + this%budget_0(:,:,:,3)*this%budget_0(:,:,:,3) ! R33
+        this%budget_0 = this%budget_0*(real(this%counter,rkind) + 1.d-18)
+
+    end subroutine 
+
+    ! ----------------------  <v'v'>  ------------------------
+    subroutine AssembleBudget4_22(this)
+        class(budgets_time_avg), intent(inout) :: this
+        
+        call this%igrid_sim%sgsmodel%populate_tauij_E_to_C()
+
+        ! 3. Turbulent transport 
+        call this%igrid_sim%spectC%ifft(this%vc,this%igrid_sim%rbuffxC(:,:,:,3))
+        this%budget_4_22(:,:,:,3) = this%budget_4_22(:,:,:,3) + 2.d0*this%igrid_sim%v*this%igrid_sim%rbuffxC(:,:,:,3)
+
+        ! 4. pressure strain rate
+        call this%ddy_R2R(this%igrid_sim%v, this%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_4_22(:,:,:,4) = this%budget_4_22(:,:,:,4) + 2.d0*this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%pressure
+
+        ! 5. pressure transport
+        call this%igrid_sim%spectC%ifft(this%py,this%igrid_sim%rbuffxC(:,:,:,1))
+        this%budget_4_22(:,:,:,5) = this%budget_4_22(:,:,:,5) + 2.d0*this%igrid_sim%v*this%igrid_sim%rbuffxC(:,:,:,1)
+        
+        ! 6. sgs + viscous transport
+        call this%igrid_sim%spectC%ifft(this%vsgs,this%igrid_sim%rbuffxC(:,:,:,1))
+        this%budget_4_22(:,:,:,6) = this%budget_4_22(:,:,:,6) + 2.d0*this%igrid_sim%v*this%igrid_sim%rbuffxC(:,:,:,1)
+
+        ! sgs + viscous dissipation
+        call this%ddx_R2R(this%igrid_sim%v, this%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_4_22(:,:,:,7) = this%budget_4_22(:,:,:,7) + 2.d0*this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%tauSGS_ij(:,:,:,2)
+
+        call this%ddy_R2R(this%igrid_sim%v, this%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_4_22(:,:,:,7) = this%budget_4_22(:,:,:,7) + 2.d0*this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%tauSGS_ij(:,:,:,4)
+
+        call this%ddz_R2R(this%igrid_sim%v, this%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_4_22(:,:,:,7) = this%budget_4_22(:,:,:,7) + 2.d0*this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%tauSGS_ij(:,:,:,5)
+
+
+        ! Buoyancy transfer: 
+        ! Doesn't show up 
+
+        ! Coriolis transfer: 
+        call this%igrid_sim%spectC%ifft(this%vcor,this%igrid_sim%rbuffxC(:,:,:,3))
+        this%budget_4_22(:,:,:,9) = this%budget_4_22(:,:,:,9) + 2.d0*this%igrid_sim%v*this%igrid_sim%rbuffxC(:,:,:,3)
+
+        ! Actuator disk source/sink: 
+        call this%igrid_sim%spectC%ifft(this%vturb,this%igrid_sim%rbuffxC(:,:,:,3))
+        this%budget_4_22(:,:,:,10) = this%budget_4_22(:,:,:,10) + 2.d0*this%igrid_sim%v*this%igrid_sim%rbuffxC(:,:,:,3)
+
+    end subroutine
+
+subroutine DumpBudget4_22(this)
+        class(budgets_time_avg), intent(inout), target :: this
+        integer :: idx
+        real(rkind), dimension(:,:,:), pointer :: Umn, Vmn, Wmn, R11, R12, R13, R22, R23, R33
+        real(rkind), dimension(:,:,:), pointer :: Pmn, tau11, tau12, tau13, tau22, tau23, tau33
+        real(rkind), dimension(:,:,:), pointer :: buff, buff2
+
+
+        ! Get the average from sum
+        this%budget_0 = this%budget_0/(real(this%counter,rkind) + 1.d-18)
+        this%budget_0(:,:,:,4)  = this%budget_0(:,:,:,4)  - this%budget_0(:,:,:,1)*this%budget_0(:,:,:,1) ! R11
+        this%budget_0(:,:,:,5)  = this%budget_0(:,:,:,5)  - this%budget_0(:,:,:,1)*this%budget_0(:,:,:,2) ! R12
+        this%budget_0(:,:,:,6)  = this%budget_0(:,:,:,6)  - this%budget_0(:,:,:,1)*this%budget_0(:,:,:,3) ! R13
+        this%budget_0(:,:,:,7)  = this%budget_0(:,:,:,7)  - this%budget_0(:,:,:,2)*this%budget_0(:,:,:,2) ! R22
+        this%budget_0(:,:,:,8)  = this%budget_0(:,:,:,8)  - this%budget_0(:,:,:,2)*this%budget_0(:,:,:,3) ! R23
+        this%budget_0(:,:,:,9)  = this%budget_0(:,:,:,9)  - this%budget_0(:,:,:,3)*this%budget_0(:,:,:,3) ! R33
+        this%budget_1 = this%budget_1/(real(this%counter,rkind) + 1.d-18)
+        this%budget_3 = this%budget_3/(real(this%counter,rkind) + 1.d-18)
+        this%budget_4_22 = this%budget_4_22/(real(this%counter,rkind) + 1.d-18)
+
+        Umn => this%budget_0(:,:,:,1);    Vmn => this%budget_0(:,:,:,2);      Wmn => this%budget_0(:,:,:,3);
+        R11 => this%budget_0(:,:,:,4);    R12 => this%budget_0(:,:,:,5);      R13 => this%budget_0(:,:,:,6)
+        R22 => this%budget_0(:,:,:,7);    R23 => this%budget_0(:,:,:,8);      R33 => this%budget_0(:,:,:,9)
+        Pmn => this%budget_0(:,:,:,10);   tau11 => this%budget_0(:,:,:,11);   tau12 => this%budget_0(:,:,:,12)
+        tau13 => this%budget_0(:,:,:,13); tau22 => this%budget_0(:,:,:,14);   tau23 => this%budget_0(:,:,:,15)
+        tau33 => this%budget_0(:,:,:,16); buff => this%igrid_sim%rbuffxC(:,:,:,1); buff2 => this%igrid_sim%rbuffxC(:,:,:,2)
+        
+        ! 1. shear production and 7. SGS + viscous dissipation
+        call this%ddx_R2R(Vmn, buff)
+        this%budget_4_22(:,:,:,1) = -2.d0*R12*buff
+        this%budget_4_22(:,:,:,7) = this%budget_4_22(:,:,:,7) - 2.d0*tau12*buff
+
+        call this%ddy_R2R(Vmn, buff)
+        this%budget_4_22(:,:,:,1) = this%budget_4_22(:,:,:,1) - 2.d0*R22*buff
+        this%budget_4_22(:,:,:,7) = this%budget_4_22(:,:,:,7) - 2.d0*tau22*buff
+
+        call this%ddz_R2R(Vmn, buff)
+        this%budget_4_22(:,:,:,1) = this%budget_4_22(:,:,:,1) - 2.d0*R23*buff
+        this%budget_4_22(:,:,:,7) = this%budget_4_22(:,:,:,7) - 2.d0*tau23*buff
+
+        ! 2. advective transport       
+        buff2 = R22
+        call this%ddx_R2R(buff2,buff); this%budget_4_22(:,:,:,2) = -Umn*buff
+        call this%ddy_R2R(buff2,buff); this%budget_4_22(:,:,:,2) = this%budget_4_22(:,:,:,2) - Vmn*buff
+        call this%ddz_R2R(buff2,buff); this%budget_4_22(:,:,:,2) = this%budget_4_22(:,:,:,2) - Wmn*buff
+
+        ! 3. turbulent transport         
+        this%budget_4_22(:,:,:,3) = this%budget_4_22(:,:,:,3) - this%budget_4_22(:,:,:,2) - 2.d0*Vmn*this%budget_1(:,:,:,5) &
+             - this%budget_4_22(:,:,:,1)
+
+        ! 4. Pressure strain
+        call this%ddy_R2R(Vmn, buff) 
+        this%budget_4_22(:,:,:,4) = this%budget_4_22(:,:,:,4) - 2.d0*Pmn*buff
+
+        ! 5. Pressure transport
+        this%budget_4_22(:,:,:,5) = this%budget_4_22(:,:,:,5) - 2.d0*Vmn*this%budget_1(:,:,:,6) - this%budget_4_22(:,:,:,4)
+
+        ! 6. SGS + viscous transport   
+        this%budget_4_22(:,:,:,6) = this%budget_4_22(:,:,:,6) - this%budget_4_22(:,:,:,7) - 2.d0*Vmn*this%budget_1(:,:,:,7)
+
+        ! 8. Buoyancy
+        ! N/A
+
+        ! 9. Coriolis
+        this%budget_4_22(:,:,:,9) = this%budget_4_22(:,:,:,9) - 2.d0*(Vmn*(this%budget_1(:,:,:,13) + this%budget_1(:,:,:,14)))
+        
+        ! 10. Actuator disk/Turbine sink  (J)
+        this%budget_4_22(:,:,:,10) = this%budget_4_22(:,:,:,10) - 2.d0*Vmn*this%budget_1(:,:,:,15)
+
+
+        ! Dump the full budget 
+        do idx = 1,size(this%budget_4_22,4)
+            call this%dump_budget4_field(this%budget_4_22(:,:,:,idx),idx,4,22)
+        end do 
+
+
+        ! Revert arrays to the correct state for Assemble (Order is very
+        ! important throughout this subroutine, particularly indices 6 and 7)
+
+        ! actuator disk
+        this%budget_4_22(:,:,:,10) = this%budget_4_22(:,:,:,10) + 2.d0*Vmn*this%budget_1(:,:,:,15)
+
+        ! coriolis
+        this%budget_4_22(:,:,:,9) = this%budget_4_22(:,:,:,9) + 2.d0*(Vmn*(this%budget_1(:,:,:,13) + this%budget_1(:,:,:,14)))
+
+        ! SGS + viscous transport
+        this%budget_4_22(:,:,:,6) = this%budget_4_22(:,:,:,6) + this%budget_4_22(:,:,:,7) + 2.d0*Vmn*this%budget_1(:,:,:,7)
+
+        ! SGS + viscous dissipation
+        call this%ddx_R2R(Vmn, buff)
+        this%budget_4_22(:,:,:,7) = this%budget_4_22(:,:,:,7) + 2.d0*tau12*buff
+        call this%ddy_R2R(Vmn, buff)
+        this%budget_4_22(:,:,:,7) = this%budget_4_22(:,:,:,7) + 2.d0*tau22*buff
+        call this%ddz_R2R(Vmn, buff)
+        this%budget_4_22(:,:,:,7) = this%budget_4_22(:,:,:,7) + 2.d0*tau23*buff
+
+        ! pressure transport
+        this%budget_4_22(:,:,:,5) = this%budget_4_22(:,:,:,5) + 2.d0*Vmn*this%budget_1(:,:,:,6) + this%budget_4_22(:,:,:,4)
+
+        ! 4. Pressure strain
+        call this%ddy_R2R(Vmn, buff) 
+        this%budget_4_22(:,:,:,4) = this%budget_4_22(:,:,:,4) + 2.d0*Pmn*buff
+
+        ! 3. turbulent transport         
+        this%budget_4_22(:,:,:,3) = this%budget_4_22(:,:,:,3) + this%budget_4_22(:,:,:,2) + 2.d0*Vmn*this%budget_1(:,:,:,5) &
+             + this%budget_4_22(:,:,:,1)
+
+        nullify(Umn,Vmn,Wmn,R11,R12,R13,R22,R23,R33,Pmn,tau11,tau12,tau13,tau22,tau23,tau33,buff,buff2)
+
+        ! Go back to sum
+        this%budget_4_22 = this%budget_4_22*(real(this%counter,rkind) + 1.d-18)
+        this%budget_3 = this%budget_3*(real(this%counter,rkind) + 1.d-18)
+        this%budget_1 = this%budget_1*(real(this%counter,rkind) + 1.d-18)
+        this%budget_0(:,:,:,4)  = this%budget_0(:,:,:,4)  + this%budget_0(:,:,:,1)*this%budget_0(:,:,:,1) ! R11
+        this%budget_0(:,:,:,5)  = this%budget_0(:,:,:,5)  + this%budget_0(:,:,:,1)*this%budget_0(:,:,:,2) ! R12
+        this%budget_0(:,:,:,6)  = this%budget_0(:,:,:,6)  + this%budget_0(:,:,:,1)*this%budget_0(:,:,:,3) ! R13
+        this%budget_0(:,:,:,7)  = this%budget_0(:,:,:,7)  + this%budget_0(:,:,:,2)*this%budget_0(:,:,:,2) ! R22
+        this%budget_0(:,:,:,8)  = this%budget_0(:,:,:,8)  + this%budget_0(:,:,:,2)*this%budget_0(:,:,:,3) ! R23
+        this%budget_0(:,:,:,9)  = this%budget_0(:,:,:,9)  + this%budget_0(:,:,:,3)*this%budget_0(:,:,:,3) ! R33
+        this%budget_0 = this%budget_0*(real(this%counter,rkind) + 1.d-18)
+
+    end subroutine 
+
+    ! ----------------------  <w'w'>  ------------------------
+    subroutine AssembleBudget4_33(this)
+        class(budgets_time_avg), intent(inout) :: this
+        
+        call this%igrid_sim%sgsmodel%populate_tauij_E_to_C()
+
+        ! 3. Turbulent transport 
+        call this%igrid_sim%spectE%ifft(this%wc,this%igrid_sim%rbuffxE(:,:,:,1))
+        call this%interp_Edge2Cell(this%igrid_sim%rbuffxE(:,:,:,1), this%igrid_sim%rbuffxC(:,:,:,1))
+        this%budget_4_33(:,:,:,3) = this%budget_4_33(:,:,:,3) + 2.d0*this%igrid_sim%wC*this%igrid_sim%rbuffxC(:,:,:,1)
+
+        ! 4. pressure strain rate 
+        call this%ddz_R2R(this%igrid_sim%wC, this%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_4_33(:,:,:,4) = this%budget_4_33(:,:,:,4) + 2.d0*this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%pressure
+
+        ! 5. pressure transport
+        call this%igrid_sim%spectE%ifft(this%pz,this%igrid_sim%rbuffxE(:,:,:,1))
+        call this%interp_Edge2Cell(this%igrid_sim%rbuffxE(:,:,:,1), this%igrid_sim%rbuffxC(:,:,:,1))
+        this%budget_4_33(:,:,:,5) = this%budget_4_33(:,:,:,5) + 2.d0*this%igrid_sim%wC*this%igrid_sim%rbuffxC(:,:,:,1)
+        
+        ! 6. sgs + viscous transport
+        call this%igrid_sim%spectE%ifft(this%wsgs,this%igrid_sim%rbuffxE(:,:,:,1))
+        call this%interp_Edge2Cell(this%igrid_sim%rbuffxE(:,:,:,1), this%igrid_sim%rbuffxC(:,:,:,1))
+        this%budget_4_33(:,:,:,6) = this%budget_4_33(:,:,:,6) + 2.d0*this%igrid_sim%wC*this%igrid_sim%rbuffxC(:,:,:,1)
+
+
+        
+        ! 7. sgs + viscous dissipation
+        call this%ddx_R2R(this%igrid_sim%wC, this%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_4_33(:,:,:,7) = this%budget_4_33(:,:,:,7) + 2.d0*this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%tauSGS_ij(:,:,:,3)
+
+        call this%ddy_R2R(this%igrid_sim%wC, this%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_4_33(:,:,:,7) = this%budget_4_33(:,:,:,7) + 2.d0*this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%tauSGS_ij(:,:,:,5)
+
+        call this%ddz_R2R(this%igrid_sim%wC, this%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_4_33(:,:,:,7) = this%budget_4_33(:,:,:,7) + 2.d0*this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%tauSGS_ij(:,:,:,6)
+
+
+        ! 8. Buoyancy transfer: 
+        call this%igrid_sim%spectE%ifft(this%wb,this%igrid_sim%rbuffxE(:,:,:,1))
+        call this%interp_Edge2Cell(this%igrid_sim%rbuffxE(:,:,:,1), this%igrid_sim%rbuffxC(:,:,:,1))
+        this%budget_4_33(:,:,:,8) = this%budget_4_33(:,:,:,8) + 2.d0*this%igrid_sim%wC*this%igrid_sim%rbuffxC(:,:,:,1)
+
+
+        ! Coriolis transfer: 
+        call this%igrid_sim%spectE%ifft(this%wcor,this%igrid_sim%rbuffxE(:,:,:,1))
+        this%igrid_sim%rbuffxE(:,:,:,1) = this%igrid_sim%w*this%igrid_sim%rbuffxE(:,:,:,1)
+        call this%interp_Edge2Cell(this%igrid_sim%rbuffxE(:,:,:,1), this%igrid_sim%rbuffxC(:,:,:,1))
+        this%budget_4_33(:,:,:,9) = this%budget_4_33(:,:,:,9) + 2.d0*this%igrid_sim%rbuffxC(:,:,:,1)
+
+    end subroutine
+
+subroutine DumpBudget4_33(this)
+        class(budgets_time_avg), intent(inout), target :: this
+        integer :: idx
+        real(rkind), dimension(:,:,:), pointer :: Umn, Vmn, Wmn, R11, R12, R13, R22, R23, R33
+        real(rkind), dimension(:,:,:), pointer :: Pmn, tau11, tau12, tau13, tau22, tau23, tau33
+        real(rkind), dimension(:,:,:), pointer :: buff, buff2, theta
+
+        ! Get the average from sum
+        this%budget_0 = this%budget_0/(real(this%counter,rkind) + 1.d-18)
+        this%budget_0(:,:,:,4)  = this%budget_0(:,:,:,4)  - this%budget_0(:,:,:,1)*this%budget_0(:,:,:,1) ! R11
+        this%budget_0(:,:,:,5)  = this%budget_0(:,:,:,5)  - this%budget_0(:,:,:,1)*this%budget_0(:,:,:,2) ! R12
+        this%budget_0(:,:,:,6)  = this%budget_0(:,:,:,6)  - this%budget_0(:,:,:,1)*this%budget_0(:,:,:,3) ! R13
+        this%budget_0(:,:,:,7)  = this%budget_0(:,:,:,7)  - this%budget_0(:,:,:,2)*this%budget_0(:,:,:,2) ! R22
+        this%budget_0(:,:,:,8)  = this%budget_0(:,:,:,8)  - this%budget_0(:,:,:,2)*this%budget_0(:,:,:,3) ! R23
+        this%budget_0(:,:,:,9)  = this%budget_0(:,:,:,9)  - this%budget_0(:,:,:,3)*this%budget_0(:,:,:,3) ! R33
+        this%budget_1 = this%budget_1/(real(this%counter,rkind) + 1.d-18)
+        this%budget_3 = this%budget_3/(real(this%counter,rkind) + 1.d-18)
+        this%budget_4_33 = this%budget_4_33/(real(this%counter,rkind) + 1.d-18)
+
+        Umn => this%budget_0(:,:,:,1);    Vmn => this%budget_0(:,:,:,2);      Wmn => this%budget_0(:,:,:,3);
+        R11 => this%budget_0(:,:,:,4);    R12 => this%budget_0(:,:,:,5);      R13 => this%budget_0(:,:,:,6)
+        R22 => this%budget_0(:,:,:,7);    R23 => this%budget_0(:,:,:,8);      R33 => this%budget_0(:,:,:,9)
+        Pmn => this%budget_0(:,:,:,10);   tau11 => this%budget_0(:,:,:,11);   tau12 => this%budget_0(:,:,:,12)
+        tau13 => this%budget_0(:,:,:,13); tau22 => this%budget_0(:,:,:,14);   tau23 => this%budget_0(:,:,:,15)
+        tau33 => this%budget_0(:,:,:,16); buff => this%igrid_sim%rbuffxC(:,:,:,1); buff2 => this%igrid_sim%rbuffxC(:,:,:,2)
+        theta => this%budget_0(:,:,:,31)
+
+        ! 1. shear production and 7. SGS + viscous dissipation 
+        call this%ddx_R2R(Wmn, buff)
+        this%budget_4_33(:,:,:,1) = -2.d0*R13*buff
+        this%budget_4_33(:,:,:,7) = this%budget_4_33(:,:,:,7) - 2.d0*tau13*buff
+
+        call this%ddy_R2R(Wmn, buff)
+        this%budget_4_33(:,:,:,1) = this%budget_4_33(:,:,:,1) - 2.d0*R23*buff
+        this%budget_4_33(:,:,:,7) = this%budget_4_33(:,:,:,7) - 2.d0*tau23*buff
+
+        call this%ddz_R2R(Wmn, buff)
+        this%budget_4_33(:,:,:,1) = this%budget_4_33(:,:,:,1) - 2.d0*R33*buff
+        this%budget_4_33(:,:,:,7) = this%budget_4_33(:,:,:,7) - 2.d0*tau33*buff
+
+        ! 2. advective transport       
+        buff2 = R33
+        call this%ddx_R2R(buff2,buff); this%budget_4_33(:,:,:,2) = -Umn*buff
+        call this%ddy_R2R(buff2,buff); this%budget_4_33(:,:,:,2) = this%budget_4_33(:,:,:,2) - Vmn*buff
+        call this%ddz_R2R(buff2,buff); this%budget_4_33(:,:,:,2) = this%budget_4_33(:,:,:,2) - Wmn*buff
+
+        ! 3. turbulent transport         
+        this%budget_4_33(:,:,:,3) = this%budget_4_33(:,:,:,3) - this%budget_4_33(:,:,:,2) - 2.d0*Wmn*this%budget_1(:,:,:,8) &
+             - this%budget_4_33(:,:,:,1)
+
+        ! 4. Pressure strain
+        call this%ddz_R2R(Wmn, buff) 
+        this%budget_4_33(:,:,:,4) = this%budget_4_33(:,:,:,4) - 2.d0*Pmn*buff
+
+        ! 5. Pressure transport
+        this%budget_4_33(:,:,:,5) = this%budget_4_33(:,:,:,5) - 2.d0*Wmn*this%budget_1(:,:,:,9) - this%budget_4_33(:,:,:,4)
+
+        ! 6. SGS + viscous transport   
+        this%budget_4_33(:,:,:,6) = this%budget_4_33(:,:,:,6) - this%budget_4_33(:,:,:,7) - 2.d0*Wmn*this%budget_1(:,:,:,10)
+
+        ! 8. Buoyancy
+        this%budget_4_33(:,:,:,8) = this%budget_4_33(:,:,:,8) - 2.d0*Wmn*theta
+
+        ! 9. Coriolis
+
+        ! 10. Actuator disk/Turbine sink  (J)
+        ! N/A in this component
+
+
+        ! Dump the full budget 
+        do idx = 1,size(this%budget_4_33,4)
+            call this%dump_budget4_field(this%budget_4_33(:,:,:,idx),idx,4,33)
+        end do 
+
+
+        ! Revert arrays to the correct state for Assemble (Order is very
+        ! important throughout this subroutine, particularly indices 6 and 7)
+
+        ! 8. Buoyancy
+        this%budget_4_33(:,:,:,8) = this%budget_4_33(:,:,:,8) + 2.d0*Wmn*theta
+
+        ! SGS + viscous transport
+        this%budget_4_33(:,:,:,6) = this%budget_4_33(:,:,:,6) + this%budget_4_33(:,:,:,7) + 2.d0*Wmn*this%budget_1(:,:,:,10)
+
+        ! SGS + viscous dissipation
+        call this%ddx_R2R(Wmn, buff)
+        this%budget_4_33(:,:,:,7) = this%budget_4_33(:,:,:,7) + 2.d0*tau13*buff
+
+        call this%ddy_R2R(Wmn, buff)
+        this%budget_4_33(:,:,:,7) = this%budget_4_33(:,:,:,7) + 2.d0*tau23*buff
+
+        this%budget_4_33(:,:,:,7) = this%budget_4_33(:,:,:,7) + 2.d0*tau33*buff
+        
+        ! pressure transport
+        this%budget_4_33(:,:,:,5) = this%budget_4_33(:,:,:,5) + 2.d0*Wmn*this%budget_1(:,:,:,9) + this%budget_4_33(:,:,:,4)
+
+        ! 4. Pressure strain
+        call this%ddz_R2R(Wmn, buff)
+        this%budget_4_33(:,:,:,4) = this%budget_4_33(:,:,:,4) + 2.d0*Pmn*buff
+
+        ! 3. turbulent transport         
+        this%budget_4_33(:,:,:,3) = this%budget_4_33(:,:,:,3) + this%budget_4_33(:,:,:,2) + 2.d0*Wmn*this%budget_1(:,:,:,8) &
+             + this%budget_4_33(:,:,:,1)
+
+        nullify(Umn,Vmn,Wmn,R11,R12,R13,R22,R23,R33,Pmn,tau11,tau12,tau13,tau22,tau23,tau33,buff,buff2,theta)
+
+        ! Go back to sum
+        this%budget_4_33 = this%budget_4_33*(real(this%counter,rkind) + 1.d-18)
+        this%budget_3 = this%budget_3*(real(this%counter,rkind) + 1.d-18)
+        this%budget_1 = this%budget_1*(real(this%counter,rkind) + 1.d-18)
+        this%budget_0(:,:,:,4)  = this%budget_0(:,:,:,4)  + this%budget_0(:,:,:,1)*this%budget_0(:,:,:,1) ! R11
+        this%budget_0(:,:,:,5)  = this%budget_0(:,:,:,5)  + this%budget_0(:,:,:,1)*this%budget_0(:,:,:,2) ! R12
+        this%budget_0(:,:,:,6)  = this%budget_0(:,:,:,6)  + this%budget_0(:,:,:,1)*this%budget_0(:,:,:,3) ! R13
+        this%budget_0(:,:,:,7)  = this%budget_0(:,:,:,7)  + this%budget_0(:,:,:,2)*this%budget_0(:,:,:,2) ! R22
+        this%budget_0(:,:,:,8)  = this%budget_0(:,:,:,8)  + this%budget_0(:,:,:,2)*this%budget_0(:,:,:,3) ! R23
+        this%budget_0(:,:,:,9)  = this%budget_0(:,:,:,9)  + this%budget_0(:,:,:,3)*this%budget_0(:,:,:,3) ! R33
+        this%budget_0 = this%budget_0*(real(this%counter,rkind) + 1.d-18)
+
+    end subroutine 
+
+    ! ----------------------  <u'w'>  ------------------------
+    subroutine AssembleBudget4_13(this)
+        class(budgets_time_avg), intent(inout) :: this
+        
+        call this%igrid_sim%sgsmodel%populate_tauij_E_to_C()
+
+        ! 3. Turbulent transport 
+        call this%igrid_sim%spectC%ifft(this%uc,this%igrid_sim%rbuffxC(:,:,:,3))
+        this%budget_4_13(:,:,:,3) = this%budget_4_13(:,:,:,3) + this%igrid_sim%wC*this%igrid_sim%rbuffxC(:,:,:,3)
+
+        call this%igrid_sim%spectE%ifft(this%wc,this%igrid_sim%rbuffxE(:,:,:,1))
+        call this%interp_Edge2Cell(this%igrid_sim%rbuffxE(:,:,:,1), this%igrid_sim%rbuffxC(:,:,:,1))
+        this%budget_4_13(:,:,:,3) = this%budget_4_13(:,:,:,3) + this%igrid_sim%u*this%igrid_sim%rbuffxC(:,:,:,1)
+
+        ! 4. pressure strain rate 
+        call this%ddz_R2R(this%igrid_sim%u, this%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_4_13(:,:,:,4) = this%budget_4_13(:,:,:,4) + this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%pressure
+
+        call this%ddx_R2R(this%igrid_sim%wC, this%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_4_13(:,:,:,4) = this%budget_4_13(:,:,:,4) + this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%pressure
+
+
+        ! 5. pressure transport 
+        call this%igrid_sim%spectC%ifft(this%px,this%igrid_sim%rbuffxC(:,:,:,3))
+        this%budget_4_13(:,:,:,5) = this%budget_4_13(:,:,:,5) + this%igrid_sim%wC*this%igrid_sim%rbuffxC(:,:,:,3)
+        
+        call this%igrid_sim%spectE%ifft(this%pz,this%igrid_sim%rbuffxE(:,:,:,1))
+        call this%interp_Edge2Cell(this%igrid_sim%rbuffxE(:,:,:,1), this%igrid_sim%rbuffxC(:,:,:,1))
+        this%budget_4_13(:,:,:,5) = this%budget_4_13(:,:,:,5) + this%igrid_sim%u*this%igrid_sim%rbuffxC(:,:,:,1)
+
+        ! 6. sgs + viscous transport
+        call this%igrid_sim%spectC%ifft(this%usgs,this%igrid_sim%rbuffxC(:,:,:,1))
+        this%budget_4_13(:,:,:,6) = this%budget_4_13(:,:,:,6) + this%igrid_sim%wC*this%igrid_sim%rbuffxC(:,:,:,1)
+
+        call this%igrid_sim%spectE%ifft(this%wsgs,this%igrid_sim%rbuffxE(:,:,:,1))
+        call this%interp_Edge2Cell(this%igrid_sim%rbuffxE(:,:,:,1), this%igrid_sim%rbuffxC(:,:,:,1))
+        this%budget_4_13(:,:,:,6) = this%budget_4_13(:,:,:,6) + this%igrid_sim%u*this%igrid_sim%rbuffxC(:,:,:,1)
+
+
+        ! sgs + viscous dissipation
+        call this%ddx_R2R(this%igrid_sim%u, this%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_4_13(:,:,:,7) = this%budget_4_13(:,:,:,7) + this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%tauSGS_ij(:,:,:,3)
+
+        call this%ddy_R2R(this%igrid_sim%u, this%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_4_13(:,:,:,7) = this%budget_4_13(:,:,:,7) + this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%tauSGS_ij(:,:,:,5)
+
+        call this%ddz_R2R(this%igrid_sim%u, this%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_4_13(:,:,:,7) = this%budget_4_13(:,:,:,7) + this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%tauSGS_ij(:,:,:,6)
+
+        call this%ddx_R2R(this%igrid_sim%wC, this%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_4_13(:,:,:,7) = this%budget_4_13(:,:,:,7) + this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%tauSGS_ij(:,:,:,1)
+
+        call this%ddy_R2R(this%igrid_sim%wC, this%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_4_13(:,:,:,7) = this%budget_4_13(:,:,:,7) + this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%tauSGS_ij(:,:,:,2)
+
+        call this%ddz_R2R(this%igrid_sim%wC, this%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_4_13(:,:,:,7) = this%budget_4_13(:,:,:,7) + this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%tauSGS_ij(:,:,:,3)
+
+
+        ! Buoyancy transfer:
+        call this%igrid_sim%spectE%ifft(this%wb,this%igrid_sim%rbuffxE(:,:,:,1))
+        call this%interp_Edge2Cell(this%igrid_sim%rbuffxE(:,:,:,1), this%igrid_sim%rbuffxC(:,:,:,1))
+        this%budget_4_13(:,:,:,8) = this%budget_4_13(:,:,:,8) + this%igrid_sim%u*this%igrid_sim%rbuffxC(:,:,:,1)
+
+        ! Coriolis transfer: 
+        call this%igrid_sim%spectC%ifft(this%ucor,this%igrid_sim%rbuffxC(:,:,:,3))
+        this%budget_4_13(:,:,:,9) = this%budget_4_13(:,:,:,9) + this%igrid_sim%wC*this%igrid_sim%rbuffxC(:,:,:,3)
+
+        call this%igrid_sim%spectE%ifft(this%wcor,this%igrid_sim%rbuffxE(:,:,:,1))
+        call this%interp_Edge2Cell(this%igrid_sim%rbuffxE(:,:,:,1), this%igrid_sim%rbuffxC(:,:,:,1))
+        this%budget_4_13(:,:,:,9) = this%budget_4_13(:,:,:,9) + this%igrid_sim%u*this%igrid_sim%rbuffxC(:,:,:,1)
+
+
+        ! Actuator disk source/sink: 
+        call this%igrid_sim%spectC%ifft(this%uturb,this%igrid_sim%rbuffxC(:,:,:,3))
+        this%budget_4_13(:,:,:,10) = this%budget_4_13(:,:,:,10) + this%igrid_sim%wC*this%igrid_sim%rbuffxC(:,:,:,3)
+
+    end subroutine
+
+subroutine DumpBudget4_13(this)
+        class(budgets_time_avg), intent(inout), target :: this
+        integer :: idx
+        real(rkind), dimension(:,:,:), pointer :: Umn, Vmn, Wmn, R11, R12, R13, R22, R23, R33
+        real(rkind), dimension(:,:,:), pointer :: Pmn, tau11, tau12, tau13, tau22, tau23, tau33
+        real(rkind), dimension(:,:,:), pointer :: buff, buff2, theta
+
+
+        ! Get the average from sum
+        this%budget_0 = this%budget_0/(real(this%counter,rkind) + 1.d-18)
+        this%budget_0(:,:,:,4)  = this%budget_0(:,:,:,4)  - this%budget_0(:,:,:,1)*this%budget_0(:,:,:,1) ! R11
+        this%budget_0(:,:,:,5)  = this%budget_0(:,:,:,5)  - this%budget_0(:,:,:,1)*this%budget_0(:,:,:,2) ! R12
+        this%budget_0(:,:,:,6)  = this%budget_0(:,:,:,6)  - this%budget_0(:,:,:,1)*this%budget_0(:,:,:,3) ! R13
+        this%budget_0(:,:,:,7)  = this%budget_0(:,:,:,7)  - this%budget_0(:,:,:,2)*this%budget_0(:,:,:,2) ! R22
+        this%budget_0(:,:,:,8)  = this%budget_0(:,:,:,8)  - this%budget_0(:,:,:,2)*this%budget_0(:,:,:,3) ! R23
+        this%budget_0(:,:,:,9)  = this%budget_0(:,:,:,9)  - this%budget_0(:,:,:,3)*this%budget_0(:,:,:,3) ! R33
+        this%budget_1 = this%budget_1/(real(this%counter,rkind) + 1.d-18)
+        this%budget_3 = this%budget_3/(real(this%counter,rkind) + 1.d-18)
+        this%budget_4_13 = this%budget_4_13/(real(this%counter,rkind) + 1.d-18)
+
+        Umn => this%budget_0(:,:,:,1);    Vmn => this%budget_0(:,:,:,2);      Wmn => this%budget_0(:,:,:,3);
+        R11 => this%budget_0(:,:,:,4);    R12 => this%budget_0(:,:,:,5);      R13 => this%budget_0(:,:,:,6)
+        R22 => this%budget_0(:,:,:,7);    R23 => this%budget_0(:,:,:,8);      R33 => this%budget_0(:,:,:,9)
+        Pmn => this%budget_0(:,:,:,10);   tau11 => this%budget_0(:,:,:,11);   tau12 => this%budget_0(:,:,:,12)
+        tau13 => this%budget_0(:,:,:,13); tau22 => this%budget_0(:,:,:,14);   tau23 => this%budget_0(:,:,:,15)
+        tau33 => this%budget_0(:,:,:,16); buff => this%igrid_sim%rbuffxC(:,:,:,1); buff2 => this%igrid_sim%rbuffxC(:,:,:,2)
+        theta => this%budget_0(:,:,:,31)
+
+        ! 1. shear production and 7. SGS + viscous dissipation            
+        call this%ddx_R2R(Umn, buff)
+        this%budget_4_13(:,:,:,1) = -R13*buff 
+        this%budget_4_13(:,:,:,7) = this%budget_4_13(:,:,:,7) + tau13*buff
+
+        call this%ddy_R2R(Umn, buff)
+        this%budget_4_13(:,:,:,1) = this%budget_4_13(:,:,:,1) - R23*buff
+        this%budget_4_13(:,:,:,7) = this%budget_4_13(:,:,:,7) - tau23*buff
+
+        call this%ddz_R2R(Umn, buff)
+        this%budget_4_13(:,:,:,1) = this%budget_4_13(:,:,:,1) - R33*buff
+        this%budget_4_13(:,:,:,7) = this%budget_4_13(:,:,:,7) - tau33*buff
+
+        call this%ddx_R2R(Wmn, buff)
+        this%budget_4_13(:,:,:,1) = this%budget_4_13(:,:,:,1) - R11*buff
+        this%budget_4_13(:,:,:,7) = this%budget_4_13(:,:,:,7) - tau11*buff
+            
+        call this%ddy_R2R(Wmn, buff)
+        this%budget_4_13(:,:,:,1) = this%budget_4_13(:,:,:,1) - R12*buff
+        this%budget_4_13(:,:,:,7) = this%budget_4_13(:,:,:,7) - tau12*buff
+
+        call this%ddz_R2R(Wmn, buff);
+        this%budget_4_13(:,:,:,1) = this%budget_4_13(:,:,:,1) - R13*buff 
+        this%budget_4_13(:,:,:,7) = this%budget_4_13(:,:,:,7) - tau13*buff
+
+        ! 2. advective transport        (B)
+        buff2 = R13
+        call this%ddx_R2R(buff2,buff); this%budget_4_13(:,:,:,2) = -Umn*buff
+        call this%ddy_R2R(buff2,buff); this%budget_4_13(:,:,:,2) = this%budget_4_13(:,:,:,2) - Vmn*buff
+        call this%ddz_R2R(buff2,buff); this%budget_4_13(:,:,:,2) = this%budget_4_13(:,:,:,2) - Wmn*buff
+
+        ! 3. turbulent transport         
+        this%budget_4_13(:,:,:,3) = this%budget_4_13(:,:,:,3) - this%budget_4_13(:,:,:,2) - Wmn*this%budget_1(:,:,:,1) &
+             - Umn*this%budget_1(:,:,:,8) - this%budget_4_13(:,:,:,1)
+
+        ! 4. Pressure strain
+        call this%ddz_R2R(Umn, buff) 
+        this%budget_4_13(:,:,:,4) = this%budget_4_13(:,:,:,4) - Pmn*buff
+
+        call this%ddx_R2R(Wmn, buff) 
+        this%budget_4_13(:,:,:,4) = this%budget_4_13(:,:,:,4) - Pmn*buff
+
+        ! 5. Pressure transport
+        this%budget_4_13(:,:,:,5) = this%budget_4_13(:,:,:,5) - Wmn*this%budget_1(:,:,:,2) - this%budget_4_13(:,:,:,4) &
+             - Umn*this%budget_1(:,:,:,9) 
+
+        ! 6. SGS + viscous transport     
+        this%budget_4_13(:,:,:,6) = this%budget_4_13(:,:,:,6) - this%budget_4_13(:,:,:,7) - Wmn*this%budget_1(:,:,:,3) &
+             - Umn*this%budget_1(:,:,:,10)
+
+        ! 8. Buoyancy
+        this%budget_4_13(:,:,:,8) = this%budget_4_13(:,:,:,8) - Umn*theta
+
+        ! 9. Coriolis
+        this%budget_4_13(:,:,:,9) = this%budget_4_13(:,:,:,9) - (Wmn*(this%budget_1(:,:,:,11) + this%budget_1(:,:,:,12)))
+        
+        ! 10. Actuator disk/Turbine sink 
+        this%budget_4_13(:,:,:,10) = this%budget_4_13(:,:,:,10) - Wmn*this%budget_1(:,:,:,4)
+
+
+        ! Dump the full budget 
+        do idx = 1,size(this%budget_4_13,4)
+            call this%dump_budget4_field(this%budget_4_13(:,:,:,idx),idx,4,13)
+        end do 
+
+
+        ! Revert arrays to the correct state for Assemble (Order is very
+        ! important throughout this subroutine, particularly indices 6 and 7)
+        
+        ! actuator disk
+        this%budget_4_13(:,:,:,10) = this%budget_4_13(:,:,:,10) + Wmn*this%budget_1(:,:,:,4)
+        
+        ! coriolis
+        this%budget_4_13(:,:,:,9) = this%budget_4_13(:,:,:,9) + Wmn*(this%budget_1(:,:,:,11) + this%budget_1(:,:,:,12))
+
+        ! 8. Buoyancy
+        this%budget_4_13(:,:,:,8) = this%budget_4_13(:,:,:,8) + Umn*theta
+        
+        ! SGS + viscous transport
+        this%budget_4_13(:,:,:,6) = this%budget_4_13(:,:,:,6) + this%budget_4_13(:,:,:,7) + Wmn*this%budget_1(:,:,:,3) &
+             + Umn*this%budget_1(:,:,:,10)
+
+
+        ! SGS + viscous dissipation
+        call this%ddx_R2R(Umn, buff)
+        this%budget_4_13(:,:,:,7) = this%budget_4_13(:,:,:,7) + tau13*buff
+        call this%ddy_R2R(Umn, buff)
+        this%budget_4_13(:,:,:,7) = this%budget_4_13(:,:,:,7) + tau23*buff
+        call this%ddz_R2R(Umn, buff)
+        this%budget_4_13(:,:,:,7) = this%budget_4_13(:,:,:,7) + tau33*buff
+
+        call this%ddx_R2R(Wmn, buff)
+        this%budget_4_13(:,:,:,7) = this%budget_4_13(:,:,:,7) + tau11*buff
+        call this%ddy_R2R(Wmn, buff)
+        this%budget_4_13(:,:,:,7) = this%budget_4_13(:,:,:,7) + tau12*buff
+        call this%ddz_R2R(Wmn, buff)
+        this%budget_4_13(:,:,:,7) = this%budget_4_13(:,:,:,7) + tau13*buff
+         
+        ! pressure transport
+        this%budget_4_13(:,:,:,5) = this%budget_4_13(:,:,:,5) + Umn*this%budget_1(:,:,:,9) + this%budget_4_13(:,:,:,4) &
+             + Wmn*this%budget_1(:,:,:,2)
+        
+        ! 4. Pressure strain
+        call this%ddz_R2R(Umn, buff) 
+        this%budget_4_13(:,:,:,4) = this%budget_4_13(:,:,:,4) + Pmn*buff
+        call this%ddx_R2R(Wmn, buff) 
+        this%budget_4_13(:,:,:,4) = this%budget_4_13(:,:,:,4) + Pmn*buff
+        
+        ! 3. turbulent transport         
+        this%budget_4_13(:,:,:,3) = this%budget_4_13(:,:,:,3) + this%budget_4_13(:,:,:,2) + Wmn*this%budget_1(:,:,:,1) &
+             + Umn*this%budget_1(:,:,:,8) + this%budget_4_13(:,:,:,1)
+
+        nullify(Umn,Vmn,Wmn,R11,R12,R13,R22,R23,R33,Pmn,tau11,tau12,tau13,tau22,tau23,tau33,buff,buff2,theta)
+
+        ! Go back to sum
+        this%budget_4_13 = this%budget_4_13*(real(this%counter,rkind) + 1.d-18)
+        this%budget_3 = this%budget_3*(real(this%counter,rkind) + 1.d-18)
+        this%budget_1 = this%budget_1*(real(this%counter,rkind) + 1.d-18)
+        this%budget_0(:,:,:,4)  = this%budget_0(:,:,:,4)  + this%budget_0(:,:,:,1)*this%budget_0(:,:,:,1) ! R11
+        this%budget_0(:,:,:,5)  = this%budget_0(:,:,:,5)  + this%budget_0(:,:,:,1)*this%budget_0(:,:,:,2) ! R12
+        this%budget_0(:,:,:,6)  = this%budget_0(:,:,:,6)  + this%budget_0(:,:,:,1)*this%budget_0(:,:,:,3) ! R13
+        this%budget_0(:,:,:,7)  = this%budget_0(:,:,:,7)  + this%budget_0(:,:,:,2)*this%budget_0(:,:,:,2) ! R22
+        this%budget_0(:,:,:,8)  = this%budget_0(:,:,:,8)  + this%budget_0(:,:,:,2)*this%budget_0(:,:,:,3) ! R23
+        this%budget_0(:,:,:,9)  = this%budget_0(:,:,:,9)  + this%budget_0(:,:,:,3)*this%budget_0(:,:,:,3) ! R33
+        this%budget_0 = this%budget_0*(real(this%counter,rkind) + 1.d-18)
+
+    end subroutine 
+
+    ! ----------------------  <v'w'>  ------------------------
+    subroutine AssembleBudget4_23(this)
+        class(budgets_time_avg), intent(inout) :: this
+        
+        call this%igrid_sim%sgsmodel%populate_tauij_E_to_C()
+
+        ! 3. Turbulent transport 
+        call this%igrid_sim%spectC%ifft(this%vc,this%igrid_sim%rbuffxC(:,:,:,3))
+        this%budget_4_23(:,:,:,3) = this%budget_4_23(:,:,:,3) + this%igrid_sim%wC*this%igrid_sim%rbuffxC(:,:,:,3)
+
+        call this%igrid_sim%spectE%ifft(this%wc,this%igrid_sim%rbuffxE(:,:,:,1))
+        call this%interp_Edge2Cell(this%igrid_sim%rbuffxE(:,:,:,1), this%igrid_sim%rbuffxC(:,:,:,1))
+        this%budget_4_23(:,:,:,3) = this%budget_4_23(:,:,:,3) + this%igrid_sim%v*this%igrid_sim%rbuffxC(:,:,:,1)
+
+        ! 4. pressure strain rate 
+        call this%ddz_R2R(this%igrid_sim%v, this%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_4_23(:,:,:,4) = this%budget_4_23(:,:,:,4) + this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%pressure
+        call this%ddy_R2R(this%igrid_sim%wC, this%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_4_23(:,:,:,4) = this%budget_4_23(:,:,:,4) + this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%pressure
+
+
+        ! 5. pressure transport 
+        call this%igrid_sim%spectC%ifft(this%py,this%igrid_sim%rbuffxC(:,:,:,3))
+        this%budget_4_23(:,:,:,5) = this%budget_4_23(:,:,:,5) + this%igrid_sim%wC*this%igrid_sim%rbuffxC(:,:,:,3)
+        
+        call this%igrid_sim%spectE%ifft(this%pz,this%igrid_sim%rbuffxE(:,:,:,1))
+        call this%interp_Edge2Cell(this%igrid_sim%rbuffxE(:,:,:,1), this%igrid_sim%rbuffxC(:,:,:,1))
+        this%budget_4_23(:,:,:,5) = this%budget_4_23(:,:,:,5) + this%igrid_sim%v*this%igrid_sim%rbuffxC(:,:,:,1)
+
+        ! 6. sgs + viscous transport
+        call this%igrid_sim%spectC%ifft(this%vsgs,this%igrid_sim%rbuffxC(:,:,:,1))
+        this%budget_4_23(:,:,:,6) = this%budget_4_23(:,:,:,6) + this%igrid_sim%wC*this%igrid_sim%rbuffxC(:,:,:,1)
+
+        call this%igrid_sim%spectE%ifft(this%wsgs,this%igrid_sim%rbuffxE(:,:,:,1))
+        call this%interp_Edge2Cell(this%igrid_sim%rbuffxE(:,:,:,1), this%igrid_sim%rbuffxC(:,:,:,1))
+        this%budget_4_23(:,:,:,6) = this%budget_4_23(:,:,:,6) + this%igrid_sim%v*this%igrid_sim%rbuffxC(:,:,:,1)
+
+
+        ! sgs + viscous dissipation
+        call this%ddx_R2R(this%igrid_sim%v, this%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_4_23(:,:,:,7) = this%budget_4_23(:,:,:,7) + this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%tauSGS_ij(:,:,:,3)
+
+        call this%ddy_R2R(this%igrid_sim%v, this%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_4_23(:,:,:,7) = this%budget_4_23(:,:,:,7) + this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%tauSGS_ij(:,:,:,5)
+
+        call this%ddy_R2R(this%igrid_sim%v, this%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_4_23(:,:,:,7) = this%budget_4_23(:,:,:,7) + this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%tauSGS_ij(:,:,:,6)
+
+        call this%ddx_R2R(this%igrid_sim%wC, this%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_4_23(:,:,:,7) = this%budget_4_23(:,:,:,7) + this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%tauSGS_ij(:,:,:,2)
+
+        call this%ddy_R2R(this%igrid_sim%wC, this%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_4_23(:,:,:,7) = this%budget_4_23(:,:,:,7) + this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%tauSGS_ij(:,:,:,4)
+
+        call this%ddy_R2R(this%igrid_sim%wC, this%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_4_23(:,:,:,7) = this%budget_4_23(:,:,:,7) + this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%tauSGS_ij(:,:,:,5)
+
+
+        ! Buoyancy transfer:
+        call this%igrid_sim%spectE%ifft(this%wb,this%igrid_sim%rbuffxE(:,:,:,1))
+        call this%interp_Edge2Cell(this%igrid_sim%rbuffxE(:,:,:,1), this%igrid_sim%rbuffxC(:,:,:,1))
+        this%budget_4_23(:,:,:,8) = this%budget_4_23(:,:,:,8) + this%igrid_sim%v*this%igrid_sim%rbuffxC(:,:,:,1)
+
+        ! Coriolis transfer: 
+        call this%igrid_sim%spectC%ifft(this%vcor,this%igrid_sim%rbuffxC(:,:,:,3))
+        this%budget_4_23(:,:,:,9) = this%budget_4_23(:,:,:,9) + this%igrid_sim%wC*this%igrid_sim%rbuffxC(:,:,:,3)
+
+        call this%igrid_sim%spectE%ifft(this%wcor,this%igrid_sim%rbuffxE(:,:,:,1))
+        call this%interp_Edge2Cell(this%igrid_sim%rbuffxE(:,:,:,1), this%igrid_sim%rbuffxC(:,:,:,1))
+        this%budget_4_23(:,:,:,9) = this%budget_4_23(:,:,:,9) + this%igrid_sim%v*this%igrid_sim%rbuffxC(:,:,:,1)
+
+
+        ! Actuator disk source/sink: 
+        call this%igrid_sim%spectC%ifft(this%vturb,this%igrid_sim%rbuffxC(:,:,:,3))
+        this%budget_4_23(:,:,:,10) = this%budget_4_23(:,:,:,10) + this%igrid_sim%wC*this%igrid_sim%rbuffxC(:,:,:,3)
+
+    end subroutine
+
+subroutine DumpBudget4_23(this)
+        class(budgets_time_avg), intent(inout), target :: this
+        integer :: idx
+        real(rkind), dimension(:,:,:), pointer :: Umn, Vmn, Wmn, R11, R12, R13, R22, R23, R33
+        real(rkind), dimension(:,:,:), pointer :: Pmn, tau11, tau12, tau13, tau22, tau23, tau33
+        real(rkind), dimension(:,:,:), pointer :: buff, buff2, theta
+
+        ! Get the average from sum
+        this%budget_0 = this%budget_0/(real(this%counter,rkind) + 1.d-18)
+        this%budget_0(:,:,:,4)  = this%budget_0(:,:,:,4)  - this%budget_0(:,:,:,1)*this%budget_0(:,:,:,1) ! R11
+        this%budget_0(:,:,:,5)  = this%budget_0(:,:,:,5)  - this%budget_0(:,:,:,1)*this%budget_0(:,:,:,2) ! R12
+        this%budget_0(:,:,:,6)  = this%budget_0(:,:,:,6)  - this%budget_0(:,:,:,1)*this%budget_0(:,:,:,3) ! R13
+        this%budget_0(:,:,:,7)  = this%budget_0(:,:,:,7)  - this%budget_0(:,:,:,2)*this%budget_0(:,:,:,2) ! R22
+        this%budget_0(:,:,:,8)  = this%budget_0(:,:,:,8)  - this%budget_0(:,:,:,2)*this%budget_0(:,:,:,3) ! R23
+        this%budget_0(:,:,:,9)  = this%budget_0(:,:,:,9)  - this%budget_0(:,:,:,3)*this%budget_0(:,:,:,3) ! R33
+        this%budget_1 = this%budget_1/(real(this%counter,rkind) + 1.d-18)
+        this%budget_3 = this%budget_3/(real(this%counter,rkind) + 1.d-18)
+        this%budget_4_23 = this%budget_4_23/(real(this%counter,rkind) + 1.d-18)
+
+        Umn => this%budget_0(:,:,:,1);    Vmn => this%budget_0(:,:,:,2);      Wmn => this%budget_0(:,:,:,3);
+        R11 => this%budget_0(:,:,:,4);    R12 => this%budget_0(:,:,:,5);      R13 => this%budget_0(:,:,:,6)
+        R22 => this%budget_0(:,:,:,7);    R23 => this%budget_0(:,:,:,8);      R33 => this%budget_0(:,:,:,9)
+        Pmn => this%budget_0(:,:,:,10);   tau11 => this%budget_0(:,:,:,11);   tau12 => this%budget_0(:,:,:,12)
+        tau13 => this%budget_0(:,:,:,13); tau22 => this%budget_0(:,:,:,14);   tau23 => this%budget_0(:,:,:,15)
+        tau33 => this%budget_0(:,:,:,16); buff => this%igrid_sim%rbuffxC(:,:,:,1); buff2 => this%igrid_sim%rbuffxC(:,:,:,2)
+        theta => this%budget_0(:,:,:,31)
+
+        ! 1. shear production and 7. SGS + viscous dissipation
+        call this%ddx_R2R(Vmn, buff)
+        this%budget_4_23(:,:,:,1) = -R13*buff
+        this%budget_4_23(:,:,:,7) = this%budget_4_23(:,:,:,7) - tau13*buff
+
+        call this%ddy_R2R(Vmn, buff)
+        this%budget_4_23(:,:,:,1) = this%budget_4_23(:,:,:,1) - R23*buff 
+        this%budget_4_23(:,:,:,7) = this%budget_4_23(:,:,:,7) - tau23*buff
+
+        call this%ddz_R2R(Vmn, buff)
+        this%budget_4_23(:,:,:,1) = this%budget_4_23(:,:,:,1) - R33*buff
+        this%budget_4_23(:,:,:,7) = this%budget_4_23(:,:,:,7) - tau33*buff
+
+        call this%ddx_R2R(Wmn, buff)
+        this%budget_4_23(:,:,:,1) = this%budget_4_23(:,:,:,1) - R12*buff
+        this%budget_4_23(:,:,:,7) = this%budget_4_23(:,:,:,7) - tau12*buff
+            
+        call this%ddy_R2R(Wmn, buff)
+        this%budget_4_23(:,:,:,1) = this%budget_4_23(:,:,:,1) - R22*buff
+        this%budget_4_23(:,:,:,7) = this%budget_4_23(:,:,:,7) - tau22*buff
+
+        call this%ddz_R2R(Wmn, buff);
+        this%budget_4_23(:,:,:,1) = this%budget_4_23(:,:,:,1) - R23*buff
+        this%budget_4_23(:,:,:,7) = this%budget_4_23(:,:,:,7) - tau23*buff
+
+
+        ! 2. advective transport   
+        buff2 = R23
+        call this%ddx_R2R(buff2,buff); this%budget_4_23(:,:,:,2) = -Umn*buff
+        call this%ddy_R2R(buff2,buff); this%budget_4_23(:,:,:,2) = this%budget_4_23(:,:,:,2) - Vmn*buff
+        call this%ddz_R2R(buff2,buff); this%budget_4_23(:,:,:,2) = this%budget_4_23(:,:,:,2) - Wmn*buff
+
+        ! 3. turbulent transport         
+        this%budget_4_23(:,:,:,3) = this%budget_4_23(:,:,:,3) - this%budget_4_23(:,:,:,2) - Wmn*this%budget_1(:,:,:,5) &
+             - Vmn*this%budget_1(:,:,:,8) - this%budget_4_23(:,:,:,1)
+
+        ! 4. Pressure strain
+        call this%ddz_R2R(Vmn, buff) 
+        this%budget_4_23(:,:,:,4) = this%budget_4_23(:,:,:,4) - Pmn*buff
+
+        call this%ddy_R2R(Wmn, buff) 
+        this%budget_4_23(:,:,:,4) = this%budget_4_23(:,:,:,4) - Pmn*buff
+
+        ! 5. Pressure transport
+        this%budget_4_23(:,:,:,5) = this%budget_4_23(:,:,:,5) - Wmn*this%budget_1(:,:,:,6) - this%budget_4_23(:,:,:,4) &
+             - Vmn*this%budget_1(:,:,:,9)
+
+        ! 6. SGS + viscous transport     
+        this%budget_4_23(:,:,:,6) = this%budget_4_23(:,:,:,6) - this%budget_4_23(:,:,:,7) - Wmn*this%budget_1(:,:,:,7) &
+             - Vmn*this%budget_1(:,:,:,10)
+
+        ! 8. Buoyancy
+        this%budget_4_23(:,:,:,8) = this%budget_4_23(:,:,:,8) - Vmn*theta
+
+        ! 9. Coriolis
+        this%budget_4_23(:,:,:,9) = this%budget_4_23(:,:,:,9) - (Wmn*(this%budget_1(:,:,:,13) + this%budget_1(:,:,:,14)))
+        
+        ! 10. Actuator disk/Turbine sink 
+        this%budget_4_23(:,:,:,10) = this%budget_4_23(:,:,:,10) - Wmn*this%budget_1(:,:,:,15)
+
+
+        ! Dump the full budget 
+        do idx = 1,size(this%budget_4_23,4)
+            call this%dump_budget4_field(this%budget_4_23(:,:,:,idx),idx,4,23)
+        end do 
+
+
+        ! Revert arrays to the correct state for Assemble (Order is very
+        ! important throughout this subroutine, particularly indices 6 and 7)
+        
+        ! actuator disk
+        this%budget_4_23(:,:,:,10) = this%budget_4_23(:,:,:,10) + Wmn*this%budget_1(:,:,:,15)
+        
+        ! coriolis
+        this%budget_4_23(:,:,:,9) = this%budget_4_23(:,:,:,9) + Wmn*(this%budget_1(:,:,:,13) + this%budget_1(:,:,:,14))
+
+        ! buoyancy
+        this%budget_4_23(:,:,:,8) = this%budget_4_23(:,:,:,8) + Vmn*theta
+        
+        ! SGS + viscous transport
+        this%budget_4_23(:,:,:,6) = this%budget_4_23(:,:,:,6) + this%budget_4_23(:,:,:,7) + Wmn*this%budget_1(:,:,:,7) &
+             + Vmn*this%budget_1(:,:,:,10)
+
+
+        ! SGS + viscous dissipation
+        call this%ddx_R2R(Vmn, buff)
+        this%budget_4_23(:,:,:,7) = this%budget_4_23(:,:,:,7) + tau13*buff
+        call this%ddy_R2R(Vmn, buff)
+        this%budget_4_23(:,:,:,7) = this%budget_4_23(:,:,:,7) + tau23*buff
+        call this%ddz_R2R(Vmn, buff)
+        this%budget_4_23(:,:,:,7) = this%budget_4_23(:,:,:,7) + tau33*buff
+
+        call this%ddx_R2R(Wmn, buff)
+        this%budget_4_23(:,:,:,7) = this%budget_4_23(:,:,:,7) + tau12*buff
+        call this%ddy_R2R(Wmn, buff)
+        this%budget_4_23(:,:,:,7) = this%budget_4_23(:,:,:,7) + tau22*buff
+        call this%ddz_R2R(Wmn, buff)
+        this%budget_4_23(:,:,:,7) = this%budget_4_23(:,:,:,7) + tau23*buff
+         
+        ! pressure transport
+        this%budget_4_23(:,:,:,5) = this%budget_4_23(:,:,:,5) + Vmn*this%budget_1(:,:,:,9) + this%budget_4_23(:,:,:,4) &
+             + Wmn*this%budget_1(:,:,:,6) 
+        
+        ! 4. Pressure strain
+        call this%ddz_R2R(Vmn, buff) 
+        this%budget_4_23(:,:,:,4) = this%budget_4_23(:,:,:,4) + Pmn*buff
+        call this%ddy_R2R(Wmn, buff) 
+        this%budget_4_23(:,:,:,4) = this%budget_4_23(:,:,:,4) + Pmn*buff
+        
+        ! 3. turbulent transport         
+        this%budget_4_23(:,:,:,3) = this%budget_4_23(:,:,:,3) + this%budget_4_23(:,:,:,2) + Wmn*this%budget_1(:,:,:,5) &
+             + Vmn*this%budget_1(:,:,:,8) + this%budget_4_23(:,:,:,1)
+
+        nullify(Umn,Vmn,Wmn,R11,R12,R13,R22,R23,R33,Pmn,tau11,tau12,tau13,tau22,tau23,tau33,buff,buff2,theta)
+
+        ! Go back to sum
+
+
+        this%budget_4_23 = this%budget_4_23*(real(this%counter,rkind) + 1.d-18)
+        this%budget_3 = this%budget_3*(real(this%counter,rkind) + 1.d-18)
+        this%budget_1 = this%budget_1*(real(this%counter,rkind) + 1.d-18)
+        this%budget_0(:,:,:,4)  = this%budget_0(:,:,:,4)  + this%budget_0(:,:,:,1)*this%budget_0(:,:,:,1) ! R11
+        this%budget_0(:,:,:,5)  = this%budget_0(:,:,:,5)  + this%budget_0(:,:,:,1)*this%budget_0(:,:,:,2) ! R12
+        this%budget_0(:,:,:,6)  = this%budget_0(:,:,:,6)  + this%budget_0(:,:,:,1)*this%budget_0(:,:,:,3) ! R13
+        this%budget_0(:,:,:,7)  = this%budget_0(:,:,:,7)  + this%budget_0(:,:,:,2)*this%budget_0(:,:,:,2) ! R22
+        this%budget_0(:,:,:,8)  = this%budget_0(:,:,:,8)  + this%budget_0(:,:,:,2)*this%budget_0(:,:,:,3) ! R23
+        this%budget_0(:,:,:,9)  = this%budget_0(:,:,:,9)  + this%budget_0(:,:,:,3)*this%budget_0(:,:,:,3) ! R33
+        this%budget_0 = this%budget_0*(real(this%counter,rkind) + 1.d-18)
+
+    end subroutine 
+
 
     subroutine AssembleScalarStats(this)
         use decomp_2d_io
@@ -978,8 +2066,7 @@ contains
     
     end subroutine 
 
-
-    ! ----------------------supproting subroutines ------------------------
+    ! ----------------------supporting subroutines ------------------------
     subroutine dump_budget_field(this, field, fieldID, BudgetID)
         use decomp_2d_io
         class(budgets_time_avg), intent(inout) :: this
@@ -993,17 +2080,297 @@ contains
         call decomp_2d_write_one(1,field,fname, this%igrid_sim%gpC)
 
     end subroutine 
+
+    subroutine dump_budget4_field(this, field, fieldID, BudgetID, componentID)
+        use decomp_2d_io
+        class(budgets_time_avg), intent(inout) :: this
+        real(rkind), dimension(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)), intent(in) :: field
+        integer, intent(in) :: fieldID, BudgetID, componentID
+        character(len=clen) :: fname, tempname 
+
+        write(tempname,"(A3,I2.2,A7,I1.1,A1,I2.2,A5,I2.2,A2,I6.6,A2,I6.6,A4)") "Run",this%run_id,"_budget",BudgetID,"_",componentID,"_term",fieldID,"_t",this%igrid_sim%step,"_n",this%counter,".s3D"
+        fname = this%budgets_Dir(:len_trim(this%budgets_Dir))//"/"//trim(tempname)
+
+        call decomp_2d_write_one(1,field,fname, this%igrid_sim%gpC)
+
+    end subroutine 
     
     subroutine restartBudget(this, rid, tid, cid)
         class(budgets_time_avg), intent(inout) :: this
+        real(rkind), dimension(:,:,:), pointer :: buff
         integer, intent(in) :: rid, cid, tid
-        !character(len=clen) :: fname, tempname 
+        integer :: idx
+
+        buff => this%igrid_sim%rbuffxC(:,:,:,1)
 
         this%counter = cid
+
+        ! Budget 0: 
+        do idx = 1,size(this%budget_0,4)
+           !          if (allocated(this%budget_0)) deallocate(this%budget_0)
+           call this%restart_budget_field(this%budget_0(:,:,:,idx), rid, tid, cid, 0, idx)
+        end do
+
+        ! Step 8: Go back to summing for Budget 0
+        this%budget_0(:,:,:,25) = this%budget_0(:,:,:,25) + this%budget_0(:,:,:,13)*this%budget_0(:,:,:,1)
+        this%budget_0(:,:,:,25) = this%budget_0(:,:,:,25) + this%budget_0(:,:,:,15)*this%budget_0(:,:,:,2)
+        this%budget_0(:,:,:,25) = this%budget_0(:,:,:,25) + this%budget_0(:,:,:,16)*this%budget_0(:,:,:,3)
+           
+        this%budget_0(:,:,:,24) = this%budget_0(:,:,:,24) + this%budget_0(:,:,:,12)*this%budget_0(:,:,:,1)
+        this%budget_0(:,:,:,24) = this%budget_0(:,:,:,24) + this%budget_0(:,:,:,14)*this%budget_0(:,:,:,2)
+        this%budget_0(:,:,:,24) = this%budget_0(:,:,:,24) + this%budget_0(:,:,:,15)*this%budget_0(:,:,:,3)
+        
+        this%budget_0(:,:,:,23) = this%budget_0(:,:,:,23) + this%budget_0(:,:,:,11)*this%budget_0(:,:,:,1)
+        this%budget_0(:,:,:,23) = this%budget_0(:,:,:,23) + this%budget_0(:,:,:,12)*this%budget_0(:,:,:,2)
+        this%budget_0(:,:,:,23) = this%budget_0(:,:,:,23) + this%budget_0(:,:,:,13)*this%budget_0(:,:,:,3)
+           
+        this%igrid_sim%rbuffxC(:,:,:,1) = half*(this%budget_0(:,:,:,4) + this%budget_0(:,:,:,7) + this%budget_0(:,:,:,9))
+        this%budget_0(:,:,:,22) = this%budget_0(:,:,:,22) + this%budget_0(:,:,:,3)*this%igrid_sim%rbuffxC(:,:,:,1)
+        this%budget_0(:,:,:,21) = this%budget_0(:,:,:,21) + this%budget_0(:,:,:,2)*this%igrid_sim%rbuffxC(:,:,:,1)
+        this%budget_0(:,:,:,20) = this%budget_0(:,:,:,20) + this%budget_0(:,:,:,1)*this%igrid_sim%rbuffxC(:,:,:,1)
+           
+        this%budget_0(:,:,:,19) = this%budget_0(:,:,:,19) + this%budget_0(:,:,:,3)*this%budget_0(:,:,:,10)
+        this%budget_0(:,:,:,18) = this%budget_0(:,:,:,18) + this%budget_0(:,:,:,2)*this%budget_0(:,:,:,10)
+        this%budget_0(:,:,:,17) = this%budget_0(:,:,:,17) + this%budget_0(:,:,:,1)*this%budget_0(:,:,:,10)
+           
+        ! Step 9: Go back to <ui uj> from <Rij>
+        this%budget_0(:,:,:,4)  = this%budget_0(:,:,:,4)  + this%budget_0(:,:,:,1)*this%budget_0(:,:,:,1) ! R11
+        this%budget_0(:,:,:,5)  = this%budget_0(:,:,:,5)  + this%budget_0(:,:,:,1)*this%budget_0(:,:,:,2) ! R12
+        this%budget_0(:,:,:,6)  = this%budget_0(:,:,:,6)  + this%budget_0(:,:,:,1)*this%budget_0(:,:,:,3) ! R13
+        this%budget_0(:,:,:,7)  = this%budget_0(:,:,:,7)  + this%budget_0(:,:,:,2)*this%budget_0(:,:,:,2) ! R22
+        this%budget_0(:,:,:,8)  = this%budget_0(:,:,:,8)  + this%budget_0(:,:,:,2)*this%budget_0(:,:,:,3) ! R23
+        this%budget_0(:,:,:,9)  = this%budget_0(:,:,:,9)  + this%budget_0(:,:,:,3)*this%budget_0(:,:,:,3) ! R33
+        
+        ! STEP 10a: Potential temperature terms for stratified flow
+        if (this%isStratified) then
+           this%budget_0(:,:,:,27) = this%budget_0(:,:,:,27) + this%budget_0(:,:,:,1)*this%budget_0(:,:,:,26)
+           this%budget_0(:,:,:,28) = this%budget_0(:,:,:,28) + this%budget_0(:,:,:,2)*this%budget_0(:,:,:,26)
+           this%budget_0(:,:,:,29) = this%budget_0(:,:,:,29) + this%budget_0(:,:,:,3)*this%budget_0(:,:,:,26)
+           this%budget_0(:,:,:,30) = this%budget_0(:,:,:,30) + this%budget_0(:,:,:,26)*this%budget_0(:,:,:,26)
+        end if        
+        ! Step 10b: Scalar variances
+        if (this%HaveScalars) then
+           do idx = 1,this%igrid_sim%n_scalars
+              this%budget_0(:,:,:,30+this%igrid_sim%n_scalars+idx) = &
+                   this%budget_0(:,:,:,30+this%igrid_sim%n_scalars+idx) + & 
+                   this%budget_0(:,:,:,30+idx)*this%budget_0(:,:,:,30+idx)
+           end do
+        end if
+        
+        ! Step 11: Go back to summing instead of averaging
+        this%budget_0 = this%budget_0*(real(this%counter,rkind) + 1.d-18)
+
+        ! Budget 1: 
+        if (this%budgetType>0) then
+           do idx = 1,size(this%budget_1,4)
+              !          if (allocated(this%budget_1)) deallocate(this%budget_1)
+              call this%restart_budget_field(this%budget_1(:,:,:,idx), rid, tid, cid, 1, idx)
+              this%budget_1(:,:,:,idx) = this%budget_1(:,:,:,idx)*(real(cid,rkind) + 1.d-18)
+           end do
+        end if 
+
+        ! Budget 2
+        if (this%budgetType>1) then
+           do idx = 1,size(this%budget_2,4)
+              call this%restart_budget_field(this%budget_2(:,:,:,idx), rid, tid, cid, 2, idx)   
+           end do
+           
+        end if
+        
+        ! Budget 3:
+        if (this%budgetType>2) then
+           this%budget_0 = this%budget_0/(real(this%counter,rkind) + 1.d-18)
+           this%budget_1 = this%budget_1/(real(cid,rkind) + 1.d-18)
+           do idx = 1,size(this%budget_3,4)
+              !          if (allocated(this%budget_3)) deallocate(this%budget_3)
+              call this%restart_budget_field(this%budget_3(:,:,:,idx), rid, tid, cid, 3, idx)   
+           end do
+           ! Revert arrays to the correct state for Assemble (Order is very
+           ! important throughout this subroutine, particularly indices 5 and 6)
+           this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + this%budget_0(:,:,:,1)*this%budget_1(:,:,:,4)
+           this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + this%budget_2(:,:,:,6)
+           this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) + this%budget_3(:,:,:,6) + this%budget_2(:,:,:,5) !+ this%budget_2(:,:,:,6) kktodo
+           this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + this%budget_2(:,:,:,4)
+           this%budget_3(:,:,:,3) = this%budget_3(:,:,:,3) + this%budget_3(:,:,:,2) + this%budget_2(:,:,:,2) + this%budget_2(:,:,:,3)
+           this%budget_3 = this%budget_3*(real(cid,rkind) + 1.d-18)
+           this%budget_0 = this%budget_0*(real(this%counter,rkind) + 1.d-18)
+           this%budget_1 = this%budget_1*(real(cid,rkind) + 1.d-18)
+           
+        end if
+
+        ! Budget 4
+        if (this%budgetType>3) then
+           do idx = 1,size(this%budget_4_11,4)
+              !          if (allocated(this%budget_4_11)) deallocate(this%budget_4_11)
+              call this%restart_budget_4_field(this%budget_4_11(:,:,:,idx), rid, tid, cid, 4, idx, 11)
+           end do
+
+           do idx = 1,size(this%budget_4_22,4)
+              !          if (allocated(this%budget_4_22)) deallocate(this%budget_4_22)
+              call this%restart_budget_4_field(this%budget_4_22(:,:,:,idx), rid, tid, cid, 4, idx, 22)
+           end do
+
+           do idx = 1,size(this%budget_4_33,4)
+              !          if (allocated(this%budget_4_33)) deallocate(this%budget_4_33)
+              call this%restart_budget_4_field(this%budget_4_33(:,:,:,idx), rid, tid, cid, 4, idx, 33)
+           end do
+
+           do idx = 1,size(this%budget_4_13,4)
+              !          if (allocated(this%budget_4_13)) deallocate(this%budget_4_13)
+              call this%restart_budget_4_field(this%budget_4_13(:,:,:,idx), rid, tid, cid, 4, idx, 13)
+           end do
+
+           do idx = 1,size(this%budget_4_23,4)
+              !          if (allocated(this%budget_4_23)) deallocate(this%budget_4_23)
+              call this%restart_budget_4_field(this%budget_4_23(:,:,:,idx), rid, tid, cid, 4, idx, 23)
+           end do
+
+           this%budget_0 = this%budget_0/(real(this%counter,rkind) + 1.d-18)
+           this%budget_1 = this%budget_1/(real(cid,rkind) + 1.d-18)
+
+           ! Revert back to sums for Budget 4
+           ! actuator disk
+           this%budget_4_11(:,:,:,10) = this%budget_4_11(:,:,:,10) + 2.d0*this%budget_0(:,:,:,1)*this%budget_1(:,:,:,4)
+           this%budget_4_22(:,:,:,10) = this%budget_4_22(:,:,:,10) + 2.d0*this%budget_0(:,:,:,2)*this%budget_1(:,:,:,15)
+           this%budget_4_13(:,:,:,10) = this%budget_4_13(:,:,:,10) + this%budget_0(:,:,:,3)*this%budget_1(:,:,:,4)
+           this%budget_4_23(:,:,:,10) = this%budget_4_23(:,:,:,10) + this%budget_0(:,:,:,3)*this%budget_1(:,:,:,15)
+
+           ! coriolis
+           this%budget_4_11(:,:,:,9) = this%budget_4_11(:,:,:,9) + 2.d0*this%budget_0(:,:,:,1)*(this%budget_1(:,:,:,11) &
+                + this%budget_1(:,:,:,12))
+           this%budget_4_22(:,:,:,9) = this%budget_4_22(:,:,:,9) + 2.d0*this%budget_0(:,:,:,2)*(this%budget_1(:,:,:,13) + this%budget_1(:,:,:,14))
+           this%budget_4_13(:,:,:,9) = this%budget_4_13(:,:,:,9) + this%budget_0(:,:,:,3)*(this%budget_1(:,:,:,12) + this%budget_1(:,:,:,12))
+           this%budget_4_23(:,:,:,9) = this%budget_4_23(:,:,:,9) + this%budget_0(:,:,:,3)*(this%budget_1(:,:,:,13) + this%budget_1(:,:,:,14))
+
+           ! buoyancy
+           this%budget_4_33(:,:,:,8) = this%budget_4_33(:,:,:,8) + 2.d0*this%budget_0(:,:,:,3)*this%budget_0(:,:,:,31)
+           this%budget_4_13(:,:,:,8) = this%budget_4_13(:,:,:,8) + this%budget_0(:,:,:,1)*this%budget_0(:,:,:,31)
+           this%budget_4_23(:,:,:,8) = this%budget_4_23(:,:,:,8) + this%budget_0(:,:,:,2)*this%budget_0(:,:,:,31)
+
+           ! SGS + viscous transport
+           this%budget_4_11(:,:,:,6) = this%budget_4_11(:,:,:,6) + this%budget_4_11(:,:,:,7) + 2.d0*this%budget_0(:,:,:,1)*this%budget_1(:,:,:,3)
+           this%budget_4_22(:,:,:,6) = this%budget_4_22(:,:,:,6) + this%budget_4_22(:,:,:,7) + 2.d0*this%budget_0(:,:,:,2)*this%budget_1(:,:,:,7)
+           this%budget_4_33(:,:,:,6) = this%budget_4_33(:,:,:,6) + this%budget_4_33(:,:,:,7) + 2.d0*this%budget_0(:,:,:,3)*this%budget_1(:,:,:,10) 
+           this%budget_4_13(:,:,:,6) = this%budget_4_13(:,:,:,6) + this%budget_4_13(:,:,:,7) + this%budget_0(:,:,:,3)*this%budget_1(:,:,:,3) &
+             + this%budget_0(:,:,:,1)*this%budget_1(:,:,:,10)
+           this%budget_4_23(:,:,:,6) = this%budget_4_23(:,:,:,6) + this%budget_4_23(:,:,:,7) + this%budget_0(:,:,:,3)*this%budget_1(:,:,:,7) &
+             + this%budget_0(:,:,:,2)*this%budget_1(:,:,:,10)
+
+           ! SGS + viscous dissipation
+           call this%ddx_R2R(this%budget_0(:,:,:,1), buff)
+           this%budget_4_11(:,:,:,7) = this%budget_4_11(:,:,:,7) + 2.d0*this%budget_0(:,:,:,11)*buff
+           this%budget_4_13(:,:,:,7) = this%budget_4_13(:,:,:,7) + this%budget_0(:,:,:,13)*buff
+           call this%ddy_R2R(this%budget_0(:,:,:,1), buff)
+           this%budget_4_11(:,:,:,7) = this%budget_4_11(:,:,:,7) + 2.d0*this%budget_0(:,:,:,12)*buff
+           this%budget_4_13(:,:,:,7) = this%budget_4_13(:,:,:,7) + this%budget_0(:,:,:,15)*buff
+           call this%ddz_R2R(this%budget_0(:,:,:,1), buff)
+           this%budget_4_11(:,:,:,7) = this%budget_4_11(:,:,:,7) + 2.d0*this%budget_0(:,:,:,13)*buff
+           this%budget_4_13(:,:,:,7) = this%budget_4_13(:,:,:,7) + this%budget_0(:,:,:,16)*buff
+
+
+           call this%ddx_R2R(this%budget_0(:,:,:,2), buff)
+           this%budget_4_22(:,:,:,7) = this%budget_4_22(:,:,:,7) + 2.d0*this%budget_0(:,:,:,12)*buff
+           this%budget_4_23(:,:,:,7) = this%budget_4_23(:,:,:,7) + this%budget_0(:,:,:,13)*buff
+           call this%ddy_R2R(this%budget_0(:,:,:,2), buff)
+           this%budget_4_22(:,:,:,7) = this%budget_4_22(:,:,:,7) + 2.d0*this%budget_0(:,:,:,14)*buff
+           this%budget_4_23(:,:,:,7) = this%budget_4_23(:,:,:,7) + this%budget_0(:,:,:,15)*buff
+           call this%ddz_R2R(this%budget_0(:,:,:,2), buff)
+           this%budget_4_22(:,:,:,7) = this%budget_4_22(:,:,:,7) + 2.d0*this%budget_0(:,:,:,15)*buff
+           this%budget_4_23(:,:,:,7) = this%budget_4_23(:,:,:,7) + this%budget_0(:,:,:,16)*buff
+
+
+           call this%ddx_R2R(this%budget_0(:,:,:,3), buff)
+           this%budget_4_33(:,:,:,7) = this%budget_4_33(:,:,:,7) + 2.d0*this%budget_0(:,:,:,13)*buff
+           this%budget_4_13(:,:,:,7) = this%budget_4_13(:,:,:,7) + this%budget_0(:,:,:,11)*buff
+           this%budget_4_23(:,:,:,7) = this%budget_4_23(:,:,:,7) + this%budget_0(:,:,:,12)*buff
+           call this%ddy_R2R(this%budget_0(:,:,:,3), buff)
+           this%budget_4_33(:,:,:,7) = this%budget_4_33(:,:,:,7) + 2.d0*this%budget_0(:,:,:,15)*buff
+           this%budget_4_13(:,:,:,7) = this%budget_4_13(:,:,:,7) + this%budget_0(:,:,:,12)*buff
+           this%budget_4_23(:,:,:,7) = this%budget_4_23(:,:,:,7) + this%budget_0(:,:,:,14)*buff
+           call this%ddz_R2R(this%budget_0(:,:,:,3), buff)
+           this%budget_4_33(:,:,:,7) = this%budget_4_33(:,:,:,7) + 2.d0*this%budget_0(:,:,:,16)*buff
+           this%budget_4_13(:,:,:,7) = this%budget_4_13(:,:,:,7) + this%budget_0(:,:,:,13)*buff
+           this%budget_4_23(:,:,:,7) = this%budget_4_23(:,:,:,7) + this%budget_0(:,:,:,15)*buff
+
+           ! pressure transport
+           this%budget_4_11(:,:,:,5) = this%budget_4_11(:,:,:,5) + 2.d0*this%budget_0(:,:,:,1)*this%budget_1(:,:,:,2) + this%budget_4_11(:,:,:,4) 
+           this%budget_4_22(:,:,:,5) = this%budget_4_22(:,:,:,5) + 2.d0*this%budget_0(:,:,:,2)*this%budget_1(:,:,:,6) + this%budget_4_22(:,:,:,4) 
+           this%budget_4_33(:,:,:,5) = this%budget_4_33(:,:,:,5) + 2.d0*this%budget_0(:,:,:,3)*this%budget_1(:,:,:,9) + this%budget_4_33(:,:,:,4) 
+           this%budget_4_13(:,:,:,5) = this%budget_4_13(:,:,:,5) + this%budget_0(:,:,:,1)*this%budget_1(:,:,:,9) + this%budget_4_13(:,:,:,4) &
+                + this%budget_0(:,:,:,3)*this%budget_1(:,:,:,2) 
+           this%budget_4_23(:,:,:,5) = this%budget_4_23(:,:,:,5) + this%budget_0(:,:,:,2)*this%budget_1(:,:,:,9) + this%budget_4_23(:,:,:,4) &
+                + this%budget_0(:,:,:,3)*this%budget_1(:,:,:,6) 
+
+
+           ! 4. Pressure strain
+           call this%ddx_R2R(this%budget_0(:,:,:,1), buff) 
+           this%budget_4_11(:,:,:,4) = this%budget_4_11(:,:,:,4) + 2.0*this%budget_0(:,:,:,10)*buff
+           call this%ddy_R2R(this%budget_0(:,:,:,2), buff) 
+           this%budget_4_22(:,:,:,4) = this%budget_4_22(:,:,:,4) + 2.0*this%budget_0(:,:,:,10)*buff
+           call this%ddz_R2R(this%budget_0(:,:,:,3), buff) 
+           this%budget_4_33(:,:,:,4) = this%budget_4_33(:,:,:,4) + 2.0*this%budget_0(:,:,:,10)*buff
+           call this%ddz_R2R(this%budget_0(:,:,:,1), buff) 
+           this%budget_4_13(:,:,:,4) = this%budget_4_13(:,:,:,4) + this%budget_0(:,:,:,10)*buff
+           call this%ddx_R2R(this%budget_0(:,:,:,3), buff) 
+           this%budget_4_13(:,:,:,4) = this%budget_4_13(:,:,:,4) + this%budget_0(:,:,:,10)*buff
+           call this%ddz_R2R(this%budget_0(:,:,:,2), buff) 
+           this%budget_4_23(:,:,:,4) = this%budget_4_23(:,:,:,4) + this%budget_0(:,:,:,10)*buff
+           call this%ddy_R2R(this%budget_0(:,:,:,3), buff) 
+           this%budget_4_23(:,:,:,4) = this%budget_4_23(:,:,:,4) + this%budget_0(:,:,:,10)*buff
+        
+
+           ! 3. turbulent transport         
+           this%budget_4_11(:,:,:,3) = this%budget_4_11(:,:,:,3) + this%budget_4_11(:,:,:,2) + 2.d0*this%budget_0(:,:,:,1)*this%budget_1(:,:,:,1) &
+                + this%budget_4_11(:,:,:,1)
+           this%budget_4_22(:,:,:,3) = this%budget_4_22(:,:,:,3) + this%budget_4_22(:,:,:,2) + 2.d0*this%budget_0(:,:,:,2)*this%budget_1(:,:,:,5) &
+                + this%budget_4_22(:,:,:,1)
+           this%budget_4_33(:,:,:,3) = this%budget_4_33(:,:,:,3) + this%budget_4_33(:,:,:,2) + 2.d0*this%budget_0(:,:,:,3)*this%budget_1(:,:,:,8) &
+                + this%budget_4_33(:,:,:,1)
+           this%budget_4_13(:,:,:,3) = this%budget_4_13(:,:,:,3) + this%budget_4_13(:,:,:,2) + this%budget_0(:,:,:,3)*this%budget_1(:,:,:,1) &
+                + this%budget_0(:,:,:,1)*this%budget_1(:,:,:,8) + this%budget_4_13(:,:,:,1)
+           this%budget_4_23(:,:,:,3) = this%budget_4_23(:,:,:,3) + this%budget_4_23(:,:,:,2) + this%budget_0(:,:,:,3)*this%budget_1(:,:,:,5) &
+                + this%budget_0(:,:,:,2)*this%budget_1(:,:,:,8) + this%budget_4_23(:,:,:,1)
+
+
+           ! Go back to sums
+           this%budget_4_11 = this%budget_4_11*(real(cid,rkind) + 1.d-18)
+           this%budget_4_22 = this%budget_4_22*(real(cid,rkind) + 1.d-18)
+           this%budget_4_33 = this%budget_4_33*(real(cid,rkind) + 1.d-18)
+           this%budget_4_13 = this%budget_4_13*(real(cid,rkind) + 1.d-18)             
+           this%budget_4_23 = this%budget_4_23*(real(cid,rkind) + 1.d-18)
+           this%budget_0 = this%budget_0*(real(this%counter,rkind) + 1.d-18)
+           this%budget_1 = this%budget_1*(real(cid,rkind) + 1.d-18)
+
+        end if
 
         ! << Incomplete for now - write after completing dumpbudget and look at
         ! budget_xy_avg for reference. >>
     end subroutine 
+
+    subroutine restart_budget_field(this, field, runID, timeID, counterID, budgetID, fieldID)
+        use decomp_2d_io
+        class(budgets_time_avg), intent(inout) :: this
+        real(rkind), dimension(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)), intent(out) :: field
+        integer, intent(in) :: runID, counterID, timeID, budgetID, fieldID
+        character(len=clen) :: fname, tempname 
+
+        write(tempname,"(A3,I2.2,A7,I1.1,A5,I2.2,A2,I6.6,A2,I6.6,A4)") "Run",runID,"_budget",budgetID,"_term",fieldID,"_t",timeID,"_n",counterID,".s3D"
+        fname = this%budgets_Dir(:len_trim(this%budgets_Dir))//"/"//trim(tempname)
+        call decomp_2d_read_one(1,field,fname, this%igrid_sim%gpC)           
+    end subroutine 
+
+    subroutine restart_budget_4_field(this, field, runID, timeID, counterID, budgetID, fieldID, componentID)
+        use decomp_2d_io
+        class(budgets_time_avg), intent(inout) :: this
+        real(rkind), dimension(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)), intent(out) :: field
+        integer, intent(in) :: runID, counterID, timeID, budgetID, fieldID, componentID
+        character(len=clen) :: fname, tempname 
+
+        write(tempname,"(A3,I2.2,A7,I1.1,A1,I2.2,A5,I2.2,A2,I6.6,A2,I6.6,A4)") "Run",runID,"_budget",budgetID,"_", componentID,"_term",fieldID,"_t",timeID,"_n",counterID,".s3D"
+        fname = this%budgets_Dir(:len_trim(this%budgets_Dir))//"/"//trim(tempname)
+        call decomp_2d_read_one(1,field,fname, this%igrid_sim%gpC)           
+    end subroutine 
+
     
     subroutine ResetBudget(this)
         class(budgets_time_avg), intent(inout) :: this
@@ -1013,6 +2380,12 @@ contains
         this%budget_1 = 0.d0 
         this%budget_2 = 0.d0 
         this%budget_3 = 0.d0 
+        this%budget_4_11 = 0.d0 
+        this%budget_4_22 = 0.d0 
+        this%budget_4_33 = 0.d0 
+        this%budget_4_13 = 0.d0 
+        this%budget_4_23 = 0.d0 
+        
     end subroutine 
     
     subroutine destroy(this)
