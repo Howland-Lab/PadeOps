@@ -1,10 +1,11 @@
+    ! get_geostrophic_forcing is only called in the budget computations
     subroutine get_geostrophic_forcing(this, Fg_x, Fg_y)
         class(igrid), intent(in) :: this
 !        real(rkind), dimension(:,:,:), allocatable, intent(out) :: Fg_x, Fg_y
         real(rkind), dimension(this%gpC%xsz(1),this%gpC%xsz(2),this%gpC%xsz(3)), intent(out) :: Fg_x, Fg_y
         real(rkind), dimension(:,:,:), pointer :: gx_vec, gy_vec
         real(rkind) :: gx, gy 
-        
+
         if (not(this%useConstantG) .and. (this%fringe_x%TargetsAssociated)) then
             ! adds a coriolis term that changes in Z
             gx_vec => this%fringe_x%u_target
