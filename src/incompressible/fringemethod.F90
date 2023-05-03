@@ -118,16 +118,29 @@ contains
       real(rkind),                                                                        intent(in)           :: dt
       real(rkind),    dimension(this%gpC%xsz(1),this%gpC%xsz(2),this%gpC%xsz(3)),         intent(in)           :: F 
 
+      ! call message(0, 'DEBUG addFringeRHS_scalar: entering if statement')
+      ! if (this%useFringeAsSponge_Scalar) then
+      !    call message(1, 'DEBUG use fringe as sponge scalar')
+      ! else
+      !     call message(1, 'DEBUG no fringe as sponge scalar')
+      ! end if
+      ! if (associated(this%F_target)) then
+      !     call message(1, 'DEBUG associated F target')
+      ! else
+      !     call message(1, 'DEBUG no associated F target')
+      ! end if 
       if (this%firstCallCompleteScalar) then      
           if (this%useFringeAsSponge_Scalar) then
                 this%rbuffxC(:,:,:,1) = -(this%LambdafactPotTemp/dt)*(this%Fringe_kernel_cells)*(F)
                 call this%spectC%fft(this%rbuffxC(:,:,:,1), this%cbuffyC(:,:,:,1))      
                 Frhs = Frhs + this%cbuffyC(:,:,:,1)
+                ! call message(1, 'DEBUG firstcallcompletescalar TRUE')
           else
              if (associated(this%F_target)) then
                 this%rbuffxC(:,:,:,1) = (this%LambdafactPotTemp/dt)*(this%Fringe_kernel_cells)*(this%F_target - F)
                 call this%spectC%fft(this%rbuffxC(:,:,:,1), this%cbuffyC(:,:,:,1))      
                 Frhs = Frhs + this%cbuffyC(:,:,:,1)
+                ! call message(1, 'DEBUG ftarget TRUE')
              end if 
           end if 
       else
@@ -236,7 +249,8 @@ contains
       ! Maybe need a flag to ensure that it is define and the problem is
       ! stratified
       this%LambdaFactPotTemp = LambdaFactPotTemp
-   
+      
+      ! call message(0, 'DEBUG: lambdafactpottemp', this%LambdaFactPotTemp)  
       if (this%usetwoFringex) then
          select case (this%myFringeID)
          case(1)
