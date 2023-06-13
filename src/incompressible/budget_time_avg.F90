@@ -76,6 +76,9 @@ module budgets_time_avg_mod
    ! 13:  Y eqn - Coriolis Term 
    ! 14:  Y eqn - Geostrophic Forcing Term 
 
+   ! Buoyancy term
+   ! 16. Z eqn - buoyancy 
+
 
    ! BUDGET_2 term indices: 
    ! 1:  Loss to Resolved TKE      (G)
@@ -86,7 +89,8 @@ module budgets_time_avg_mod
    ! 6:  Loss to SGS TKE + viscous dissipation (H+I)
    ! 7:  Actuator disk sink        (J)
    ! 8:  Geostrophic              
-   ! 9:  Coriolis                  
+   ! 9:  Coriolis    
+   ! 20: Buoyancy              
 
 
    ! BUDGET_3 term indices:
@@ -159,11 +163,11 @@ module budgets_time_avg_mod
         private
         integer :: budgetType = 1, run_id, nz
 
-        complex(rkind), dimension(:,:,:), allocatable :: uc, vc, wc, usgs, vsgs, wsgs, px, py, pz, uturb, pxdns, pydns, pzdns, vturb, wturb 
-        complex(rkind), dimension(:,:,:), allocatable :: uvisc, vvisc, wvisc, ucor, vcor, wcor, wb 
-        type(igrid), pointer :: igrid_sim 
+        complex(rkind), dimension(:,:,:), allocatable, public :: uc, vc, wc, usgs, vsgs, wsgs, px, py, pz, uturb, pxdns, pydns, pzdns, vturb, wturb 
+        complex(rkind), dimension(:,:,:), allocatable, public :: uvisc, vvisc, wvisc, ucor, vcor, wcor, wb 
+        type(igrid), pointer, public :: igrid_sim 
         
-        real(rkind), dimension(:,:,:,:), allocatable :: budget_0, budget_1, budget_2, budget_3, budget_4_11, budget_4_22, budget_4_33, budget_4_13, budget_4_23
+        real(rkind), dimension(:,:,:,:), allocatable, public :: budget_0, budget_1, budget_2, budget_3, budget_4_11, budget_4_22, budget_4_33, budget_4_13, budget_4_23
         integer :: counter
         character(len=clen) :: budgets_dir
 
@@ -239,12 +243,13 @@ contains
         type(igrid), intent(inout), target :: igrid_sim 
         
         character(len=clen) :: budgets_dir = "NULL"
+        character(len=clen) :: restart_dir = "NULL"
         integer :: ioUnit, ierr,  budgetType = 1, restart_tid = 0, restart_rid = 0, restart_counter = 0
         logical :: restart_budgets = .false. 
         integer :: tidx_compute = 1000000, tidx_dump = 1000000, tidx_budget_start = -100
         real(rkind) :: time_budget_start = -1.0d0
         logical :: do_budgets = .false. 
-        namelist /BUDGET_TIME_AVG/ budgetType, budgets_dir, restart_budgets, restart_rid, restart_tid, restart_counter, tidx_dump, tidx_compute, do_budgets, tidx_budget_start, time_budget_start
+        namelist /BUDGET_TIME_AVG/ budgetType, budgets_dir, restart_budgets, restart_dir, restart_rid, restart_tid, restart_counter, tidx_dump, tidx_compute, do_budgets, tidx_budget_start, time_budget_start
         
         ! STEP 1: Read in inputs, link pointers and allocate budget vectors
         ioUnit = 534
@@ -285,8 +290,8 @@ contains
                 else
                     allocate(this%budget_0(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),31))
                 end if
-                allocate(this%budget_2(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),09))
-                allocate(this%budget_1(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),15))
+                allocate(this%budget_2(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
+                allocate(this%budget_1(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),16))
             !else
             !    allocate(this%budget_0(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),25))
             !    allocate(this%budget_2(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),07))
@@ -303,9 +308,14 @@ contains
                 this%budgets_dir = igrid_sim%outputDir
             end if 
 
+            if ((trim(restart_dir) .eq. "null") .or.(trim(restart_dir) .eq. "NULL")) then
+                restart_dir = this%budgets_dir
+            end if 
+
             if (restart_budgets) then
 !                call GracefulExit("To be done",1234)
-                call this%RestartBudget(restart_rid, restart_tid, restart_counter)
+                call message(0,"Budget restart")
+                call this%RestartBudget(restart_dir, restart_rid, restart_tid, restart_counter)
             else
                 call this%resetBudget()
             end if
@@ -704,6 +714,11 @@ contains
         call this%interp_Edge2Cell(this%igrid_sim%rbuffxE(:,:,:,1), this%igrid_sim%rbuffxC(:,:,:,1))
         this%budget_1(:,:,:,10) = this%budget_1(:,:,:,10) + this%igrid_sim%rbuffxC(:,:,:,1)
        
+        ! Buoyancy
+        call this%igrid_sim%spectE%ifft(this%wb, this%igrid_sim%rbuffxE(:,:,:,1))
+        call this%interp_Edge2Cell(this%igrid_sim%rbuffxE(:,:,:,1), this%igrid_sim%rbuffxC(:,:,:,1))
+        this%budget_1(:,:,:,16) = this%budget_1(:,:,:,16) + this%igrid_sim%rbuffxC(:,:,:,1)
+
         if (this%useCoriolis) then
             ! Get the geostrophic forcing 
             call this%igrid_sim%get_geostrophic_forcing(this%igrid_sim%rbuffxC(:,:,:,2), this%igrid_sim%rbuffxC(:,:,:,3))         ! Forcing in x and y directions respectively
@@ -835,6 +850,9 @@ contains
                 this%budget_2(:,:,:,9) = Umn*this%budget_1(:,:,:,11) &
                                + Vmn*this%budget_1(:,:,:,13)
             end if
+
+            ! 10: Buoyancy
+            this%budget_2(:,:,:,10) = Wmn*this%budget_1(:,:,:,16)
 
             nullify(Umn,Vmn,Wmn,R11,R12,R13,R22,R23,R33,Pmn,tau11,tau12,tau13,tau22,tau23,tau33,buff,buff2)
 
@@ -2095,10 +2113,11 @@ subroutine DumpBudget4_23(this)
 
     end subroutine 
     
-    subroutine restartBudget(this, rid, tid, cid)
+    subroutine restartBudget(this, dir, rid, tid, cid)
         class(budgets_time_avg), intent(inout) :: this
         real(rkind), dimension(:,:,:), pointer :: buff
         integer, intent(in) :: rid, cid, tid
+        character(len=clen), intent(in) :: dir
         integer :: idx
 
         buff => this%igrid_sim%rbuffxC(:,:,:,1)
@@ -2108,7 +2127,7 @@ subroutine DumpBudget4_23(this)
         ! Budget 0: 
         do idx = 1,size(this%budget_0,4)
            !          if (allocated(this%budget_0)) deallocate(this%budget_0)
-           call this%restart_budget_field(this%budget_0(:,:,:,idx), rid, tid, cid, 0, idx)
+           call this%restart_budget_field(this%budget_0(:,:,:,idx), dir, rid, tid, cid, 0, idx)
         end do
 
         ! Step 8: Go back to summing for Budget 0
@@ -2164,7 +2183,7 @@ subroutine DumpBudget4_23(this)
         if (this%budgetType>0) then
            do idx = 1,size(this%budget_1,4)
               !          if (allocated(this%budget_1)) deallocate(this%budget_1)
-              call this%restart_budget_field(this%budget_1(:,:,:,idx), rid, tid, cid, 1, idx)
+              call this%restart_budget_field(this%budget_1(:,:,:,idx), dir, rid, tid, cid, 1, idx)
               this%budget_1(:,:,:,idx) = this%budget_1(:,:,:,idx)*(real(cid,rkind) + 1.d-18)
            end do
         end if 
@@ -2172,7 +2191,7 @@ subroutine DumpBudget4_23(this)
         ! Budget 2
         if (this%budgetType>1) then
            do idx = 1,size(this%budget_2,4)
-              call this%restart_budget_field(this%budget_2(:,:,:,idx), rid, tid, cid, 2, idx)   
+              call this%restart_budget_field(this%budget_2(:,:,:,idx), dir, rid, tid, cid, 2, idx)   
            end do
            
         end if
@@ -2183,7 +2202,7 @@ subroutine DumpBudget4_23(this)
            this%budget_1 = this%budget_1/(real(cid,rkind) + 1.d-18)
            do idx = 1,size(this%budget_3,4)
               !          if (allocated(this%budget_3)) deallocate(this%budget_3)
-              call this%restart_budget_field(this%budget_3(:,:,:,idx), rid, tid, cid, 3, idx)   
+              call this%restart_budget_field(this%budget_3(:,:,:,idx), dir, rid, tid, cid, 3, idx)   
            end do
            ! Revert arrays to the correct state for Assemble (Order is very
            ! important throughout this subroutine, particularly indices 5 and 6)
@@ -2202,27 +2221,27 @@ subroutine DumpBudget4_23(this)
         if (this%budgetType>3) then
            do idx = 1,size(this%budget_4_11,4)
               !          if (allocated(this%budget_4_11)) deallocate(this%budget_4_11)
-              call this%restart_budget_4_field(this%budget_4_11(:,:,:,idx), rid, tid, cid, 4, idx, 11)
+              call this%restart_budget_4_field(this%budget_4_11(:,:,:,idx), dir, rid, tid, cid, 4, idx, 11)
            end do
 
            do idx = 1,size(this%budget_4_22,4)
               !          if (allocated(this%budget_4_22)) deallocate(this%budget_4_22)
-              call this%restart_budget_4_field(this%budget_4_22(:,:,:,idx), rid, tid, cid, 4, idx, 22)
+              call this%restart_budget_4_field(this%budget_4_22(:,:,:,idx), dir, rid, tid, cid, 4, idx, 22)
            end do
 
            do idx = 1,size(this%budget_4_33,4)
               !          if (allocated(this%budget_4_33)) deallocate(this%budget_4_33)
-              call this%restart_budget_4_field(this%budget_4_33(:,:,:,idx), rid, tid, cid, 4, idx, 33)
+              call this%restart_budget_4_field(this%budget_4_33(:,:,:,idx), dir, rid, tid, cid, 4, idx, 33)
            end do
 
            do idx = 1,size(this%budget_4_13,4)
               !          if (allocated(this%budget_4_13)) deallocate(this%budget_4_13)
-              call this%restart_budget_4_field(this%budget_4_13(:,:,:,idx), rid, tid, cid, 4, idx, 13)
+              call this%restart_budget_4_field(this%budget_4_13(:,:,:,idx), dir, rid, tid, cid, 4, idx, 13)
            end do
 
            do idx = 1,size(this%budget_4_23,4)
               !          if (allocated(this%budget_4_23)) deallocate(this%budget_4_23)
-              call this%restart_budget_4_field(this%budget_4_23(:,:,:,idx), rid, tid, cid, 4, idx, 23)
+              call this%restart_budget_4_field(this%budget_4_23(:,:,:,idx), dir, rid, tid, cid, 4, idx, 23)
            end do
 
            this%budget_0 = this%budget_0/(real(this%counter,rkind) + 1.d-18)
@@ -2347,27 +2366,30 @@ subroutine DumpBudget4_23(this)
         ! budget_xy_avg for reference. >>
     end subroutine 
 
-    subroutine restart_budget_field(this, field, runID, timeID, counterID, budgetID, fieldID)
+    subroutine restart_budget_field(this, field, dir, runID, timeID, counterID, budgetID, fieldID)
         use decomp_2d_io
         class(budgets_time_avg), intent(inout) :: this
         real(rkind), dimension(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)), intent(out) :: field
         integer, intent(in) :: runID, counterID, timeID, budgetID, fieldID
-        character(len=clen) :: fname, tempname 
+        character(len=clen) :: fname, tempname
+        character(len=clen), intent(in) :: dir
 
         write(tempname,"(A3,I2.2,A7,I1.1,A5,I2.2,A2,I6.6,A2,I6.6,A4)") "Run",runID,"_budget",budgetID,"_term",fieldID,"_t",timeID,"_n",counterID,".s3D"
-        fname = this%budgets_Dir(:len_trim(this%budgets_Dir))//"/"//trim(tempname)
+        fname = dir(:len_trim(dir))//"/"//trim(tempname)
+
         call decomp_2d_read_one(1,field,fname, this%igrid_sim%gpC)           
     end subroutine 
 
-    subroutine restart_budget_4_field(this, field, runID, timeID, counterID, budgetID, fieldID, componentID)
+    subroutine restart_budget_4_field(this, field, dir, runID, timeID, counterID, budgetID, fieldID, componentID)
         use decomp_2d_io
         class(budgets_time_avg), intent(inout) :: this
         real(rkind), dimension(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)), intent(out) :: field
         integer, intent(in) :: runID, counterID, timeID, budgetID, fieldID, componentID
-        character(len=clen) :: fname, tempname 
+        character(len=clen) :: fname, tempname
+        character(len=clen), intent(in) :: dir
 
         write(tempname,"(A3,I2.2,A7,I1.1,A1,I2.2,A5,I2.2,A2,I6.6,A2,I6.6,A4)") "Run",runID,"_budget",budgetID,"_", componentID,"_term",fieldID,"_t",timeID,"_n",counterID,".s3D"
-        fname = this%budgets_Dir(:len_trim(this%budgets_Dir))//"/"//trim(tempname)
+        fname = dir(:len_trim(dir))//"/"//trim(tempname)
         call decomp_2d_read_one(1,field,fname, this%igrid_sim%gpC)           
     end subroutine 
 

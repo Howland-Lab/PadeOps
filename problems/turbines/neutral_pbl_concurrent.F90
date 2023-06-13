@@ -11,6 +11,7 @@ program neutral_pbl_concurrent
     use exits, only: message
     use constants, only: one, zero
     use budgets_time_avg_mod, only: budgets_time_avg  
+    use budgets_time_avg_deficit_mod, only: budgets_time_avg_deficit  
     use link_turbine_to_scalar, only: setup_turb_scalar_source
     implicit none
 
@@ -51,9 +52,9 @@ program neutral_pbl_concurrent
         call primary%fringe_x%associateFringeTarget_scalar(precursor%T)
     end if 
 
-    call budg_tavg%init(primary_inputfile, primary)   !<-- Budget class initialization 
-    call pre_budg_tavg%init(precursor_inputfile, precursor)
-    
+    call budg_tavg%init(primary_inputfile, primary)   !<-- Budget class initialization for the primary
+    call pre_budg_tavg%init(precursor_inputfile, precursor)   !<-- Budget class initialization for the precursor 
+    call budg_tavg_deficit%init(pre_budg_tavg, primary_inputfile, budg_tavg)   !<-- Budget class initialization for the deficit 
     call primary%WindTurbineArr%link_reference_domain_for_control(primary%u, primary%v, primary%rbuffyC, primary%rbuffzC, primary%gpC)
 
     call message("==========================================================")
@@ -91,6 +92,7 @@ program neutral_pbl_concurrent
        
        call budg_tavg%doBudgets()       
        call pre_budg_tavg%doBudgets()       
+       call budg_tavg_deficit%doBudgets()       
 
        call doTemporalStuff(primary,   1)                                        
        call doTemporalStuff(precursor,2)                                        
