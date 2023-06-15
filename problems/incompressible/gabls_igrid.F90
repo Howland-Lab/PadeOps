@@ -9,6 +9,8 @@ program gabls_igrid
     use IncompressibleGrid, only: igrid
     use temporalhook, only: doTemporalStuff, initialize_controller_location
     use timer, only: tic, toc
+    use budgets_xy_avg_mod, only: budgets_xy_avg 
+    use budgets_time_avg_mod, only: budgets_time_avg  
     use exits, only: message
 
     implicit none
@@ -16,6 +18,8 @@ program gabls_igrid
     type(igrid), allocatable, target :: igp
     character(len=clen) :: inputfile
     integer :: ierr
+    type(budgets_xy_avg) :: budg_xy
+    type(budgets_time_avg) :: budg_tavg
 
     call MPI_Init(ierr)               !<-- Begin MPI
 
@@ -31,14 +35,22 @@ program gabls_igrid
   
     call initialize_controller_location(igp, inputfile)
 
+    call budg_xy%init(inputfile, igp)   !<-- Budget class initialization 
+    call budg_tavg%init(inputfile, igp) !<-- Budget class initialization 
+
     call tic() 
     do while (igp%tsim < igp%tstop) 
        
        call igp%timeAdvance()     !<-- Time stepping scheme + Pressure Proj. (see igridWallM.F90)
        call doTemporalStuff(igp)     !<-- Go to the temporal hook (see temporalHook.F90)
-       
+
+       call budg_xy%doBudgets()         !<--- perform budget related operations 
+       call budg_tavg%doBudgets()       !<--- perform budget related operations 
     end do 
- 
+
+    call budg_xy%destroy()             !<-- release memory taken by the budget class 
+    call budg_tavg%destroy()             !<-- release memory taken by the budget class 
+
     call igp%finalize_io()                  !<-- Close the header file (wrap up i/o)
 
     call igp%destroy()                !<-- Destroy the IGRID derived type 
