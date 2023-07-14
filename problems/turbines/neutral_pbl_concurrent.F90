@@ -48,6 +48,7 @@ program neutral_pbl_concurrent
    
     if (primary%usefringe) then
         call primary%fringe_x%associateFringeTargets(precursor%u, precursor%v, precursor%wC, precursor%T) 
+        call primary%fringe_x%associateFringeTarget_scalar(precursor%T)
     end if 
 
     call budg_tavg%init(primary_inputfile, primary)   !<-- Budget class initialization 
