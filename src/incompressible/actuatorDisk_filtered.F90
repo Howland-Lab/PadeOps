@@ -25,14 +25,14 @@ module actuatorDisk_FilteredMod
         real(rkind) :: uface = 0.d0, vface = 0.d0, wface = 0.d0
         real(rkind), dimension(:), allocatable :: xs, ys, zs  ! list of UNYAWED points for the ADM
         real(rkind), dimension(:), allocatable :: powerTime, uTime, vTime
-        logical :: useDynamicYaw
+        logical :: useDynamicYaw, quickDecomp
 
         ! Grid Info
         integer :: nxLoc, nyLoc, nzLoc 
         real(rkind) :: delta, M  ! Shapiro smearing size, corr. factor M<1
         real(rkind), dimension(:), allocatable :: xline, yline, zline
         real(rkind), dimension(:,:,:), pointer :: xG, yG, zG
-        real(rkind), dimension(:,:,:), allocatable :: smearing_base 
+!        real(rkind), dimension(:,:,:), allocatable :: smearing_base 
         
         ! Pointers to memory buffers 
         logical :: memory_buffers_linked = .false.
@@ -72,10 +72,10 @@ subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG)
     real(rkind) :: xLoc=1.d0, yLoc=1.d0, zLoc=0.1d0
     real(rkind) :: diam=0.08d0, cT=0.65d0, yaw=0.d0, tilt=0.d0!, Cp = 0.3
     real(rkind) :: thickness=1.5d0, filterWidth=0.5, time2initialize=0.d0
-    logical :: useCorrection=.TRUE., useDynamicYaw=.FALSE.
+    logical :: useCorrection=.TRUE., useDynamicYaw=.FALSE., quickDecomp=.FALSE.
 
     ! Read input file for this turbine    
-    namelist /ACTUATOR_DISK/ xLoc, yLoc, zLoc, diam, cT, yaw, tilt, filterWidth, useCorrection, useDynamicYaw, thickness
+    namelist /ACTUATOR_DISK/ xLoc, yLoc, zLoc, diam, cT, yaw, tilt, filterWidth, useCorrection, useDynamicYaw, thickness, quickDecomp
     write(tempname,"(A13,I4.4,A10)") "ActuatorDisk_", ActuatorDisk_ID, "_input.inp"
     fname = InputDir(:len_trim(InputDir))//"/"//trim(tempname)
 
@@ -131,6 +131,13 @@ subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG)
     ! Set thickness
     this%thick = thickness*this%dx
     this%delta = filterWidth*this%diam 
+    ! Thickness is only used if quickDecomp = .TRUE.
+    this%quickDecomp = quickDecomp
+    if (quickDecomp) then
+        call message(2, "ADM: using quick decomposition in x")
+    else
+        call message(2, "ADM: using full kernel integration")
+    end if
 
     ! Get (unrotated) turbine location points
     call sample_on_circle(this%diam, this%yLoc, this%zLoc, this%ys, this%zs, this%dy, this%dz)
@@ -182,8 +189,7 @@ subroutine destroy(this)
     class(actuatordisk_filtered), intent(inout) :: this
 
 !    this%memory_buffers_linked = .false.
-!    deallocate(this%rbuff, this%blanks, this%speed, this%scalarSource) 
-!    nullify(this%rbuff, this%blanks, this%speed, this%scalarSource)
+    deallocate(this%rbuff, this%blanks, this%speed, this%scalarSource) 
     nullify(this%xG, this%yG, this%zG)
 end subroutine 
 
@@ -252,7 +258,9 @@ subroutine get_R(this)
     
     ! now xi, yi, zi are the rotated coordinates, assemble w/Greens function 
     ! this may take a while... 
+    ! TODO: can speed this up if only a subsection of the domain is used
     C1 = (6.d0/pi/this%delta**2)**(three/two)
+    ! TODO: May need to zero scalarsource for dynamic yaw
     do k = 1, this%npts
         this%rbuff = (this%xG-xi(k))**2 + (this%yG-yi(k))**2 + (this%zG-zi(k))**2
         this%scalarsource = this%scalarsource + C1*exp(-6.d0*this%rbuff/this%delta**2) 
@@ -265,14 +273,22 @@ subroutine get_weights(this)
     class(actuatordisk_filtered), intent(inout) :: this
     real(rkind), dimension(this%nyLoc, this%nzLoc) :: R2
     real(rkind), dimension(this%nxLoc) :: R1
-    
+    real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc) :: R
+        
     if (abs(this%yaw) < 1e-3) then
-        ! aligned with the x-direction, use the "quick" kernel creation
-        !call this%get_R2(this%ys, this%zs,R2)
-        !call this%get_R1(R1) 
-        !this%scalarsource = spread(spread(R1,2,this%nyLoc),3,this%nzLoc) &
-        !                    * spread(R2, 1, this%nxLoc)
-        call this%get_R()  ! TEMPORARY ALT - NEVER USE QUICK KERNEL
+        if (this%quickDecomp) then
+            !aligned with the x-direction, use the "quick" kernel creation
+            call this%get_R2(this%ys, this%zs,R2)
+            call this%get_R1(R1) 
+            ! Not sure why, but setting the product of R1*R2 directly leads to
+            ! memory errors: (2023/07/17) 
+            !this%scalarsource = spread(spread(R1,2,this%nyLoc),3,this%nzLoc) * spread(R2, 1, this%nxLoc)
+            ! Instead, store in intermediate variable R: 
+            R = spread(R2, 1, this%nxLoc) * spread(spread(R1, 2, this%nyLoc), 3,this%nzLoc)
+            this%scalarsource = R
+        else
+            call this%get_R()  ! bypass quick kernel
+        end if
     else
         ! build the kernel from 3D gaussian kernel
         call this%get_R()
