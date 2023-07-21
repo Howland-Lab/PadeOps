@@ -61,6 +61,7 @@ Ro                            = 1.d10        ! Rossby Number used when Coriolis 
 Re                            = 1.D10        ! Reynolds Number; used when isInvisid is FALSE
 Fr                            = 1.D10        ! Froude number; used when isStratified is TRUE
 G_geostrophic                 = 1.D0         ! Geostrophic wind speed 
+useConstantG                  = .FALSE.      ! Use G(z) if FALSE
 G_alpha                       = 0.D0         ! Geostrophic wind angle (degrees, from +x axis)
 latitude                      = 45.d0        ! Latitude 
 dPfdx                         = 0.D0         ! Additional Acceleration in X; used if useExtraForcing is ON
