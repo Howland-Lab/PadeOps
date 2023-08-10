@@ -102,6 +102,7 @@ module budgets_time_avg_mod
    ! 6. SGS + viscous dissipation   (H+I)
    ! 7. Actuator disk/Turbine sink  (J)
    ! 8. Buoyancy
+   ! 9. Storage
 
    ! BUDGET_4_ij term indices: 
    ! 1. <u'u'> : Shear Production           - N/A,      dump
@@ -168,6 +169,7 @@ module budgets_time_avg_mod
         type(igrid), pointer, public :: igrid_sim 
         
         real(rkind), dimension(:,:,:,:), allocatable, public :: budget_0, budget_1, budget_2, budget_3, budget_4_11, budget_4_22, budget_4_33, budget_4_13, budget_4_23
+        real(rkind), dimension(:,:,:), allocatable :: tke, tke_old, u_old, v_old, wC_old, dUdt, dVdt, dWdt
         integer :: counter
         character(len=clen) :: budgets_dir
 
@@ -251,6 +253,8 @@ contains
         logical :: do_budgets = .false. 
         namelist /BUDGET_TIME_AVG/ budgetType, budgets_dir, restart_budgets, restart_dir, restart_rid, restart_tid, restart_counter, tidx_dump, tidx_compute, do_budgets, tidx_budget_start, time_budget_start
         
+        restart_dir = "NULL"
+
         ! STEP 1: Read in inputs, link pointers and allocate budget vectors
         ioUnit = 534
         open(unit=ioUnit, file=trim(inputfile), form='FORMATTED', iostat=ierr)
@@ -304,16 +308,29 @@ contains
             allocate(this%budget_4_23(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
             allocate(this%budget_4_33(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
 
+            if (this%budgetType > 2) then
+                allocate(this%tke(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
+                allocate(this%tke_old(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
+                                
+                allocate(this%u_old(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
+                allocate(this%v_old(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
+                allocate(this%wC_old(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
+                
+                allocate(this%dUdt(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
+                allocate(this%dVdt(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
+                allocate(this%dWdt(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
+            end if 
+                
+            
             if ((trim(budgets_dir) .eq. "null") .or.(trim(budgets_dir) .eq. "NULL")) then
                 this%budgets_dir = igrid_sim%outputDir
             end if 
-
+            
             if ((trim(restart_dir) .eq. "null") .or.(trim(restart_dir) .eq. "NULL")) then
                 restart_dir = this%budgets_dir
             end if 
 
             if (restart_budgets) then
-!                call GracefulExit("To be done",1234)
                 call message(0,"Budget restart")
                 call this%RestartBudget(restart_dir, restart_rid, restart_tid, restart_counter)
             else
@@ -965,6 +982,21 @@ contains
         call this%interp_Edge2Cell(this%igrid_sim%rbuffxE(:,:,:,1), this%igrid_sim%rbuffxC(:,:,:,1))
         this%budget_3(:,:,:,8) = this%budget_3(:,:,:,8) + this%igrid_sim%wC*this%igrid_sim%rbuffxC(:,:,:,1)
 
+        ! 9. Storage:    
+        ! this%tke = half*(this%igrid_sim%u*this%igrid_sim%u + this%igrid_sim%v*this%igrid_sim%v + this%igrid_sim%w*this%igrid_sim%w)
+
+        ! if (this%counter > 0) then
+        !     this%budget_3(:,:,:,9) = this%budget_3(:,:,:,9) + (this%tke - this%tke_old)/this%igrid_sim%dt
+        !     this%dUdt = this%dUdt + (this%igrid_sim%u - this%u_old)/this%igrid_sim%dt
+        !     this%dVdt = this%dVdt + (this%igrid_sim%v - this%v_old)/this%igrid_sim%dt
+        !     this%dWdt = this%dWdt + (this%igrid_sim%wC - this%wC_old)/this%igrid_sim%dt
+        ! end if
+
+        ! save old variables
+        ! this%tke_old = this%tke
+        ! this%u_old = this%igrid_sim%u
+        ! this%v_old = this%igrid_sim%v
+        ! this%wC_old = this%igrid_sim%wC
 
     end subroutine 
     
@@ -986,6 +1018,10 @@ contains
         this%budget_0(:,:,:,9)  = this%budget_0(:,:,:,9)  - this%budget_0(:,:,:,3)*this%budget_0(:,:,:,3) ! R33
         this%budget_1 = this%budget_1/(real(this%counter,rkind) + 1.d-18)
         this%budget_3 = this%budget_3/(real(this%counter,rkind) + 1.d-18)
+
+        this%dUdt = this%dUdt/(real(this%counter,rkind) + 1.d-18)
+        this%dWdt = this%dVdt/(real(this%counter,rkind) + 1.d-18)
+        this%dVdt = this%dWdt/(real(this%counter,rkind) + 1.d-18)
 
         Umn => this%budget_0(:,:,:,1);    Vmn => this%budget_0(:,:,:,2);      Wmn => this%budget_0(:,:,:,3);
         R11 => this%budget_0(:,:,:,4);    R12 => this%budget_0(:,:,:,5);      R13 => this%budget_0(:,:,:,6)
@@ -1023,14 +1059,18 @@ contains
         ! 8. Buoyancy
         this%budget_3(:,:,:,8) = this%budget_3(:,:,:,8) - Wmn*theta
 
+        ! 9. Storage
+        ! this%budget_3(:,:,:,9) = this%budget_3(:,:,:,9) - Umn*this%dUdt - Vmn*this%dVdt - Wmn*this%dWdt   
+
         ! Dump the full budget 
         do idx = 1,size(this%budget_3,4)
             call this%dump_budget_field(this%budget_3(:,:,:,idx),idx,3)
         end do 
 
-
         ! Revert arrays to the correct state for Assemble (Order is very
         ! important throughout this subroutine, particularly indices 5 and 6)
+        ! this%budget_3(:,:,:,9) = this%budget_3(:,:,:,9) +  Umn*this%dUdt + Vmn*this%dVdt + Wmn*this%dWdt 
+        this%budget_3(:,:,:,8) = this%budget_3(:,:,:,8) + Wmn*theta
         this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + Umn*this%budget_1(:,:,:,4)
         this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + this%budget_2(:,:,:,6)
         this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) + this%budget_3(:,:,:,6) + this%budget_2(:,:,:,5) !+ this%budget_2(:,:,:,6) kktodo
@@ -1041,6 +1081,9 @@ contains
         nullify(Umn,Vmn,Wmn,R11,R12,R13,R22,R23,R33,Pmn,tau11,tau12,tau13,tau22,tau23,tau33,buff,buff2,theta)
 
         ! Go back to sum
+        this%dUdt = this%dUdt*(real(this%counter,rkind) + 1.d-18)
+        this%dWdt = this%dVdt*(real(this%counter,rkind) + 1.d-18)
+        this%dVdt = this%dWdt*(real(this%counter,rkind) + 1.d-18)
         this%budget_3 = this%budget_3*(real(this%counter,rkind) + 1.d-18)
         this%budget_1 = this%budget_1*(real(this%counter,rkind) + 1.d-18)
         this%budget_0(:,:,:,4)  = this%budget_0(:,:,:,4)  + this%budget_0(:,:,:,1)*this%budget_0(:,:,:,1) ! R11
@@ -2126,7 +2169,7 @@ subroutine DumpBudget4_23(this)
 
         ! Budget 0: 
         do idx = 1,size(this%budget_0,4)
-           !          if (allocated(this%budget_0)) deallocate(this%budget_0)
+        !    if (allocated(this%budget_0)) deallocate(this%budget_0)
            call this%restart_budget_field(this%budget_0(:,:,:,idx), dir, rid, tid, cid, 0, idx)
         end do
 
@@ -2175,10 +2218,9 @@ subroutine DumpBudget4_23(this)
                    this%budget_0(:,:,:,30+idx)*this%budget_0(:,:,:,30+idx)
            end do
         end if
-        
-        ! Step 11: Go back to summing instead of averaging
-        this%budget_0 = this%budget_0*(real(this%counter,rkind) + 1.d-18)
 
+        ! Step 11: Go back to summing instead of averaging
+        this%budget_0 = this%budget_0*(real(cid,rkind) + 1.d-18)
         ! Budget 1: 
         if (this%budgetType>0) then
            do idx = 1,size(this%budget_1,4)
@@ -2362,8 +2404,8 @@ subroutine DumpBudget4_23(this)
 
         end if
 
-        ! << Incomplete for now - write after completing dumpbudget and look at
-        ! budget_xy_avg for reference. >>
+        nullify(buff)
+
     end subroutine 
 
     subroutine restart_budget_field(this, field, dir, runID, timeID, counterID, budgetID, fieldID)
