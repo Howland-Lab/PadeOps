@@ -331,8 +331,8 @@ contains
             end if 
 
             if (restart_budgets) then
-                call message(0,"Budget restart")
-                call this%RestartBudget(restart_dir, restart_rid, restart_tid, restart_counter)
+               call message(0,"Budget restart")
+               call this%RestartBudget(restart_dir, restart_rid, restart_tid, restart_counter)
             else
                 call this%resetBudget()
             end if
