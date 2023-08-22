@@ -266,6 +266,8 @@ module budgets_time_avg_deficit_mod
          logical :: do_budgets = .false. 
          namelist /BUDGET_TIME_AVG_DEFICIT/ budgetType, budgets_dir, restart_budgets, restart_dir, restart_rid, restart_tid, restart_counter, tidx_dump, tidx_compute, do_budgets, tidx_budget_start, time_budget_start
          
+         restart_dir = "NULL"
+
          ! STEP 1: Read in inputs, link pointers and allocate budget vectors
          ioUnit = 534
          open(unit=ioUnit, file=trim(primary_inputfile), form='FORMATTED', iostat=ierr)
@@ -320,9 +322,15 @@ module budgets_time_avg_deficit_mod
              allocate(this%budget_4_23(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3),10))
              allocate(this%budget_4_33(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3),10))
  
-             if ((trim(budgets_dir) .eq. "null") .or.(trim(budgets_dir) .eq. "NULL")) then
-                 this%budgets_dir = this%prim_budget%igrid_sim%outputDir
+             if ((trim(budgets_dir) .eq. "null") .or.(trim(budgets_dir) .eq. "NULL")) then 
+                this%budgets_dir = this%prim_budget%igrid_sim%outputDir
              end if 
+
+
+            if ((trim(restart_dir) .eq. "null") .or.(trim(restart_dir) .eq. "NULL")) then
+                restart_dir = this%budgets_dir
+            end if 
+
  
              if (restart_budgets) then
                  call message(0,"Budget deficit restart")
