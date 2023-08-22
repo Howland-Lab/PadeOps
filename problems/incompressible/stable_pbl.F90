@@ -1,9 +1,9 @@
 ! Template for PadeOps
 
-#include "gabls_igrid_files/initialize.F90"       
-#include "gabls_igrid_files/temporalHook.F90"  
+#include "stable_pbl_files/initialize.F90"       
+#include "stable_pbl_files/temporalHook.F90"  
 
-program gabls_igrid
+program stable_pbl
     use mpi
     use kind_parameters,  only: clen
     use IncompressibleGrid, only: igrid
@@ -17,7 +17,6 @@ program gabls_igrid
 
     type(igrid), allocatable, target :: igp
     character(len=clen) :: inputfile
-    type(budgets_time_avg) :: budg_tavg
     integer :: ierr
     type(budgets_xy_avg) :: budg_xy
     type(budgets_time_avg) :: budg_tavg
@@ -30,11 +29,10 @@ program gabls_igrid
 
     call igp%init(inputfile)          !<-- Properly initialize the hit_grid solver (see hit_grid.F90)
   
-    call igp%start_io(.false.)                !<-- Start I/O by creating a header file (see io.F90)
+    call igp%start_io(.true.)                !<-- Start I/O by creating a header file (see io.F90)
+
     
     call igp%printDivergence()
-
-    call budg_tavg%init(inputfile, igp)   !<-- Budget class initialization 
   
     call initialize_controller_location(igp, inputfile)
 
@@ -46,6 +44,7 @@ program gabls_igrid
        
        call igp%timeAdvance()     !<-- Time stepping scheme + Pressure Proj. (see igridWallM.F90)
        call doTemporalStuff(igp)     !<-- Go to the temporal hook (see temporalHook.F90)
+
        call budg_xy%doBudgets()         !<--- perform budget related operations 
        call budg_tavg%doBudgets()       !<--- perform budget related operations 
     end do 
@@ -54,7 +53,7 @@ program gabls_igrid
     call budg_tavg%destroy()             !<-- release memory taken by the budget class 
 
     call igp%finalize_io()                  !<-- Close the header file (wrap up i/o)
-    call budg_tavg%destroy()           !<-- release memory taken by the budget class 
+
     call igp%destroy()                !<-- Destroy the IGRID derived type 
    
 
