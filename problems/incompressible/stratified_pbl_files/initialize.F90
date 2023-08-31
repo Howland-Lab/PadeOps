@@ -12,7 +12,7 @@ module convective_igrid_parameters
     real(rkind) :: randomScaleFact = 0.002_rkind ! 0.2% of the mean value
     integer :: nxg, nyg, nzg
     
-    real(rkind), parameter :: xDim = 1000._rkind, uDim = 8._rkind !sqrt(3.0_rkind**2+9._rkind**2) ! xDim is set to 100 so that any turbine can be used
+    real(rkind), parameter :: xDim = 1000._rkind, uDim = 12._rkind !sqrt(3.0_rkind**2+9._rkind**2) ! xDim is set to 100 so that any turbine can be used
     real(rkind), parameter :: timeDim = xDim/uDim
 
 end module     
@@ -32,7 +32,7 @@ contains
         real(rkind), dimension(:,:), allocatable :: data2read
         character(len=clen) :: fname_G, fname_wtheta, fname_galpha
         integer :: ioUnit
-        real(rkind), parameter :: xDim = 1000._rkind, uDim = 8._rkind !sqrt(3.0_rkind**2+9._rkind**2)
+        real(rkind), parameter :: xDim = 1000._rkind, uDim = 12._rkind !sqrt(3.0_rkind**2+9._rkind**2)
         real(rkind) :: G_BC = 8.0, wtheta_BC = 0.0, g_alpha_BC = 0.0
         logical :: read_BCs = .true.
         namelist /stratified_pbl_BCS/ fname_G, fname_wtheta, fname_galpha, G_tolerance, read_BCs, G_BC, wtheta_BC, g_alpha_BC
@@ -327,6 +327,29 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
        end if
     end do
 
+    ! Neutral profile for the unstable case from Pino and VILÀ-GUERAU DE ARELLANO
+    case(7)
+    do k = 1, decompC%xsz(3)
+        if (ztmp(1,1,k)<625.d0) then
+            T(:,:,k) = Tsurf0
+        elseif (ztmp(1,1,k)>=625.d0 .and. ztmp(1,1,k)<825.d0) then
+            T(:,:,k) = Tsurf0 + (ztmp(1,1,k)-625.d0) * 6.d0 / 200.d0
+        elseif (ztmp(1,1,k)>=825.d0) then
+            T(:,:,k) = Tsurf0 + 6.d0 + (ztmp(1,1,k)-825.d0) * 0.003d0
+        end if
+    end do
+    ! Neutral profile for the unstable case from Pino and VILÀ-GUERAU DE ARELLANO with higher BL
+    case(8)
+    do k = 1, decompC%xsz(3)
+        if (ztmp(1,1,k)<800.d0) then
+            T(:,:,k) = Tsurf0
+        elseif (ztmp(1,1,k)>=800.d0 .and. ztmp(1,1,k)<1000.d0) then
+            T(:,:,k) = Tsurf0 + (ztmp(1,1,k)-800.d0) * 6.d0 / 200.d0
+        elseif (ztmp(1,1,k)>=1000.d0) then
+            T(:,:,k) = Tsurf0 + 6.d0 + (ztmp(1,1,k)-1000.d0) * 0.003d0
+        end if
+    end do
+
     case default
         call gracefulExit("Invalid choice for initial potential temperature profile",423)
     end select
@@ -376,7 +399,14 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
         ! From Kumar et al. (2006)
         case(6)
             zH = 800.d0
-    
+
+        ! From Pino
+        case(7)
+            zH = 825.d0
+
+        case(8)
+            zH = 1000.d0
+
         case default
             call gracefulExit("Invalid choice for initial potential temperature profile",423)
         end select

@@ -1425,13 +1425,6 @@ module budgets_time_avg_deficit_mod
         this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + (this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) - this%pre_budget%igrid_sim%rbuffxC(:,:,:,1)) &
                                     * (this%prim_budget%igrid_sim%tauSGS_ij(:,:,:,6) - this%pre_budget%igrid_sim%tauSGS_ij(:,:,:,6))
 
-
-        ! 7. Actuator disk/Turbine sink  (J)
-        call this%pre_budget%igrid_sim%spectC%ifft(this%pre_budget%uturb,this%pre_budget%igrid_sim%rbuffxC(:,:,:,1))
-        call this%prim_budget%igrid_sim%spectC%ifft(this%prim_budget%uturb,this%prim_budget%igrid_sim%rbuffxC(:,:,:,1))
-        this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + (this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u) & 
-                                    * (this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) - this%pre_budget%igrid_sim%rbuffxC(:,:,:,1))
-
         ! 7. Actuator disk/Turbine sink  (J)
         call this%pre_budget%igrid_sim%spectC%ifft(this%pre_budget%vturb,this%pre_budget%igrid_sim%rbuffxC(:,:,:,1))
         call this%prim_budget%igrid_sim%spectC%ifft(this%prim_budget%vturb,this%prim_budget%igrid_sim%rbuffxC(:,:,:,1))
