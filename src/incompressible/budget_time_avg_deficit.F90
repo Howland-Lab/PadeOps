@@ -1430,6 +1430,12 @@ module budgets_time_avg_deficit_mod
         call this%prim_budget%igrid_sim%spectC%ifft(this%prim_budget%vturb,this%prim_budget%igrid_sim%rbuffxC(:,:,:,1))
         this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + (this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v) & 
                                     * (this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) - this%pre_budget%igrid_sim%rbuffxC(:,:,:,1))
+
+        call this%pre_budget%igrid_sim%spectC%ifft(this%pre_budget%uturb,this%pre_budget%igrid_sim%rbuffxC(:,:,:,1))
+        call this%prim_budget%igrid_sim%spectC%ifft(this%prim_budget%uturb,this%prim_budget%igrid_sim%rbuffxC(:,:,:,1))
+        this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + (this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u) & 
+                                    * (this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) - this%pre_budget%igrid_sim%rbuffxC(:,:,:,1))
+
  
         ! 8. Buoyancy transfer: 
         call this%pre_budget%igrid_sim%spectE%ifft(this%pre_budget%wb,this%pre_budget%igrid_sim%rbuffxE(:,:,:,1))
@@ -1556,7 +1562,7 @@ module budgets_time_avg_deficit_mod
         this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) - this%budget_2(:,:,:,6)
         
         ! 7. Actuator disk/Turbine sink 
-        this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) - delta_Umn*this%budget_1(:,:,:,4)
+        this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) - delta_Umn*this%budget_1(:,:,:,10) - delta_Vmn*this%budget_1(:,:,:,20)
 
         ! 8. Buoyancy
         this%budget_3(:,:,:,8) = this%budget_3(:,:,:,8) - delta_Wmn*this%budget_1(:,:,:,30)
@@ -1603,7 +1609,7 @@ module budgets_time_avg_deficit_mod
         this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) - buff*delta_Wmn
 
         this%budget_3(:,:,:,8) = this%budget_3(:,:,:,8) + delta_Wmn*this%budget_1(:,:,:,30)
-        this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + delta_Umn*this%budget_1(:,:,:,4)
+        this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + delta_Umn*this%budget_1(:,:,:,10) + delta_Vmn*this%budget_1(:,:,:,20)
         this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + this%budget_2(:,:,:,6)
         this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) + this%budget_3(:,:,:,6) + this%budget_2(:,:,:,5) !+ this%budget_2(:,:,:,6) kktodo
         this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + this%budget_2(:,:,:,4)
@@ -1779,8 +1785,8 @@ module budgets_time_avg_deficit_mod
             call this%ddz_R2R(buff2,buff)
             this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) - buff*this%budget_0(:,:,:,3)
     
-            this%budget_3(:,:,:,8) = this%budget_3(:,:,:,8) + this%pre_budget%budget_0(:,:,:,3)*this%budget_1(:,:,:,30)
-            this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + this%pre_budget%budget_0(:,:,:,1)*this%budget_1(:,:,:,4)
+            this%budget_3(:,:,:,8) = this%budget_3(:,:,:,8) + this%budget_0(:,:,:,3)*this%budget_1(:,:,:,30)
+            this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + this%budget_0(:,:,:,1)*this%budget_1(:,:,:,10) + this%budget_0(:,:,:,2)*this%budget_1(:,:,:,20)
             this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + this%budget_2(:,:,:,6)
             this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) + this%budget_3(:,:,:,6) + this%budget_2(:,:,:,5) !+ this%budget_2(:,:,:,6) kktodo
             this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + this%budget_2(:,:,:,4)
