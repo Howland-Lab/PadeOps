@@ -332,6 +332,7 @@ contains
 
             if (restart_budgets) then
                call message(0,"Budget restart")
+               this%counter = restart_counter
                call this%RestartBudget(restart_dir, restart_rid, restart_tid, restart_counter)
             else
                 call this%resetBudget()
@@ -2165,8 +2166,6 @@ subroutine DumpBudget4_23(this)
 
         buff => this%igrid_sim%rbuffxC(:,:,:,1)
 
-        this%counter = cid
-
         ! Budget 0: 
         do idx = 1,size(this%budget_0,4)
         !    if (allocated(this%budget_0)) deallocate(this%budget_0)
@@ -2240,7 +2239,7 @@ subroutine DumpBudget4_23(this)
         
         ! Budget 3:
         if (this%budgetType>2) then
-           this%budget_0 = this%budget_0/(real(this%counter,rkind) + 1.d-18)
+           this%budget_0 = this%budget_0/(real(cid,rkind) + 1.d-18)
            this%budget_1 = this%budget_1/(real(cid,rkind) + 1.d-18)
            do idx = 1,size(this%budget_3,4)
               !          if (allocated(this%budget_3)) deallocate(this%budget_3)
@@ -2254,7 +2253,7 @@ subroutine DumpBudget4_23(this)
            this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + this%budget_2(:,:,:,4)
            this%budget_3(:,:,:,3) = this%budget_3(:,:,:,3) + this%budget_3(:,:,:,2) + this%budget_2(:,:,:,2) + this%budget_2(:,:,:,3)
            this%budget_3 = this%budget_3*(real(cid,rkind) + 1.d-18)
-           this%budget_0 = this%budget_0*(real(this%counter,rkind) + 1.d-18)
+           this%budget_0 = this%budget_0*(real(cid,rkind) + 1.d-18)
            this%budget_1 = this%budget_1*(real(cid,rkind) + 1.d-18)
            
         end if
