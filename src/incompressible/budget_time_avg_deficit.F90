@@ -124,9 +124,9 @@ module budgets_time_avg_deficit_mod
     ! 6. SGS + viscous dissipation   (H+I)
     ! 7. Actuator disk/Turbine sink  (J)
     ! 8. Buoyancy
-    ! 9:  TKE production - <delta ui' delta uj'>
-    ! 10: TKE production - <delta ui' base uj'>
-    ! 11: TKE production - <base ui' delta uj'>
+    ! 9:  TKE production - <delta ui' delta uj'> d delta ui / dxj
+    ! 10: TKE production - <delta ui' base uj'> d delta ui / dxj
+    ! 11: TKE production - <delta ui' delta uj'> d base ui / dxj
     ! 12: Turbulent transport  - <delta ui' delta uj'>
     ! 13: Turbulent transport  - <delta ui' base uj'>
     ! 14: Turbulent transport  - <base ui' delta uj'>
@@ -1483,14 +1483,11 @@ module budgets_time_avg_deficit_mod
         ! Total TKE production           
         this%budget_3(:,:,:,1) = - this%budget_2(:,:,:,1)
 
-        ! TKE production - <delta ui' delta uj'>
+        ! TKE production - <delta ui' delta uj'> d delta ui / dxj
         this%budget_3(:,:,:,9) = - this%budget_2(:,:,:,11)
    
-        ! TKE production - <delta ui' base uj'>
+        ! TKE production - <delta ui' base uj'> d delta ui / dxj
         this%budget_3(:,:,:,10) = - this%budget_2(:,:,:,12)
-
-        ! TKE production - <delta uj' base ui'>
-        this%budget_3(:,:,:,11) = - this%budget_2(:,:,:,13)
 
         ! 2. advective transport     
         buff2 = half*(delta_R11 + delta_R22 + delta_R33)
@@ -1509,31 +1506,42 @@ module budgets_time_avg_deficit_mod
         call this%ddx_R2R(buff2,buff)
         this%budget_3(:,:,:,18) = this%budget_3(:,:,:,18) + buff*delta_Umn
 
+        ! 11. TKE production - <delta uj' delta ui'> d base ui / dxj
+        this%budget_3(:,:,:,11) = - buff*delta_R11
+
         call this%ddy_R2R(buff2,buff);
         this%budget_3(:,:,:,19) = this%budget_3(:,:,:,19) + buff*delta_Umn
+        this%budget_3(:,:,:,11) = this%budget_3(:,:,:,11) - buff*delta_R12
 
         call this%ddz_R2R(buff2,buff);
         this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) +buff*delta_Umn
+        this%budget_3(:,:,:,11) = this%budget_3(:,:,:,11) - buff*delta_R13
 
         buff2 = base_Vmn
         call this%ddx_R2R(buff2,buff)
         this%budget_3(:,:,:,18) = this%budget_3(:,:,:,18) + buff*delta_Vmn
+        this%budget_3(:,:,:,11) = this%budget_3(:,:,:,11) - buff*delta_R12
 
         call this%ddy_R2R(buff2,buff);
         this%budget_3(:,:,:,19) = this%budget_3(:,:,:,19) + buff*delta_Vmn
+        this%budget_3(:,:,:,11) = this%budget_3(:,:,:,11) - buff*delta_R22
 
         call this%ddz_R2R(buff2,buff);
         this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) + buff*delta_Vmn
+        this%budget_3(:,:,:,11) = this%budget_3(:,:,:,11) - buff*delta_R23
 
         buff2 = base_Wmn
         call this%ddx_R2R(buff2,buff)
         this%budget_3(:,:,:,18) = this%budget_3(:,:,:,18) + buff*delta_Wmn
+        this%budget_3(:,:,:,11) = this%budget_3(:,:,:,11) - buff*delta_R13
 
         call this%ddy_R2R(buff2,buff);
         this%budget_3(:,:,:,19) = this%budget_3(:,:,:,19) + buff*delta_Wmn
+        this%budget_3(:,:,:,11) = this%budget_3(:,:,:,11) - buff*delta_R23
 
         call this%ddz_R2R(buff2,buff);
         this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) + buff*delta_Wmn
+        this%budget_3(:,:,:,11) = this%budget_3(:,:,:,11) - buff*delta_R33
 
         this%budget_3(:,:,:,17) = delta_Umn*this%budget_3(:,:,:,18) + delta_Vmn*this%budget_3(:,:,:,19) + delta_Wmn*this%budget_3(:,:,:,20)
                                     
@@ -1545,7 +1553,8 @@ module budgets_time_avg_deficit_mod
         this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) - this%budget_3(:,:,:,15) - this%budget_2(:,:,:,17) - this%budget_2(:,:,:,15)
 
         ! < delta ui' delta uj' d base ui'/dxj >        
-        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) - this%budget_3(:,:,:,17) - this%budget_2(:,:,:,19) - this%budget_2(:,:,:,16)
+        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) - this%budget_3(:,:,:,17) - this%budget_2(:,:,:,19) - this%budget_2(:,:,:,16) &
+             - this%budget_2(:,:,:,13) + this%budget_3(:,:,:,11)
 
         ! total (choosing to only include true transport terms for now)
         this%budget_3(:,:,:,3) = this%budget_3(:,:,:,12) + this%budget_3(:,:,:,13)
@@ -1574,9 +1583,10 @@ module budgets_time_avg_deficit_mod
 
         ! Revert arrays to the correct state for Assemble (Order is very
         ! important throughout this subroutine, particularly indices 5 and 6)       
-        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) + this%budget_3(:,:,:,17) + this%budget_2(:,:,:,13) + this%budget_2(:,:,:,16)
-        this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) + this%budget_3(:,:,:,15) + this%budget_2(:,:,:,12) + this%budget_2(:,:,:,15)
-        this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) + this%budget_3(:,:,:,16) + this%budget_2(:,:,:,11) + this%budget_2(:,:,:,14)
+        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) - this%budget_3(:,:,:,17) - this%budget_2(:,:,:,19) - this%budget_2(:,:,:,16) &
+             - this%budget_2(:,:,:,13) + this%budget_3(:,:,:,11)
+        this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) + this%budget_3(:,:,:,15) + this%budget_2(:,:,:,17) + this%budget_2(:,:,:,15)
+        this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) + this%budget_3(:,:,:,16) + this%budget_2(:,:,:,18) + this%budget_2(:,:,:,14)
         
         buff2 = base_Umn
         call this%ddx_R2R(buff2,buff)
@@ -1751,7 +1761,8 @@ module budgets_time_avg_deficit_mod
 
             !  Revert arrays to the correct state for Assemble (Order is very
             ! important throughout this subroutine, particularly indices 5 and 6)       
-            this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) + this%budget_3(:,:,:,17) + this%budget_2(:,:,:,19) + this%budget_2(:,:,:,16)
+            this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) - this%budget_3(:,:,:,17) - this%budget_2(:,:,:,19) - this%budget_2(:,:,:,16) &
+                 - this%budget_2(:,:,:,13) + this%budget_3(:,:,:,11)
             this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) + this%budget_3(:,:,:,15) + this%budget_2(:,:,:,17) + this%budget_2(:,:,:,15)
             this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) + this%budget_3(:,:,:,16) + this%budget_2(:,:,:,18) + this%budget_2(:,:,:,14)
             
