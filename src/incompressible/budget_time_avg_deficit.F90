@@ -1269,76 +1269,76 @@ module budgets_time_avg_deficit_mod
 
 
         ! < delta ui' delta uj' d base ui'/dxj >
-        call this%ddx_R2R(this%pre_budget%igrid_sim%u, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
-        this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+        call this%ddx_R2R(this%pre_budget%igrid_sim%u, this%pre_budget%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) - this%pre_budget%igrid_sim%rbuffxC(:,:,:,1) &
                                 *(this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u)*(this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u)
 
         ! base advection term in x
-        this%budget_3(:,:,:,18) = this%budget_3(:,:,:,18) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+        this%budget_3(:,:,:,18) = this%budget_3(:,:,:,18) - this%pre_budget%igrid_sim%rbuffxC(:,:,:,1) &
                                 *(this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u) 
 
-        call this%ddy_R2R(this%pre_budget%igrid_sim%u, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
-        this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+        call this%ddy_R2R(this%pre_budget%igrid_sim%u, this%pre_budget%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) - this%pre_budget%igrid_sim%rbuffxC(:,:,:,1) &
                                 *(this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v)*(this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u)
 
         ! base advection term in y
-        this%budget_3(:,:,:,19) = this%budget_3(:,:,:,19) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+        this%budget_3(:,:,:,19) = this%budget_3(:,:,:,19) - this%pre_budget%igrid_sim%rbuffxC(:,:,:,1) &
                                 *(this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u)
 
-        call this%ddz_R2R(this%pre_budget%igrid_sim%u, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
-        this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+        call this%ddz_R2R(this%pre_budget%igrid_sim%u, this%pre_budget%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) - this%pre_budget%igrid_sim%rbuffxC(:,:,:,1) &
                                 *(this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)*(this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u)
                       
         ! base advection term in z
-        this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+        this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) - this%pre_budget%igrid_sim%rbuffxC(:,:,:,1) &
                                 *(this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u)
 
-        call this%ddx_R2R(this%pre_budget%igrid_sim%v, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
-        this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+        call this%ddx_R2R(this%pre_budget%igrid_sim%v, this%pre_budget%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) - this%pre_budget%igrid_sim%rbuffxC(:,:,:,1) &
                                 *(this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u)*(this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v)
 
         ! base advection term in x
-        this%budget_3(:,:,:,18) = this%budget_3(:,:,:,18) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+        this%budget_3(:,:,:,18) = this%budget_3(:,:,:,18) - this%pre_budget%igrid_sim%rbuffxC(:,:,:,1) &
                                 *(this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v)
 
-        call this%ddy_R2R(this%pre_budget%igrid_sim%v, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
-        this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+        call this%ddy_R2R(this%pre_budget%igrid_sim%v, this%pre_budget%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) - this%pre_budget%igrid_sim%rbuffxC(:,:,:,1) &
                                 *(this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v)*(this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v)
 
         ! base advection term in y
-        this%budget_3(:,:,:,19) = this%budget_3(:,:,:,19) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+        this%budget_3(:,:,:,19) = this%budget_3(:,:,:,19) - this%pre_budget%igrid_sim%rbuffxC(:,:,:,1) &
                                 *(this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v)
 
-        call this%ddz_R2R(this%pre_budget%igrid_sim%v, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
-        this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+        call this%ddz_R2R(this%pre_budget%igrid_sim%v, this%pre_budget%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) - this%pre_budget%igrid_sim%rbuffxC(:,:,:,1) &
                                 *(this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)*(this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v)
 
         ! base advection term in z
-        this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+        this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) - this%pre_budget%igrid_sim%rbuffxC(:,:,:,1) &
                                 *(this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v)
 
-        call this%ddx_R2R(this%pre_budget%igrid_sim%wC, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
-        this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+        call this%ddx_R2R(this%pre_budget%igrid_sim%wC, this%pre_budget%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) - this%pre_budget%igrid_sim%rbuffxC(:,:,:,1) &
                                 *(this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u)*(this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)
 
         ! base advection term in x
-        this%budget_3(:,:,:,18) = this%budget_3(:,:,:,18) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+        this%budget_3(:,:,:,18) = this%budget_3(:,:,:,18) - this%pre_budget%igrid_sim%rbuffxC(:,:,:,1) &
                                 *(this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)
 
-        call this%ddy_R2R(this%pre_budget%igrid_sim%wC, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
-        this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+        call this%ddy_R2R(this%pre_budget%igrid_sim%wC, this%pre_budget%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) - this%pre_budget%igrid_sim%rbuffxC(:,:,:,1) &
                                 *(this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v)*(this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)
 
         ! base advection term in y
-        this%budget_3(:,:,:,19) = this%budget_3(:,:,:,19) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+        this%budget_3(:,:,:,19) = this%budget_3(:,:,:,19) - this%pre_budget%igrid_sim%rbuffxC(:,:,:,1) &
                                 *(this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)
 
-        call this%ddz_R2R(this%pre_budget%igrid_sim%wC, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
-        this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+        call this%ddz_R2R(this%pre_budget%igrid_sim%wC, this%pre_budget%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) - this%pre_budget%igrid_sim%rbuffxC(:,:,:,1) &
                                 *(this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)*(this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)
                 
         ! base advection term in z
-        this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+        this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) - this%pre_budget%igrid_sim%rbuffxC(:,:,:,1) &
                                 *(this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)
 
         ! 4. Pressure transport      
@@ -1539,13 +1539,13 @@ module budgets_time_avg_deficit_mod
                                     
         !!! 3. turbulent transport 
         ! < delta ui' delta uj' d delta ui'/dxj >        
-        this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) - this%budget_3(:,:,:,16) - this%budget_2(:,:,:,11) - this%budget_2(:,:,:,14)
+        this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) - this%budget_3(:,:,:,16) - this%budget_2(:,:,:,18) - this%budget_2(:,:,:,14)
 
         ! < delta ui' base uj' d delta ui'/dxj >        
-        this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) - this%budget_3(:,:,:,15) - this%budget_2(:,:,:,12) - this%budget_2(:,:,:,15)
+        this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) - this%budget_3(:,:,:,15) - this%budget_2(:,:,:,17) - this%budget_2(:,:,:,15)
 
         ! < delta ui' delta uj' d base ui'/dxj >        
-        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) - this%budget_3(:,:,:,17) - this%budget_2(:,:,:,13) - this%budget_2(:,:,:,16)
+        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) - this%budget_3(:,:,:,17) - this%budget_2(:,:,:,19) - this%budget_2(:,:,:,16)
 
         ! total (choosing to only include true transport terms for now)
         this%budget_3(:,:,:,3) = this%budget_3(:,:,:,12) + this%budget_3(:,:,:,13)
@@ -1751,9 +1751,9 @@ module budgets_time_avg_deficit_mod
 
             !  Revert arrays to the correct state for Assemble (Order is very
             ! important throughout this subroutine, particularly indices 5 and 6)       
-            this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) + this%budget_3(:,:,:,17) + this%budget_2(:,:,:,13) + this%budget_2(:,:,:,16)
-            this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) + this%budget_3(:,:,:,15) + this%budget_2(:,:,:,12) + this%budget_2(:,:,:,15)
-            this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) + this%budget_3(:,:,:,16) + this%budget_2(:,:,:,11) + this%budget_2(:,:,:,14)
+            this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) + this%budget_3(:,:,:,17) + this%budget_2(:,:,:,19) + this%budget_2(:,:,:,16)
+            this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) + this%budget_3(:,:,:,15) + this%budget_2(:,:,:,17) + this%budget_2(:,:,:,15)
+            this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) + this%budget_3(:,:,:,16) + this%budget_2(:,:,:,18) + this%budget_2(:,:,:,14)
             
             buff2 = this%pre_budget%budget_0(:,:,:,1)
             call this%ddx_R2R(buff2,buff)
@@ -1788,7 +1788,7 @@ module budgets_time_avg_deficit_mod
             this%budget_3(:,:,:,8) = this%budget_3(:,:,:,8) + this%budget_0(:,:,:,3)*this%budget_1(:,:,:,30)
             this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + this%budget_0(:,:,:,1)*this%budget_1(:,:,:,10) + this%budget_0(:,:,:,2)*this%budget_1(:,:,:,20)
             this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + this%budget_2(:,:,:,6)
-            this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) + this%budget_3(:,:,:,6) + this%budget_2(:,:,:,5) !+ this%budget_2(:,:,:,6) kktodo
+            this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) + this%budget_3(:,:,:,6) + this%budget_2(:,:,:,5)
             this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + this%budget_2(:,:,:,4)
             this%budget_3(:,:,:,3) = this%budget_3(:,:,:,3) + this%budget_3(:,:,:,2) + this%budget_2(:,:,:,2) + this%budget_2(:,:,:,3)
             
