@@ -1480,14 +1480,15 @@ module budgets_time_avg_deficit_mod
         buff => this%prim_budget%igrid_sim%rbuffxC(:,:,:,1); buff2 => this%prim_budget%igrid_sim%rbuffxC(:,:,:,2)
 
         !!! 1. TKE production   
-        ! Total TKE production           
-        this%budget_3(:,:,:,1) = - this%budget_2(:,:,:,1)
-
         ! TKE production - <delta ui' delta uj'> d delta ui / dxj
         this%budget_3(:,:,:,9) = - this%budget_2(:,:,:,11)
    
         ! TKE production - <delta ui' base uj'> d delta ui / dxj
         this%budget_3(:,:,:,10) = - this%budget_2(:,:,:,12)
+
+        ! Total TKE production           
+        ! this does not include production from interaction of base flow gradient with the deficit stresses
+        this%budget_3(:,:,:,1) = this%budget_3(:,:,:,9) + this%budget_3(:,:,:,10)
 
         ! 2. advective transport     
         buff2 = half*(delta_R11 + delta_R22 + delta_R33)
@@ -1554,7 +1555,7 @@ module budgets_time_avg_deficit_mod
 
         ! < delta ui' delta uj' d base ui'/dxj >        
         this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) - this%budget_3(:,:,:,17) - this%budget_2(:,:,:,19) - this%budget_2(:,:,:,16) &
-             - this%budget_2(:,:,:,13) + this%budget_3(:,:,:,11)
+             - this%budget_2(:,:,:,13) -  this%budget_3(:,:,:,11)
 
         ! total (choosing to only include true transport terms for now)
         this%budget_3(:,:,:,3) = this%budget_3(:,:,:,12) + this%budget_3(:,:,:,13)
@@ -1583,8 +1584,8 @@ module budgets_time_avg_deficit_mod
 
         ! Revert arrays to the correct state for Assemble (Order is very
         ! important throughout this subroutine, particularly indices 5 and 6)       
-        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) - this%budget_3(:,:,:,17) - this%budget_2(:,:,:,19) - this%budget_2(:,:,:,16) &
-             - this%budget_2(:,:,:,13) + this%budget_3(:,:,:,11)
+        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) + this%budget_3(:,:,:,17) + this%budget_2(:,:,:,19) + this%budget_2(:,:,:,16) &
+             + this%budget_2(:,:,:,13) + this%budget_3(:,:,:,11)
         this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) + this%budget_3(:,:,:,15) + this%budget_2(:,:,:,17) + this%budget_2(:,:,:,15)
         this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) + this%budget_3(:,:,:,16) + this%budget_2(:,:,:,18) + this%budget_2(:,:,:,14)
         
@@ -1623,8 +1624,6 @@ module budgets_time_avg_deficit_mod
         this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + this%budget_2(:,:,:,6)
         this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) + this%budget_3(:,:,:,6) + this%budget_2(:,:,:,5) !+ this%budget_2(:,:,:,6) kktodo
         this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + this%budget_2(:,:,:,4)
-        this%budget_3(:,:,:,3) = this%budget_3(:,:,:,3) + this%budget_3(:,:,:,2) + this%budget_2(:,:,:,2) + this%budget_2(:,:,:,3)
-        
 
         nullify(delta_Umn,delta_Vmn,delta_Wmn,base_Umn,base_Vmn,base_Wmn, &
         delta_R11,delta_R12,delta_R13, &
@@ -1761,8 +1760,8 @@ module budgets_time_avg_deficit_mod
 
             !  Revert arrays to the correct state for Assemble (Order is very
             ! important throughout this subroutine, particularly indices 5 and 6)       
-            this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) - this%budget_3(:,:,:,17) - this%budget_2(:,:,:,19) - this%budget_2(:,:,:,16) &
-                 - this%budget_2(:,:,:,13) + this%budget_3(:,:,:,11)
+            this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) + this%budget_3(:,:,:,17) + this%budget_2(:,:,:,19) + this%budget_2(:,:,:,16) &
+                 + this%budget_2(:,:,:,13) + this%budget_3(:,:,:,11)
             this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) + this%budget_3(:,:,:,15) + this%budget_2(:,:,:,17) + this%budget_2(:,:,:,15)
             this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) + this%budget_3(:,:,:,16) + this%budget_2(:,:,:,18) + this%budget_2(:,:,:,14)
             
@@ -1801,7 +1800,6 @@ module budgets_time_avg_deficit_mod
             this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + this%budget_2(:,:,:,6)
             this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) + this%budget_3(:,:,:,6) + this%budget_2(:,:,:,5)
             this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + this%budget_2(:,:,:,4)
-            this%budget_3(:,:,:,3) = this%budget_3(:,:,:,3) + this%budget_3(:,:,:,2) + this%budget_2(:,:,:,2) + this%budget_2(:,:,:,3)
             
             ! Budget 1 stress divergence terms
             this%budget_0 = this%budget_0*(real(this%counter,rkind) + 1.d-18)
