@@ -333,7 +333,7 @@ module budgets_time_avg_deficit_mod
 
  
              if (restart_budgets) then
-                 call message(0,"Budget deficit restart")
+                 call message(0,"Budget deficit  restart")
                  call this%RestartBudget(restart_dir, restart_rid, restart_tid, restart_counter)
              else
                  call this%resetBudget()
