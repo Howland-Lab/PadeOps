@@ -10,12 +10,15 @@ program diurnal
     use temporalhook, only: doTemporalStuff
     use timer, only: tic, toc
     use exits, only: message
+    use budgets_time_avg_mod, only: budgets_time_avg
     use diurnalBCsmod 
     implicit none
 
     type(igrid), allocatable, target :: igp
     character(len=clen) :: inputfile
     integer :: ierr
+    type(budgets_time_avg) :: budg_tavg
+
 
     call MPI_Init(ierr)               !<-- Begin MPI
 
@@ -33,15 +36,20 @@ program diurnal
    
     call diurnalBCs_CorrectnessCheck(igp%tsim, igp%G_geostrophic)
 
+    call budg_tavg%init(inputfile, igp) !<-- Budget class initialization 
+
     call tic() 
     do while (igp%tsim < igp%tstop) 
 
        call get_diurnalBCs(igp%tsim, igp%G_geostrophic, igp%wTh_surf, igp%G_alpha)
        call igp%timeAdvance()     !<-- Time stepping scheme + Pressure Proj. (see igridWallM.F90)
        call doTemporalStuff(igp)     !<-- Go to the temporal hook (see temporalHook.F90)
+       call budg_tavg%doBudgets()       !<--- perform budget related operations 
        
     end do 
- 
+    
+    call budg_tavg%destroy()             !<-- release memory taken by the budget class 
+   
     call igp%finalize_io()                  !<-- Close the header file (wrap up i/o)
 
     call igp%destroy()                !<-- Destroy the IGRID derived type 
