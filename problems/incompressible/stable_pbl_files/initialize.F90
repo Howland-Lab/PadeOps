@@ -119,6 +119,14 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
        end where
        T = T + 0.0001d0*ztmp
 
+    ! inversion layer of strength 10 K/km (same as Wu and Archer 2023)
+    case(5)
+       T = 0.01d0*(ztmp - 200.d0) + Tsurf0
+       where(ztmp < 200.d0)
+          T = Tsurf0
+       end where
+       ! T = T + 0.0001d0*ztmp
+
 
     case default
         call gracefulExit("Invalid choice for initial potential temperature profile",423)
