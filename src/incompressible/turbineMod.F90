@@ -9,6 +9,7 @@ module turbineMod
     use actuatorLineMod, only: actuatorLine
     use actuatorDisk_YawMod, only: actuatorDisk_yaw
     use actuatorDisk_FilteredMod, only: actuatorDisk_filtered
+    use actuatorDisk_CTMod, only: actuatorDisk_CT
     use dynamicYawMod, only: dynamicYaw
     use exits, only: GracefulExit, message
     use spectralMod, only: spectral  
@@ -42,6 +43,7 @@ module turbineMod
         type(actuatorLine), allocatable, dimension(:) :: turbArrayALM
         type(actuatorDisk_yaw), allocatable, dimension(:) :: turbArrayADM_Tyaw
         type(actuatorDisk_filtered), allocatable, dimension(:) :: turbArrayADM_fil
+        type(actuatorDisk_CT), allocatable, dimension(:) :: turbArrayADM_CT
         type(dynamicYaw) :: dyaw
 
         type(decomp_info), pointer :: gpC, sp_gpC, gpE, sp_gpE
@@ -311,6 +313,17 @@ subroutine init(this, inputFile, gpC, gpE, spectC, spectE, cbuffyC, cbuffYE, cbu
              this%theta(i) = 0.d0
          end do
          call message(0,"FILTERED ADM WIND TURBINE (Type 5) array initialized")
+
+      case (6) 
+        ! added ADM type 6 for pressure figure KSH 09/17/2023
+        allocate (this%turbArrayADM_CT(this%nTurbines))
+         do i = 1, this%nTurbines
+             call this%turbArrayADM_CT(i)%init(turbInfoDir, i, mesh(:,:,:,1), mesh(:,:,:,2), mesh(:,:,:,3))
+             this%gamma(i) = this%turbArrayADM_CT(i)%yaw*pi/180.d0  ! stored in RADIANS
+             this%theta(i) = 0.d0
+         end do
+         call message(0,"CT ADM WIND TURBINE (Type 6) array initialized")
+
       end select 
     else
       call GracefulExit("Actuator Line implementation temporarily disabled. Talk to Aditya if you want to know why.",423)
@@ -373,6 +386,10 @@ subroutine destroy(this)
     case (5)
       do i = 1, this%nTurbines
         call this%turbArrayADM_fil(i)%destroy()
+      end do
+    case (6)
+      do i = 1, this%nTurbines
+        call this%turbArrayADM_ct(i)%destroy()
       end do
     end select
       !deallocate(this%turbArrayADM)
@@ -754,6 +771,11 @@ subroutine getForceRHS(this, dt, u, v, wC, urhs, vrhs, wrhs, newTimeStep, inst_h
                     call message(2, "Turbine yaw: ", this%gamma(i))
                     call this%turbArrayADM_fil(i)%get_RHS(u,v,wC,this%fx,this%fy,this%fz, this%gamma(i), this%theta(i))
                end do
+           case (6)
+               do i = 1, this%nTurbines
+                    call message(2, "Turbine yaw: ", this%gamma(i))
+                    call this%turbArrayADM_ct(i)%get_RHS(u,v,wC,this%fx,this%fy,this%fz, this%gamma(i), this%theta(i))
+               end do
            end select 
     end if 
 
@@ -818,6 +840,26 @@ subroutine write_turbine_power(this, TID, outputdir, runID)
                 filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
                 call write_1d_ascii(this%turbArrayADM_fil(i)%vTime(1:this%turbArrayADM_fil(i)%tInd-1),filename)  
                 this%turbArrayADM_fil(i)%tInd = 1
+            end if 
+        elseif (this%ADM_Type==6) then
+            if (allocated(this%turbArrayADM_ct(i)%powerTime)) then
+                write(tempname,"(A3,I2.2,A2,I6.6,A6,I2.2,A4)") "Run",runID,"_t", TID, "_turbP",i,".pow"
+                filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
+                call write_1d_ascii(this%turbArrayADM_ct(i)%powerTime(1:this%turbArrayADM_ct(i)%tInd-1),filename)  
+                 
+                write(tempname,"(A3,I2.2,A2,I6.6,A6,I2.2,A4)") "Run",runID,"_t", TID, "_turbU",i,".vel"
+                filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
+                call write_1d_ascii(this%turbArrayADM_ct(i)%uTime(1:this%turbArrayADM_ct(i)%tInd-1),filename)  
+ 
+                write(tempname,"(A3,I2.2,A2,I6.6,A6,I2.2,A4)") "Run",runID,"_t", TID, "_turbV",i,".vel"
+                filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
+                call write_1d_ascii(this%turbArrayADM_ct(i)%vTime(1:this%turbArrayADM_ct(i)%tInd-1),filename)  
+                
+                ! helpful for debuggin: write turbine thrust (make sure it is constant)
+                write(tempname,"(A3,I2.2,A2,I6.6,A6,I2.2,A4)") "Run",runID,"_t", TID, "_turbT",i,".thr"
+                filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
+                call write_1d_ascii(this%turbArrayADM_ct(i)%thrustTime(1:this%turbArrayADM_ct(i)%tInd-1),filename)  
+                this%turbArrayADM_ct(i)%tInd = 1
             end if 
         end if
     end do
