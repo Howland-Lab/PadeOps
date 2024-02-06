@@ -147,6 +147,11 @@ module RoutinesUpsampling
    
             arrOut(:,:,1) = 2.d0*arrOut(:,:,2) - arrOut(:,:,3)
             arrOut(:,:,2*nz) = 2.d0*arrOut(:,:,2*nz - 1) - arrOut(:,:,2*nz - 2)
+            
+            do k = 1, nz  ! test 0-order interpolation
+                arrOut(:,:,2*k) = arrIn(:,:,k)
+                arrOut(:,:,2*k-1) = arrIn(:,:,k)
+            end do
         else
             allocate(z(nz), zfine(nzf))
 
@@ -197,7 +202,9 @@ module RoutinesUpsampling
             do k = 1,nz
                 arrOut(:,:,2*k-1) = arrIn(:,:,k)
             end do 
-            arrOut(:,:,2*nz+1) = arrOut(:,:,nz+1)
+            arrOut(:,:,2*nz+1) = arrIn(:,:,nz+1)
+            !                       ^ changed from arrOut to arrIn on 05/07/23 KSH
+            !call message(1, "nzEf==2*nzE+1. Was this a typo beforehand?")
 
             do k = 1,nz
                 arrOut(:,:,2*k) = 0.5d0*(arrOut(:,:,2*k-1) + arrOut(:,:,2*k+1))

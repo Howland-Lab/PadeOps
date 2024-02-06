@@ -19,15 +19,13 @@ program test_actuatorDisk
     type(actuatorDisk_yaw), dimension(:), allocatable :: hawts_Tyaw
     type(actuatorDisk_filtered), dimension(:), allocatable :: hawts_Tfiltered
     type(actuatorDisk_filtered) :: adm
-    integer, parameter :: nx = 320, ny = 240, nz = 192
-    !character(len=clen) :: inputDir = "/home/aditya90/Codes/PadeOps/data/AD_Coriolis/"
-    !character(len=clen) :: inputDir = "/fastscratch/nghaisas/runs/PadeOps/wupa/run3/deb/turbInfo"
-    !character(len=clen) :: inputDir = "/home1/05294/mhowland/PadeOps/problems/turbines/neutral_pbl_concurrent_files/turbInfo/6x1array_offset"
-    character(len=clen) :: inputDir = "/home1/08445/tg877441/PadeOps/problems/turbines/AD_coriolis_shear_files/turbInfo/1x1array"
+    integer, parameter :: nx = 32, ny = 32, nz = 32
+    character(len=clen) :: inputDir = "/home1/08445/tg877441/my_files/turbInfoTest/1x1Type1"
+    character(len=clen) :: inputDir2 = "/home1/08445/tg877441/my_files/turbInfoTest/1x1filtered"
     real(rkind), dimension(:,:,:), allocatable :: xG, yG, zG
     real(rkind), dimension(:,:,:), allocatable :: u, v, w, rhs1, rhsv, rhsw, rhs2, rhs3, rhs4
     !real(rkind), parameter :: Lx = pi, Ly = 0.5d0*pi, Lz = 1.0d0
-    real(rkind), parameter :: Lx = 30.d0, Ly = 15.d0, Lz = 6.0d0
+    real(rkind), parameter :: Lx = 10.d0, Ly = 10.d0, Lz = 5.0d0
     real(rkind) :: dx, dy, dz, diam, CT
     type(decomp_info) :: gp 
     integer :: idx, ix1, iy1, iz1, ixn, iyn, izn, i, j, k, ierr, prow = 0, pcol = 0, num_turbines 
@@ -40,11 +38,18 @@ program test_actuatorDisk
     real(rkind), dimension(:,:), allocatable :: tmp_2d
     real(rkind), dimension(:,:,:), allocatable :: tmp_3d
     real(rkind) :: tmp 
+    character(len=10) :: date, time
 
     call MPI_Init(ierr)
     call decomp_2d_init(nx, ny, nz, prow, pcol)
     call get_decomp_info(gp)
-
+    
+    ! system clock test
+    call date_and_time(date, time)
+    write(*,*) "date:", date
+    write(*,*) "time:", time
+    write(*,*) "called date_and_time"
+    
     allocate(xG(gp%xsz(1),gp%xsz(2),gp%xsz(3))); allocate(yG(gp%xsz(1),gp%xsz(2),gp%xsz(3)))
     allocate(zG(gp%xsz(1),gp%xsz(2),gp%xsz(3))); allocate(u(gp%xsz(1),gp%xsz(2),gp%xsz(3)))
     allocate(v(gp%xsz(1),gp%xsz(2),gp%xsz(3))); allocate(w(gp%xsz(1),gp%xsz(2),gp%xsz(3)))
@@ -75,7 +80,7 @@ program test_actuatorDisk
         end do
     end do
     xG = xG - dx; yG = yG - dy; zG = zG - dz 
-
+    
     u = one 
     v = zero 
     w = zero  
@@ -89,8 +94,8 @@ program test_actuatorDisk
 !        call hawts_T2(idx)%init(inputDir, idx, xG, yG, zG)
         call hawts_Tyaw(idx)%init(inputDir, idx, xG, yG, zG)
         call hawts_Tyaw(idx)%link_memory_buffers(rbuff, blanks, speed, scalarSource)
-        call hawts_Tfiltered(idx)%init(inputDir, idx, xG, yG, zG)
-        call hawts_Tfiltered(idx)%link_memory_buffers(rbuff, blanks, speed, scalarSource)
+        call hawts_Tfiltered(idx)%init(inputDir2, idx, xG, yG, zG)
+!        call hawts_Tfiltered(idx)%link_memory_buffers(rbuff, blanks, speed, scalarSource)
     end do 
 
     ! reset diam, CT
@@ -129,8 +134,8 @@ program test_actuatorDisk
 !    rhs3 = 0.d0
 !    call mpi_barrier(mpi_comm_world, ierr)
 !    call tic()
-    gamma_negative = 0.d0 * pi / 180.d0
-    theta = 0.d0
+    gamma_negative = hawts_Tfiltered(1)%yaw * pi / 180.d0!5.d0 * pi / 180.d0
+    theta = hawts_Tfiltered(1)%tilt * pi / 180.d0  !10.d0 * pi/180.d0
 !    do idx = 1,num_turbines
 !        call hawts_Tyaw(idx)%get_RHS(u, v, w, rhs3, rhsv, rhsw, gamma_negative, theta)
 !    end do 
@@ -147,35 +152,30 @@ program test_actuatorDisk
     call tic()
     do idx = 1,num_turbines
         call hawts_Tfiltered(idx)%get_RHS(u, v, w, rhs4, rhsv, rhsw, gamma_negative, theta)
-    end do 
+        if (allocated(hawts_Tfiltered(idx)%vTime)) then
+            write(*,*) "Turbine vFace:", hawts_Tfiltered(idx)%vTime(1) 
+        end if
+    end do
     call mpi_barrier(mpi_comm_world, ierr)
     call toc()
     call decomp_2d_write_one(1,rhs4,"temp_T4.bin", gp)
     call message(2,"Computed Source (filtered):", p_sum(sum(rhs4)) * dx*dy*dz)
-    call message(3,"absolute error:", p_sum(sum(rhs4)) * dx*dy*dz + (num_turbines*0.5d0*(pi/4.d0)*(diam**2)*CT))
+    call message(3,"absolute error:", p_sum(sum(rhs4))* dx*dy*dz + (num_turbines*0.5d0*(pi/4.d0)*(diam**2)*CT))
     call message(2,"Expected Source:", -(num_turbines*0.5d0*(pi/4.d0)*(diam**2)*CT))
-
+    ! call message(2,"Expected Source (corrected):", -(num_turbines*0.5d0*(pi/4.d0)*(diam**2)*CT*(adm%M)**2))  ! why does this print 0? 
+    
     adm = hawts_Tfiltered(1)  ! make this a duplicate pointer
     allocate(tmp_3d(adm%nxLoc, adm%nyLoc, adm%nzLoc))
-    call adm%get_weights(tmp_3d)
-    write(*,*) "Corrected weighting integral: ", p_sum(tmp_3d)*adm%dx*adm%dy*adm%dz
     tmp = adm%get_power()
-    write(*,*) "correction factor M: ", adm%M
-    write(*,*) "C_T' used: ", adm%cT
-    write(*,*) "Delta used: ", adm%delta
-    write(*,*) "Power: ", tmp
-    !write(*,*) adm%yG(1, adm%tag_face)
     
-    ! write(*,*) tmp_print
-    ! write(*,*) hawts_Tfiltered(1)%xLine  HOW TO PRINT ARRAYS
- 
-
+    call message(2, "Correction factor M:", adm%M)
+    call message(2, "C_T' used: ", adm%cT)
+    call message(2, "Delta used: ", adm%delta)
+    call message(2, "Power: ", tmp)
+    call message(2, "Expected Source, corrected for M^2:", -(num_turbines*0.5d0*(pi/4.d0)*(diam**2)*CT*(adm%M)**2))
+    
     !!! print a bunch of comparisons:     
     call message(1, "Differences in outputs for ADM types:")
-    !maxDiff = p_maxval(abs(rhs2 - rhs1))*dx*dy*dz
-    !call message(2,"RHS AD Type2 - Type 1: ", maxDiff)
-    !maxDiff = p_maxval(abs(rhs3 - rhs1))*dx*dy*dz
-    !call message(2,"RHS AD Type3 - Type 1: ", maxDiff)
     maxDiff = p_maxval(abs(rhs4 - rhs1))*dx*dy*dz
     call message(2,"RHS AD Type4 - Type 1: ", maxDiff)
     do idx = 1,num_turbines
