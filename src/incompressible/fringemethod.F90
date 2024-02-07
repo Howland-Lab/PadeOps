@@ -32,6 +32,8 @@ module fringeMethod
          procedure :: allocateTargetArray_Edges
          procedure :: addFringeRHS_scalar
          procedure :: associateFringeTarget_scalar
+         procedure :: getFringeFraction
+         procedure :: getLambdaFact
    end type
     
 contains
@@ -375,6 +377,25 @@ contains
         end if
       end do
 
+   end subroutine
+
+   subroutine getFringeFraction(this, output)
+      use reductions, only: p_mean, p_sum
+      class(fringe), intent(inout) :: this
+      real(rkind), intent(out) :: output
+      real(rkind) :: pcount
+
+      ! computes the mean of the fringe kernel and returns
+      ! note: p_mean doesn't always work if partitions are different sizes
+      pcount = p_sum(this%gpC%xsz(1) * this%gpC%xsz(2) * this%gpC%xsz(3))
+      output = p_sum(this%Fringe_kernel_cells) / pcount
+   end subroutine
+
+   subroutine getLambdaFact(this, output)
+      class(fringe), intent(inout) :: this
+      real(rkind), intent(out) :: output
+
+      output = this%LambdaFact
    end subroutine
 
 end module 
