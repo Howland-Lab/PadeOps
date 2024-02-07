@@ -1,12 +1,12 @@
 &INPUT
 inputdir                      = "/scratch/08445/tg877441/AD_coriolis_shear/surge_tests"  ! Directory for any input files
 outputdir                     = "/scratch/08445/tg877441/AD_coriolis_shear/surge_tests"   ! Directory for all output files
-nx                            = 64         ! Number of points in X
-ny                            = 32         ! Number of points in Y
-nz                            = 32         ! Number of points in Z
-tstop                         = 5.D0    ! Physical time to stop the simulation
+nx                            = 256         ! Number of points in X
+ny                            = 128         ! Number of points in Y
+nz                            = 128         ! Number of points in Z
+tstop                         = 20.D0       ! Physical time to stop the simulation
 CFL                           = -1.4D0       ! CFL criterion for calculating the time step (Set to negative to disable)
-dt                            = 0.01D0       ! Fixed time step value (only used if CFL is set to negative)
+dt                            = 0.10D0       ! Fixed time step value (only used if CFL is set to negative)
 prow                          = 0           ! Number of rows in 2D processor decomposition (set 0 for auto-tuning)
 pcol                          = 0           ! Number of rows in 2D processor decomposition (set 0 for auto-tuning)
 useRestartFile                = .FALSE.     ! Set to false if it's a fresh simulation 
@@ -27,7 +27,7 @@ dealiasFact                   = 0.6667d0
 &IO
 RunID                         = 1           ! Run Label (All output files will be tagged with this number)
 t_restartDump                 = 10000       ! Restart File Dumping Frequency  (# of timesteps)
-t_dataDump                    = 1000         ! Data dumping frequency (# of timesteps)
+t_dataDump                    = 100         ! Data dumping frequency (# of timesteps)
 ioType                        = 0           ! 0: Fortran Binaries, 1: .vtk files
 dumpPlanes                    = .FALSE.     ! Dump plane visualations. Select planes in initialize.F90
 t_planeDump                   = 100         ! Plane dumping frequency (# of timesteps)
@@ -100,11 +100,11 @@ explicitCalcEdgeEddyViscosity = .true.      ! Explicitely compute eddy viscosity
 /
 /
 &WINDTURBINES
-useWindTurbines               = .false.
-num_turbines                  = 1
-ADM                           = .TRUE.
-turbInfoDir                   = "/scratch/08445/tg877441/AD_coriolis_shear/surge_tests/turb"
-ADM_Type                      = 5
+useWindTurbines               = .true.                                                        ! Use wind turbines if TRUE
+num_turbines                  = 1                                                             ! Number of turbines
+ADM                           = .TRUE.                                                        ! Use ADM or ALM?
+turbInfoDir                   = "/scratch/08445/tg877441/AD_coriolis_shear/surge_tests/turb"  ! Turbine directory
+ADM_Type                      = 5                                                             ! 2: Calaf et al 2010; 5: Shapiro et al 2019
 powerDumpDir                  = "XXX"
 useDynamicYaw                 = .FALSE.
 yawUpdateInterval             = 10000
@@ -112,11 +112,11 @@ inputDirDyaw                  = "XXX"
 /
 /
 &FRINGE
-Fringe_xst                    = 0.75d0         
-Fringe_xen                    = 0.95d0
-Fringe_delta_st_x             = 0.15d0
-Fringe_delta_en_x             = 0.05d0
-LambdaFact                    = 1.00d0 
+Fringe_xst                    = 0.75d0     ! Fringe start as a fraction of Lx
+Fringe_xen                    = 0.95d0     ! Fringe end as a fraction of Lx
+Fringe_delta_st_x             = 0.15d0     ! Fringe start filter width as a function of Lx
+Fringe_delta_en_x             = 0.05d0     ! Fringe end filter width as a function of Lx
+LambdaFact                    = 1.00d0     ! Gain parameter
 /
 /
 &KSPREPROCESS
@@ -127,12 +127,12 @@ t_dumpKSprep                  = 10             ! Dumping Frequency for KS files
 /
 /
 &BUDGET_TIME_AVG
-do_budgets                    = .FALSE.              ! Perform budget calculations? 
+do_budgets                    = .FALSE.             ! Perform budget calculations? 
 budgetType                    = 1                   ! See type descriptions in budget_time_avg.F90
-budgets_dir                   = "/scratch/08445/tg877441/AD_coriolis_shear/uniform_storm"   ! Write in default output directory
+budgets_dir                   = ""                  ! Write in default output directory
 tidx_compute                  = 1                   ! How often should budgets be computed?  
 tidx_dump                     = 1000                ! How often should budget files be written to disk? 
-tidx_budget_start             = -1                 ! Start budget computation from this timestep onward
+tidx_budget_start             = -1                  ! Start budget computation from this timestep onward
 time_budget_start             = 100.d0
 restart_budgets               = .FALSE.   	    ! use existing budget file to restart budget calculations? 
 restart_rid                   = 1         	    ! Restart budget file run index
@@ -141,14 +141,14 @@ restart_counter               = 5544   	  	    ! Restart budget file counter
 /
 /
 &AD_CoriolisINPUT
-Lx                            = 25.d0      ! Domain Length (appropriate dimensions/non-dimensionalized)
-Ly                            = 5.d0      ! Domain Width  (appropriate dimensions/non-dimensionalized)
-Lz                            = 5.d0      ! Domain Height (appropriate dimensions/non-dimensionalized)
-uInflow                       = 1.0d0
+Lx                            = 25.d0          ! Domain Length (appropriate dimensions/non-dimensionalized)
+Ly                            = 10.d0          ! Domain Width  (appropriate dimensions/non-dimensionalized)
+Lz                            = 5.d0           ! Domain Height (appropriate dimensions/non-dimensionalized)
+uInflow                       = 1.0d0          ! Inflow velocity
 vInflow                       = 0.d0           ! Veer strength dalpha/dz = vInflow/InflowProfileAmplit (rad/L)
 InflowProfileAmplit           = 0.d0           ! Controls amplitude in Type 1, 2
 InflowProfileThick            = 5.d0           ! with uInflow (vInflow) controls strength of shear (veer) 
 InflowProfileType             = 0              ! Inflow profile; 0: uniform, 1: MFH shear, 2: MFH shear + veer, 5: new shear 6: new veer, 7: shear + veer
-amplit                        = 0.1d0 
-freq                          = 10.d0
+amplit                        = 0.1d0          ! Forcing amplitude target, as a fraction of G
+freq                          = 10.d0          ! Forcing frequency (non-dimensionalized)
 /
