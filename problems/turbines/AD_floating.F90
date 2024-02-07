@@ -47,7 +47,7 @@ program AD_Coriolis
 
     call tic() 
     do while (igp%tsim < igp%tstop) 
-       
+       call check_dt(igp)                                               !<-- Checks that dt meets frequency criteria
        call igp%timeAdvance()                                           !<-- Time stepping scheme + Pressure Proj. (see igrid.F90)
        call budg_tavg%doBudgets()       
        call doTemporalStuff(igp)                                        !<-- Go to the temporal hook (see temporalHook.F90)

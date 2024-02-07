@@ -2,7 +2,7 @@ module AD_Coriolis_parameters
 
     use exits, only: message
     use kind_parameters,  only: rkind
-    use constants, only: kappa, pi
+    use constants, only: kappa, pi, one
     implicit none
     integer :: seedu = 321341
     integer :: seedv = 423424
@@ -14,6 +14,9 @@ module AD_Coriolis_parameters
     real(rkind), parameter :: timeDim = xdim/udim
     real(rkind), dimension(:,:,:), allocatable :: utarget, vtarget, wtarget
     real(rkind), dimension(:,:,:), allocatable :: utarget0, vtarget0, wtarget0
+    ! variables set by the inputfile: 
+    real(rkind) :: fringe_fact, lambdafact, freq_inflow, amplit_inflow, dt_max 
+    integer :: N = 10
 
     contains
 
@@ -31,7 +34,7 @@ subroutine init_fringe_targets(inputfile, igp)
     implicit none
     character(len=*),                intent(in)    :: inputfile
 !    real(rkind), dimension(:,:,:,:), intent(in), target    :: mesh
-    type(igrid), allocatable, target, intent(in) :: igp
+    type(igrid), allocatable, target, intent(inout) :: igp
     real(rkind), dimension(:,:,:), pointer :: z
     real(rkind) :: Lx, Ly, Lz, uInflow, vInflow, yaw, freq, amplit
     real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid
@@ -65,7 +68,17 @@ subroutine init_fringe_targets(inputfile, igp)
     utarget = utarget0
     vtarget = vtarget0
     wtarget = wtarget0
-
+    
+    ! get the fraction of the domain encompassed by the fringe
+    call igp%fringe_x%getFringeFraction(fringe_fact)
+    call igp%fringe_x%getLambdaFact(lambdafact)
+    !call message(0, "DEBUG INIT: LAMBDA_FACT", lambdafact)
+    !call message(0, "DEBUG INIT: FRINGE_FACT", fringe_fact)
+    
+    ! save frequency and amplitude variables: 
+    freq_inflow = freq
+    amplit_inflow = amplit
+    dt_max = one / freq_inflow / N
 end subroutine
 
 subroutine update_fringe_targets(inputfile, igp)
@@ -78,25 +91,37 @@ subroutine update_fringe_targets(inputfile, igp)
     character(len=*),                intent(in)    :: inputfile
     type(igrid), allocatable, target, intent(in) :: igp
     real(rkind), dimension(:,:,:), pointer :: z
-    real(rkind) :: Lx, Ly, Lz, uInflow, vInflow, yaw 
-    real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid, freq=one, amplit=0.1d0
-    integer :: ioUnit
-    integer :: InflowProfileType
-    logical :: useGeostrophicForcing
+    real(rkind) :: gain, lam_adjusted
 
-    namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, & 
-                                InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw, amplit, freq
-
-    ioUnit = 11
-    open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
-    read(unit=ioUnit, NML=AD_CoriolisINPUT)
-    close(ioUnit)
-    
-    utarget = utarget0 * (one + amplit * sin(two*pi*freq*igp%tsim))
-    vtarget = vtarget0 * (one + amplit * sin(two*pi*freq*igp%tsim))
-    wtarget = wtarget0 * (one + amplit * sin(two*pi*freq*igp%tsim))
+    ! gain is computed from the analytical form of the system. 
+    ! The gain might differ if CFL condition is used, but CFL not recommended as 
+    ! the time step for numerical stability may be on the order of 1/freq.
+    lam_adjusted = lambdafact * fringe_fact / igp%dt
+    gain = sqrt((freq_inflow * two * pi)**two + lam_adjusted**two) / lam_adjusted
+   
+    ! set instantaneous u,v,w targets, modified by the transfer function 
+    utarget = utarget0 * (one + amplit_inflow * sin(two*pi*freq_inflow*igp%tsim) * gain)
+    vtarget = vtarget0 * (one + amplit_inflow * sin(two*pi*freq_inflow*igp%tsim) * gain)
+    wtarget = wtarget0 * (one + amplit_inflow * sin(two*pi*freq_inflow*igp%tsim) * gain)
 
 end subroutine
+
+subroutine check_dt(igp)
+    use IncompressibleGrid, only: igrid
+    use exits, only: message
+
+    implicit none
+    type(igrid), allocatable, target, intent(inout) :: igp
+    
+    ! prevents dt from exceeding a maximum threshold defined as (1/freq)/N where
+    ! N is the minimum number of samples per period 1/freq
+    if (igp%dt > dt_max) then
+        call message(1, "CHECK_DT: dt_max exceeded at dt=", igp%dt)
+        igp%dt = dt_max
+        call message(1, "CHECK_DT: Set dt to dt=", dt_max)
+    end if
+
+end subroutine 
 
 subroutine get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, zMid, InflowProfileType, yaw, u, v)
     use kind_parameters, only: rkind
