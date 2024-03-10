@@ -136,6 +136,8 @@ module budgets_time_avg_deficit_mod
     ! 18: Base advection by deficit flow - x
     ! 19: Base advection by deficit flow - y
     ! 20: Base advection by deficit flow - z
+    ! 21: Turbulent transport  - d/dxj <base ui' base ui' delta uj'>
+    ! 22: Turbulent transport  - d/dxj <base ui' delta ui' delta uj'> + d/dxj <base ui' delta ui' base uj'>
 
     ! BUDGET_4_ij term indices: 
     ! 1. <u'u'> : Shear Production           - N/A,      dump
@@ -315,7 +317,7 @@ module budgets_time_avg_deficit_mod
              !    allocate(this%budget_2(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3),07))
              !    allocate(this%budget_1(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3),10))
              !end if
-             allocate(this%budget_3(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3),20))
+             allocate(this%budget_3(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3),22)
              allocate(this%budget_4_11(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3),10))
              allocate(this%budget_4_22(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3),10))
              allocate(this%budget_4_13(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3),10))
@@ -1267,11 +1269,87 @@ module budgets_time_avg_deficit_mod
         this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
                                 *(this%pre_budget%igrid_sim%wC)*(this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)
 
+        ! Additional transport terms for wake TKE
+        ! < base ui' delta uj' d base ui'/dxj >
+        call this%ddx_R2R(this%pre_budget%igrid_sim%u, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_3(:,:,:,21) = this%budget_3(:,:,:,21) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+                                *(this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u)*(this%pre_budget%igrid_sim%u)
 
+        call this%ddy_R2R(this%pre_budget%igrid_sim%u, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_3(:,:,:,21) = this%budget_3(:,:,:,21) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+                                *(this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v)*(this%pre_budget%igrid_sim%u)
+
+        call this%ddz_R2R(this%pre_budget%igrid_sim%u, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_3(:,:,:,21) = this%budget_3(:,:,:,21) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+                                *(this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)*(this%pre_budget%igrid_sim%u)
+
+        call this%ddx_R2R(this%pre_budget%igrid_sim%v, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_3(:,:,:,21) = this%budget_3(:,:,:,21) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+                                *(this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u)*(this%pre_budget%igrid_sim%v)
+
+        call this%ddy_R2R(this%pre_budget%igrid_sim%v, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_3(:,:,:,21) = this%budget_3(:,:,:,21) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+                                *(this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v)*(this%pre_budget%igrid_sim%v)
+
+        call this%ddz_R2R(this%pre_budget%igrid_sim%v, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_3(:,:,:,21) = this%budget_3(:,:,:,21) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+                                *(this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)*(this%pre_budget%igrid_sim%v)
+
+        call this%ddx_R2R(this%pre_budget%igrid_sim%wC, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_3(:,:,:,21) = this%budget_3(:,:,:,21) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+                                *(this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u)*(this%pre_budget%igrid_sim%wC)
+
+        call this%ddy_R2R(this%pre_budget%igrid_sim%wC, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_3(:,:,:,21) = this%budget_3(:,:,:,21) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+                                *(this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v)*(this%pre_budget%igrid_sim%wC)
+
+        call this%ddz_R2R(this%pre_budget%igrid_sim%wC, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
+        this%budget_3(:,:,:,21) = this%budget_3(:,:,:,21) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+                                *(this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)*(this%pre_budget%igrid_sim%wC)
+
+        ! < base ui' delta uj' d delta ui'/dxj >
+        ! call this%ddx_R2R(this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
+        ! this%budget_3(:,:,:,22) = this%budget_3(:,:,:,22) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+        !                         *(this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u)*(this%pre_budget%igrid_sim%u)
+
+        ! call this%ddy_R2R(this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
+        ! this%budget_3(:,:,:,22) = this%budget_3(:,:,:,22) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+        !                         *(this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v)*(this%pre_budget%igrid_sim%u)
+
+        ! call this%ddz_R2R(this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
+        ! this%budget_3(:,:,:,22) = this%budget_3(:,:,:,22) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+        !                         *(this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)*(this%pre_budget%igrid_sim%u)
+
+        ! call this%ddx_R2R(this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
+        ! this%budget_3(:,:,:,22) = this%budget_3(:,:,:,22) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+        !                         *(this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u)*(this%pre_budget%igrid_sim%v)
+
+        ! call this%ddy_R2R(this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
+        ! this%budget_3(:,:,:,22) = this%budget_3(:,:,:,22) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+        !                         *(this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v)*(this%pre_budget%igrid_sim%v)
+
+        ! call this%ddz_R2R(this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
+        ! this%budget_3(:,:,:,22) = this%budget_3(:,:,:,22) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+        !                         *(this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)*(this%pre_budget%igrid_sim%v)
+
+        ! call this%ddx_R2R(this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
+        ! this%budget_3(:,:,:,22) = this%budget_3(:,:,:,22) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+        !                         *(this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u)*(this%pre_budget%igrid_sim%wC)
+
+        ! call this%ddy_R2R(this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
+        ! this%budget_3(:,:,:,22) = this%budget_3(:,:,:,22) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+        !                         *(this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v)*(this%pre_budget%igrid_sim%wC)
+
+        ! call this%ddz_R2R(this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
+        ! this%budget_3(:,:,:,22) = this%budget_3(:,:,:,22) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
+        !                         *(this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)*(this%pre_budget%igrid_sim%wC)
+
+        
         ! < delta ui' delta uj' d base ui'/dxj >
         call this%ddx_R2R(this%pre_budget%igrid_sim%u, this%pre_budget%igrid_sim%rbuffxC(:,:,:,1)); 
         this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) - this%pre_budget%igrid_sim%rbuffxC(:,:,:,1) &
                                 *(this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u)*(this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u)
+
 
         ! base advection term in x
         this%budget_3(:,:,:,18) = this%budget_3(:,:,:,18) - this%pre_budget%igrid_sim%rbuffxC(:,:,:,1) &
@@ -1452,7 +1530,7 @@ module budgets_time_avg_deficit_mod
         integer :: idx
         real(rkind), dimension(:,:,:), pointer :: delta_Umn, delta_Vmn, delta_Wmn, base_Umn, base_Vmn, base_Wmn 
         real(rkind), dimension(:,:,:), pointer :: delta_R11, delta_R12, delta_R13, delta_R22, delta_R23, delta_R33
-        real(rkind), dimension(:,:,:), pointer :: buff, buff2
+        real(rkind), dimension(:,:,:), pointer :: buff, buff2, buff3
 
         ! Calculate terms
         ! Get the average from sum
@@ -1478,6 +1556,7 @@ module budgets_time_avg_deficit_mod
         delta_R11 => this%budget_0(:,:,:,5);    delta_R12 => this%budget_0(:,:,:,6);      delta_R13 => this%budget_0(:,:,:,7)
         delta_R22 => this%budget_0(:,:,:,8);    delta_R23 => this%budget_0(:,:,:,9);      delta_R33 => this%budget_0(:,:,:,10);
         buff => this%prim_budget%igrid_sim%rbuffxC(:,:,:,1); buff2 => this%prim_budget%igrid_sim%rbuffxC(:,:,:,2)
+        buff3 => this%pre_budget%igrid_sim%rbuffxC(:,:,:,1)
 
         !!! 1. TKE production   
         ! TKE production - <delta ui' delta uj'> d delta ui / dxj
@@ -1553,12 +1632,99 @@ module budgets_time_avg_deficit_mod
         ! < delta ui' base uj' d delta ui'/dxj >        
         this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) - this%budget_3(:,:,:,15) - this%budget_2(:,:,:,17) - this%budget_2(:,:,:,15)
 
+        ! total (choosing to only include true transport terms for now)
+        this%budget_3(:,:,:,3) = this%budget_3(:,:,:,12) + this%budget_3(:,:,:,13)
+        
+        
+        ! Additional terms for wake TKE turbulent transport
+        ! d/dxj < base ui' delta ui' delta uj'>
+        ! buff2 = this%pre_budget%budget_0(:,:,:,1)
+        ! call this%ddx_R2R(buff2,buff)
+        ! buff3 = delta_R11 * buff
+
+        ! buff2 = this%pre_budget%budget_0(:,:,:,1)
+        ! call this%ddy_R2R(buff2,buff)
+        ! buff3 = buff3 + delta_R12 * buff
+
+        ! buff2 = this%pre_budget%budget_0(:,:,:,1)
+        ! call this%ddz_R2R(buff2,buff)
+        ! buff3 = buff3 + delta_R13 * buff
+
+        ! buff2 = this%pre_budget%budget_0(:,:,:,2)
+        ! call this%ddx_R2R(buff2,buff)
+        ! buff3 = buff3 + delta_R12 * buff
+
+        ! buff2 = this%pre_budget%budget_0(:,:,:,2)
+        ! call this%ddy_R2R(buff2,buff)
+        ! buff3 = buff3 + delta_R22 * buff
+
+        ! buff2 = this%pre_budget%budget_0(:,:,:,2)
+        ! call this%ddz_R2R(buff2,buff)
+        ! buff3 = buff3 + delta_R23 * buff
+
+        ! buff2 = this%pre_budget%budget_0(:,:,:,3)
+        ! call this%ddx_R2R(buff2,buff)
+        ! buff3 = buff3 + delta_R13 * buff
+
+        ! buff2 = this%pre_budget%budget_0(:,:,:,3)
+        ! call this%ddy_R2R(buff2,buff)
+        ! buff3 = buff3 + delta_R23 * buff
+
+        ! buff2 = this%pre_budget%budget_0(:,:,:,3)
+        ! call this%ddz_R2R(buff2,buff)
+        ! buff3 = buff3 + delta_R13 * buff
+
         ! < delta ui' delta uj' d base ui'/dxj >        
         this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) - this%budget_3(:,:,:,17) - this%budget_2(:,:,:,19) - this%budget_2(:,:,:,16) &
              - this%budget_2(:,:,:,13) -  this%budget_3(:,:,:,11)
+        
+        ! Additional terms for wake TKE turbulent transport
+        buff2 = half*(this%pre_budget%budget_0(:,:,:,1)*this%pre_budget%budget_0(:,:,:,1) + this%pre_budget%budget_0(:,:,:,2)*this%pre_budget%budget_0(:,:,:,2) &
+                    + this%pre_budget%budget_0(:,:,:,3)*this%pre_budget%budget_0(:,:,:,3) )
+        call this%ddx_R2R(buff2,buff)
+        buff3 = this%budget_0(:,:,:,1) * buff
 
-        ! total (choosing to only include true transport terms for now)
-        this%budget_3(:,:,:,3) = this%budget_3(:,:,:,12) + this%budget_3(:,:,:,13)
+        call this%ddy_R2R(buff2,buff)
+        buff3 = buff3 + this%budget_0(:,:,:,2) * buff
+
+        call this%ddz_R2R(buff2,buff)
+        buff3 = buff3 + this%budget_0(:,:,:,3) * buff
+
+        ! subtract base MKE advection like term
+        this%budget_3(:,:,:,21) = this%budget_3(:,:,:,21) + buff3
+
+        buff2 = half*(this%pre_budget%budget_0(:,:,:,5) + this%pre_budget%budget_0(:,:,:,8) + this%pre_budget%budget_0(:,:,:,10))
+        call this%ddx_R2R(buff2,buff)
+        buff3 = this%budget_0(:,:,:,1) * buff
+
+        call this%ddy_R2R(buff2,buff)
+        buff3 = buff3 + this%budget_0(:,:,:,2) * buff
+
+        call this%ddz_R2R(buff2,buff)
+        buff3 = buff3 + this%budget_0(:,:,:,3) * buff
+
+        ! subtract base TKE advection like term
+        this%budget_3(:,:,:,21) = this%budget_3(:,:,:,21) + buff3
+
+        buff2 = half*(this%pre_budget%budget_0(:,:,:,5)* this%budget_0(:,:,:,1) + this%pre_budget%budget_0(:,:,:,6)*this%budget_0(:,:,:,2) &
+                             + this%pre_budget%budget_0(:,:,:,7)*this%budget_0(:,:,:,3))
+        call this%ddx_R2R(buff2,buff)
+        buff3 = buff
+
+        buff2 = half*(this%pre_budget%budget_0(:,:,:,6)* this%budget_0(:,:,:,1) + this%pre_budget%budget_0(:,:,:,8)*this%budget_0(:,:,:,2) &
+                             + this%pre_budget%budget_0(:,:,:,9)*this%budget_0(:,:,:,3))
+        call this%ddy_R2R(buff2,buff)
+        buff3 = buff3 + buff
+
+        buff2 = half*(this%pre_budget%budget_0(:,:,:,7)* this%budget_0(:,:,:,1) + this%pre_budget%budget_0(:,:,:,9)*this%budget_0(:,:,:,2) &
+                             + this%pre_budget%budget_0(:,:,:,10)*this%budget_0(:,:,:,3))
+        call this%ddz_R2R(buff2,buff)
+        buff3 = buff3 +  buff
+
+        ! subtract base MKE turbulent transport like term
+        this%budget_3(:,:,:,21) = this%budget_3(:,:,:,21) + buff3
+
+        this%budget_3(:,:,:,22) = this%prim_budget%budget_3(:,:,:,3) - this%pre_budget%budget_3(:,:,:,3) - this%budget_3(:,:,:,3) - this%budget_3(:,:,:,21)
 
         ! 4. Pressure transport         
         this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) - this%budget_2(:,:,:,4)
@@ -1583,7 +1749,53 @@ module budgets_time_avg_deficit_mod
         end do 
 
         ! Revert arrays to the correct state for Assemble (Order is very
-        ! important throughout this subroutine, particularly indices 5 and 6)       
+        ! important throughout this subroutine, particularly indices 5 and 6) 
+                ! Additional terms for wake TKE turbulent transport
+        buff2 = half*(this%pre_budget%budget_0(:,:,:,1)*this%pre_budget%budget_0(:,:,:,1) + this%pre_budget%budget_0(:,:,:,2)*this%pre_budget%budget_0(:,:,:,2) &
+                    + this%pre_budget%budget_0(:,:,:,3)*this%pre_budget%budget_0(:,:,:,3) )
+        call this%ddx_R2R(buff2,buff)
+        buff3 = this%budget_0(:,:,:,1) * buff
+
+        call this%ddy_R2R(buff2,buff)
+        buff3 = buff3 + this%budget_0(:,:,:,2) * buff
+
+        call this%ddz_R2R(buff2,buff)
+        buff3 = buff3 + this%budget_0(:,:,:,3) * buff
+
+        ! subtract base MKE advection like term
+        this%budget_3(:,:,:,21) = this%budget_3(:,:,:,21) - buff3
+
+        buff2 = half*(this%pre_budget%budget_0(:,:,:,5) + this%pre_budget%budget_0(:,:,:,8) + this%pre_budget%budget_0(:,:,:,10))
+        call this%ddx_R2R(buff2,buff)
+        buff3 = this%budget_0(:,:,:,1) * buff
+
+        call this%ddy_R2R(buff2,buff)
+        buff3 = buff3 + this%budget_0(:,:,:,2) * buff
+
+        call this%ddz_R2R(buff2,buff)
+        buff3 = buff3 + this%budget_0(:,:,:,3) * buff
+
+        ! subtract base TKE advection like term
+        this%budget_3(:,:,:,21) = this%budget_3(:,:,:,21) - buff3
+
+        buff2 = half*(this%pre_budget%budget_0(:,:,:,5)* this%budget_0(:,:,:,1) + this%pre_budget%budget_0(:,:,:,6)*this%budget_0(:,:,:,2) &
+                             + this%pre_budget%budget_0(:,:,:,7)*this%budget_0(:,:,:,3))
+        call this%ddx_R2R(buff2,buff)
+        buff3 = buff
+
+        buff2 = half*(this%pre_budget%budget_0(:,:,:,6)* this%budget_0(:,:,:,1) + this%pre_budget%budget_0(:,:,:,8)*this%budget_0(:,:,:,2) &
+                             + this%pre_budget%budget_0(:,:,:,9)*this%budget_0(:,:,:,3))
+        call this%ddy_R2R(buff2,buff)
+        buff3 = buff3 + buff
+
+        buff2 = half*(this%pre_budget%budget_0(:,:,:,7)* this%budget_0(:,:,:,1) + this%pre_budget%budget_0(:,:,:,9)*this%budget_0(:,:,:,2) &
+                             + this%pre_budget%budget_0(:,:,:,10)*this%budget_0(:,:,:,3))
+        call this%ddz_R2R(buff2,buff)
+        buff3 = buff3 +  buff
+
+        ! subtract base MKE turbulent transport like term
+        this%budget_3(:,:,:,21) = this%budget_3(:,:,:,21) - buff3
+
         this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) + this%budget_3(:,:,:,17) + this%budget_2(:,:,:,19) + this%budget_2(:,:,:,16) &
              + this%budget_2(:,:,:,13) + this%budget_3(:,:,:,11)
         this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) + this%budget_3(:,:,:,15) + this%budget_2(:,:,:,17) + this%budget_2(:,:,:,15)
