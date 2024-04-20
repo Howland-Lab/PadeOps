@@ -1,4 +1,4 @@
-module actuatorDisk_FilteredMod
+module actuatorDisk_Filtered
     use kind_parameters, only: rkind, clen
     use constants, only: imi, zero,one,two,three,half,fourth, pi, kappa
     use decomp_2d
@@ -32,11 +32,9 @@ module actuatorDisk_FilteredMod
         real(rkind) :: delta, M  ! Shapiro smearing size, corr. factor M<1
         real(rkind), dimension(:), allocatable :: xline, yline, zline
         real(rkind), dimension(:,:,:), pointer :: xG, yG, zG
-!        real(rkind), dimension(:,:,:), allocatable :: smearing_base 
         
         ! Pointers to memory buffers 
         logical :: memory_buffers_linked = .false.
-!        real(rkind), dimension(:,:,:), pointer :: rbuff, blanks, speed, scalarSource
         real(rkind), dimension(:,:,:), allocatable :: rbuff, blanks, speed, scalarSource
         ! MPI communicator stuff
         logical :: Am_I_Active, Am_I_Split
@@ -46,17 +44,11 @@ module actuatorDisk_FilteredMod
         procedure :: init
         procedure :: destroy
         procedure :: get_RHS
-!        procedure :: get_RHS_old
         procedure :: get_R1
         procedure :: get_R2
         procedure :: get_R
         procedure :: get_weights
-!        procedure :: get_RHS_withPower
-!        procedure :: link_memory_buffers
-!        procedure, private :: AD_force_point
         procedure :: get_power
-!        procedure :: dumpPower
-!        procedure :: dumpPowerUpdate
     end type
 
 
@@ -93,7 +85,7 @@ subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG)
     this%dz=zG(1,1,2)-zG(1,1,1)
     this%dV = this%dx*this%dy*this%dz
     this%xLoc = xLoc; this%yLoc = yLoc; this%zLoc = zLoc
-    this%cT = cT; this%diam = diam; this%yaw = yaw
+    this%cT = cT; this%diam = diam; this%yaw = yaw; this%tilt = tilt
     this%ut = 1.d0!; this%Cp = Cp
     
     this%nxLoc = size(xG,1); this%nyLoc = size(xG,2); this%nzLoc = size(xG,3)
@@ -279,7 +271,8 @@ subroutine get_weights(this)
         if (this%quickDecomp) then
             !aligned with the x-direction, use the "quick" kernel creation
             call this%get_R2(this%ys, this%zs,R2)
-            call this%get_R1(R1) 
+            call this%get_R1(R1)
+            
             ! Not sure why, but setting the product of R1*R2 directly leads to
             ! memory errors: (2023/07/17) 
             !this%scalarsource = spread(spread(R1,2,this%nyLoc),3,this%nzLoc) * spread(R2, 1, this%nxLoc)
@@ -392,6 +385,7 @@ subroutine get_RHS(this, u, v, w, rhsxvals, rhsyvals, rhszvals, yaw, theta)
 
     this%speed = u*n(1,1) + v*n(2,1) + w*n(3,1)
     if (this%useDynamicYaw) then
+        ! TODO: Need to update yaw before calling get_weights()
         call get_weights(this) 
     end if
 
