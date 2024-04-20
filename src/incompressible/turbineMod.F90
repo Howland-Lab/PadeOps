@@ -8,7 +8,7 @@ module turbineMod
     use actuatorDisk_RotMod, only: actuatorDisk_Rot
     use actuatorLineMod, only: actuatorLine
     use actuatorDisk_YawMod, only: actuatorDisk_yaw
-    use actuatorDisk_FilteredMod, only: actuatorDisk_filtered
+    use actuatorDisk_Filtered, only: actuatorDisk_filtered
     use actuatorDisk_CTMod, only: actuatorDisk_CT
     use dynamicYawMod, only: dynamicYaw
     use exits, only: GracefulExit, message

@@ -21,12 +21,13 @@ module angleControl
       !real(rkind)                                   :: LambdaFact
       integer :: z_ref, controlType !myFringeID = 1
       !logical :: useTwoFringex = .false. 
-      real(rkind)                          :: phi, beta, phi_ref, sigma, wFilt, alpha, wFilt_n, angleTrigger
+      real(rkind)                          :: phi, phi_n, beta, phi_ref, sigma, wFilt, alpha, wFilt_n, angleTrigger
       contains
          procedure :: init
          procedure :: destroy
          procedure :: update_RHS_control
          procedure :: getPhi
+         procedure :: getPhiHub
     end type
     
 contains
@@ -35,6 +36,14 @@ contains
       class(angCont), intent(in) :: this
       real(rkind) :: val
       val = this%phi
+    end function  
+
+    pure function getPhiHub(this) result (val) 
+      class(angCont), intent(in) :: this
+      ! getPhi() only returns the wind angle after the controller is updated, in RADIANS
+      ! getPhiHub() returns the wind angle before the controller is updated, in DEGREES
+      real(rkind) :: val
+      val = this%phi_n * 180.d0 / pi
     end function  
 
     subroutine update_RHS_control(this, dt, urhs, vrhs, wrhs, uC, vC, newTimestep, phi_n, wFilt_n, deltaGalpha, z_hub, trigger)
@@ -56,26 +65,29 @@ contains
       ny = this%gpC%ysz(2)
 
       ! PID controller
-         !this%rbuffxC(:,:,:,1) = atan2(vC, uC) !* 180.d0 / pi
-         !call transpose_x_to_y(this%rbuffxC(:,:,:,1),this%rbuffyC(:,:,:,1),this%gpC)
-         !call transpose_y_to_z(this%rbuffyC(:,:,:,1),this%rbuffzC(:,:,:,1),this%gpC)
-         !phi_n = p_sum(sum(this%rbuffzC(:,:,this%z_ref,1))) / (real(nx,rkind) * real(ny,rkind))      
-         !this%rbuffxC(:,:,:,1) = atan2(vC, uC) !* 180.d0 / pi
-         ! Compute the angle at hub height
-         call transpose_x_to_y(uC,this%rbuffyC(:,:,:,1),this%gpC)
-         call transpose_y_to_z(this%rbuffyC(:,:,:,1),this%rbuffzC(:,:,:,1),this%gpC)
-         uM = p_sum(sum(this%rbuffzC(:,:,this%z_ref,1))) / (real(nx,rkind) * real(ny,rkind))
-         call transpose_x_to_y(vC,this%rbuffyC(:,:,:,1),this%gpC)
-         call transpose_y_to_z(this%rbuffyC(:,:,:,1),this%rbuffzC(:,:,:,2),this%gpC)
-         !phi_n = p_sum(sum(this%rbuffzC(:,:,this%z_ref,1))) / (real(nx,rkind) * real(ny,rkind))      
-         vM = p_sum(sum(this%rbuffzC(:,:,this%z_ref,2))) / (real(nx,rkind) * real(ny,rkind))        
-!         call message(1, "update_RHS_control: computed uM", uM)
-!         call message(1, "update_RHS_control: computed vM", vM)
-         phi_n = atan2(vM, uM)
-         z_hub = this%z_ref
-         trigger = this%angleTrigger 
-         !call message(1, "update_RHS_control: computed phi_n", phi_n)
-         !call message(1, "update_RHS_control: phi_ref: ", this%phi_ref)
+      !this%rbuffxC(:,:,:,1) = atan2(vC, uC) !* 180.d0 / pi
+      !call transpose_x_to_y(this%rbuffxC(:,:,:,1),this%rbuffyC(:,:,:,1),this%gpC)
+      !call transpose_y_to_z(this%rbuffyC(:,:,:,1),this%rbuffzC(:,:,:,1),this%gpC)
+      !phi_n = p_sum(sum(this%rbuffzC(:,:,this%z_ref,1))) / (real(nx,rkind) * real(ny,rkind))      
+      !this%rbuffxC(:,:,:,1) = atan2(vC, uC) !* 180.d0 / pi
+      ! Compute the angle at hub height
+      call transpose_x_to_y(uC,this%rbuffyC(:,:,:,1),this%gpC)
+      call transpose_y_to_z(this%rbuffyC(:,:,:,1),this%rbuffzC(:,:,:,1),this%gpC)
+      uM = p_sum(sum(this%rbuffzC(:,:,this%z_ref,1))) / (real(nx,rkind) * real(ny,rkind))
+      call transpose_x_to_y(vC,this%rbuffyC(:,:,:,1),this%gpC)
+      call transpose_y_to_z(this%rbuffyC(:,:,:,1),this%rbuffzC(:,:,:,2),this%gpC)
+      !phi_n = p_sum(sum(this%rbuffzC(:,:,this%z_ref,1))) / (real(nx,rkind) * real(ny,rkind))      
+      vM = p_sum(sum(this%rbuffzC(:,:,this%z_ref,2))) / (real(nx,rkind) * real(ny,rkind))         
+      !call message(1, "update_RHS_control: computed uM", uM)
+      !call message(1, "update_RHS_control: computed vM", vM)
+      phi_n = atan2(vM, uM)
+
+      this%phi_n = phi_n  ! save this regardless of whether the controller is updated
+      z_hub = this%z_ref
+      trigger = this%angleTrigger 
+      
+      !call message(1, "update_RHS_control: computed phi_n", phi_n)
+      !call message(1, "update_RHS_control: phi_ref: ", this%phi_ref)
       if (newTimestep .AND. abs((phi_n - this%phi_ref) * 180.d0 / pi) > this%angleTrigger) then
          
          if (this%controlType == 1) then
