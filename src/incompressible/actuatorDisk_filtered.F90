@@ -22,7 +22,9 @@ module actuatorDisk_FilteredMod
         real(rkind) :: yaw, tilt, ut, powerBaseline, hubDirection
         real(rkind) :: xLoc, yLoc, zLoc, dx, dy, dz, dV
         real(rkind) :: diam, cT, pfactor, normfactor, OneBydelSq, Cp, thick, npts
-        real(rkind) :: uface = 0.d0, vface = 0.d0, wface = 0.d0
+        real(rkind) :: uface = zero, vface = zero, wface = zero  ! LES velocity, disk-averaged
+        real(rkind) :: uturb = zero, vturb = zero, wturb = zero  ! turbine motion vector
+
         real(rkind), dimension(:), allocatable :: xs, ys, zs  ! list of UNYAWED points for the ADM
         real(rkind), dimension(:), allocatable :: powerTime, uTime, vTime
         logical :: useDynamicYaw, quickDecomp
@@ -34,11 +36,13 @@ module actuatorDisk_FilteredMod
         real(rkind), dimension(:,:,:), pointer :: xG, yG, zG
         
         ! Pointers to memory buffers 
-        logical :: memory_buffers_linked = .false.
         real(rkind), dimension(:,:,:), allocatable :: rbuff, blanks, speed, scalarSource
+
         ! MPI communicator stuff
         logical :: Am_I_Active, Am_I_Split
         integer :: color, myComm, myComm_nproc, myComm_nrank
+
+        character(len=clen) :: fname  ! save inputfile path
 
     contains
         procedure :: init
@@ -49,6 +53,15 @@ module actuatorDisk_FilteredMod
         procedure :: get_R
         procedure :: get_weights
         procedure :: get_power
+
+        ! new functions -- move to basic_turbine? 
+        procedure :: get_pos
+        procedure :: get_angle
+        procedure :: get_fname
+        procedure :: set_pos
+        procedure :: set_angle
+        procedure :: redraw
+        procedure :: set_ut 
     end type
 
 
@@ -70,6 +83,7 @@ subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG)
     namelist /ACTUATOR_DISK/ xLoc, yLoc, zLoc, diam, cT, yaw, tilt, filterWidth, useCorrection, useDynamicYaw, thickness, quickDecomp
     write(tempname,"(A13,I4.4,A10)") "ActuatorDisk_", ActuatorDisk_ID, "_input.inp"
     fname = InputDir(:len_trim(InputDir))//"/"//trim(tempname)
+    this%fname = fname
 
     ioUnit = 55
     open(unit=ioUnit, file=trim(fname), form='FORMATTED', action="read")
@@ -163,24 +177,9 @@ subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG)
     call message(2, "Time (seconds) to initialize", time2initialize)
 end subroutine 
 
-!subroutine link_memory_buffers(this, rbuff, blanks, speed, scalarSource)
-!    class(actuatordisk_filtered), intent(inout) :: this
-!    real(rkind), dimension(:,:,:), intent(in), target :: rbuff, blanks, speed, scalarSource
-!    this%rbuff => rbuff
-!    this%speed => speed
-!    this%scalarSource => scalarSource
-!    this%blanks => blanks
-!    this%memory_buffers_linked = .true. 
-!    
-!    if (.not. this%useDynamicyaw) then
-!        call get_weights(this)  ! get_weights assigns scalarSource to the forcing kernel
-!    end if
-!end subroutine 
-
 subroutine destroy(this)
     class(actuatordisk_filtered), intent(inout) :: this
 
-!    this%memory_buffers_linked = .false.
     deallocate(this%rbuff, this%blanks, this%speed, this%scalarSource) 
     nullify(this%xG, this%yG, this%zG)
 end subroutine 
@@ -276,6 +275,7 @@ subroutine get_weights(this)
             ! Not sure why, but setting the product of R1*R2 directly leads to
             ! memory errors: (2023/07/17) 
             !this%scalarsource = spread(spread(R1,2,this%nyLoc),3,this%nzLoc) * spread(R2, 1, this%nxLoc)
+            
             ! Instead, store in intermediate variable R: 
             R = spread(R2, 1, this%nxLoc) * spread(spread(R1, 2, this%nyLoc), 3,this%nzLoc)
             this%scalarsource = R
@@ -383,15 +383,26 @@ subroutine get_RHS(this, u, v, w, rhsxvals, rhsyvals, rhszvals, yaw, theta)
     n = matmul(T, matmul(R, n))
     tau = matmul(T, matmul(R, tau))
 
-    this%speed = u*n(1,1) + v*n(2,1) + w*n(3,1)
-    if (this%useDynamicYaw) then
-        ! TODO: Need to update yaw before calling get_weights()
-        call get_weights(this) 
-    end if
+    ! OLD method of computing disk velocity
+    !this%speed = u*n(1,1) + v*n(2,1) + w*n(3,1)
+    !this%ut = this%M*p_sum(this%scalarSource*this%speed)*this%dV
+    !vface = p_sum(this%scalarSource*(u*tau(1,1) + v*tau(2,1) + w*tau(3,1)))*this%dV
+
+    ! NEW method -- requires more p_sum but results in a vector
+    this%uface = p_sum(this%scalarSource * u) * this%dV
+    this%vface = p_sum(this%scalarSource * v) * this%dV
+    this%wface = p_sum(this%scalarSource * w) * this%dV
+    this%ut = this%M * ((this%uface - this%uturb) * n(1,1) + (this%vface - this%vturb) * n(2,1) + (this%wface - this%wturb) * n(3,1))
+    vface = ((this%uface - this%uturb) * tau(1,1) + (this%vface - this%vturb) * tau(2,1) + (this%wface - this%wturb) * tau(3,1))
+    
+    call message(0, 'DEBUG: this%uturb', this%uturb)
+    call message(0, 'DEBUG: this%ut', this%ut)
+    ! TODO: Need to update yaw before calling get_weights()
+    !if (this%useDynamicYaw) then
+    !    call get_weights(this) 
+    !end if
 
     ! Mean speed at the turbine, corrected with factor M
-    this%ut = this%M*p_sum(this%scalarSource*this%speed)*this%dV
-    vface = p_sum(this%scalarSource*(u*tau(1,1) + v*tau(2,1) + w*tau(3,1)))*this%dV
     usp_sq = (this%ut)**2
     force = -0.5d0*this%cT*(pi*(this%diam**2)/4.d0)*usp_sq
 
@@ -421,5 +432,76 @@ function get_power(this) result(power)
     ! New power assumes induction theory and uses CT' = CP'
     power = 0.5d0*this%cT*(pi*(this%diam**2)/4.d0)*this%ut**3
 end function
+
+! access turbine position
+subroutine get_pos(this, x, y, z)
+    class(actuatordisk_filtered), intent(in) :: this
+    real(rkind), intent(out) :: x, y, z
+    
+    x = this%xloc; y = this%yloc; z = this%zloc
+end subroutine
+
+! accessor for yaw and tilt angles
+subroutine get_angle(this, yaw, tilt)
+    class(actuatorDisk_filtered), intent(in) :: this
+    real(rkind), intent(out) :: yaw, tilt
+    
+    ! returns angles in DEGREES
+    yaw = this%yaw
+    tilt = this%tilt
+end subroutine
+
+! accessor for inputfile name
+subroutine get_fname(this, fname)
+    class(actuatordisk_filtered), intent(in) :: this
+    character(len=clen), intent(out) :: fname
+    
+    fname = this%fname
+end subroutine 
+
+!function get_fname(this) result(fname)
+!    class(actuatordisk_filtered), intent(in) :: this
+!    character(len=clen), intent(out) :: fname
+!    
+!    fname = this%fname
+!end function
+
+! modifier for turbine position
+subroutine set_pos(this, x, y, z)
+    class(actuatordisk_filtered), intent(inout) :: this
+    real(rkind), intent(in) :: x, y, z
+    
+    this%xloc = x; this%yloc = y; this%zloc = z
+end subroutine
+
+! modifier for angles
+subroutine set_angle(this, yaw, tilt)
+    class(actuatordisk_filtered), intent(inout) :: this
+    real(rkind), intent(in) :: yaw, tilt
+    
+    this%yaw = yaw; this%tilt = tilt
+end subroutine
+
+! modifier for turbine velocity
+subroutine set_ut(this, ut, vt, wt)
+    class(actuatordisk_filtered), intent(inout) :: this
+    real(rkind), intent(in) :: ut, vt, wt
+    
+    this%uturb = ut; this%vturb = vt; this%wturb = wt
+    call message(0, 'set_ut: this%uturb', this%uturb)
+end subroutine
+
+! rebuilds forcing kernel
+subroutine redraw(this)
+    class(actuatordisk_filtered), intent(inout) :: this
+
+    ! (re)sample points, this is quick
+    call sample_on_circle(this%diam, this%yloc, this%zloc, this%ys, this%zs, this%dy, this%dz)
+    this%npts = size(this%ys, 1)  
+    this%xs = this%xloc
+    
+    ! (re)compute weights
+    call this%get_weights()
+end subroutine
 
 end module 
