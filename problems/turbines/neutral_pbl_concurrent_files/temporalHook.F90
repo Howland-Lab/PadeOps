@@ -2,7 +2,7 @@ module temporalHook
     use kind_parameters,    only: rkind
     use IncompressibleGrid, only: igrid
     use reductions,         only: P_MAXVAL, p_minval
-    use exits,              only: message, message_min_max
+    use exits,              only: message, message_min_max, GracefulExit
     use constants,          only: half
     use timer,              only: tic, toc 
     use mpi
@@ -45,14 +45,31 @@ contains
             end if 
             call message(0,"------------------------------------------")
             if (simid == 1) then
-               if (allocated(gp%scalars)) then
-                  call message_min_max(1,"Bounds for SCALAR 1:", p_minval(minval(gp%scalars(1)%F)), p_maxval(maxval(gp%scalars(1)%F)))
-                  call message_min_max(1,"Bounds for SCALAR 2:", p_minval(minval(gp%scalars(2)%F)), p_maxval(maxval(gp%scalars(2)%F)))
-                  call message_min_max(1,"Bounds for SCALAR 3:", p_minval(minval(gp%scalars(3)%F)), p_maxval(maxval(gp%scalars(3)%F)))
-               end if
+                if (allocated(gp%scalars)) then
+                    call message_min_max(1,"Bounds for SCALAR 1:", p_minval(minval(gp%scalars(1)%F)), p_maxval(maxval(gp%scalars(1)%F)))
+                    call message_min_max(1,"Bounds for SCALAR 2:", p_minval(minval(gp%scalars(2)%F)), p_maxval(maxval(gp%scalars(2)%F)))
+                    call message_min_max(1,"Bounds for SCALAR 3:", p_minval(minval(gp%scalars(3)%F)), p_maxval(maxval(gp%scalars(3)%F)))
+                end if
+                
+                ! Added by KSH, debugging blowup in neutral BL simulation
+                if (p_maxval(maxval(gp%u))>4.) then
+                    call message(1, "this step has blown up", gp%tsim)
+                    call gp%dumpFullField(gp%u,"uVel")
+                    call gp%dumpFullField(gp%v,"vVel")
+                    call gp%dumpFullField(gp%wC,"wVel")
+                    call gp%dumpFullField(gp%T, "potT")
+                    call gp%dumpFullField(gp%T, "prss")
+                    call GracefulExit("u-velocity has blown up",1)
+                end if
             elseif (simid == 2) then
-               call toc()
-               call tic()
+                call toc()
+                call tic()
+                ! add controller print statements, if the controller is used
+                if (gp%useControl) then
+                    call message(1, "Current angle controller Phi:", gp%angCont_yaw%getPhi())
+                    call message(1, "Frame angle:" , gp%frameAngle)
+                    call message(1, "Current wind angle:", gp%angCont_yaw%getPhiHub())
+                end if
             end if 
         end if 
         
