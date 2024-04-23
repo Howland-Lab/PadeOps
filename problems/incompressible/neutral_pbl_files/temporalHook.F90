@@ -43,6 +43,7 @@ contains
             if (igp%useControl) then
                 call message(1, "Current angle controller Phi:", igp%angCont_yaw%getPhi())
                 call message(1, "Frame angle:" , igp%frameAngle)
+                call message(1, "Current wind angle:", igp%angCont_yaw%getPhiHub())
             end if
             if (igp%useCFL) then
                 call message(1,"Current dt:",igp%dt)
@@ -51,7 +52,7 @@ contains
             call toc()
             call tic()
             ! Added by MH, debugging blowup in neutral BL simulation
-            if (p_maxval(maxval(igp%u))>2.) then
+            if (p_maxval(maxval(igp%u))>4.) then  ! Changed by KSH from 2 -> 4, help with coarse spin-ups
                 call message(1, "this step has blown up", igp%tsim)
                 call igp%dumpFullField(igp%u,"uVel")
                 call igp%dumpFullField(igp%v,"vVel")
