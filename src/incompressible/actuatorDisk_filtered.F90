@@ -1,4 +1,4 @@
-module actuatorDisk_Filtered
+module actuatorDisk_FilteredMod
     use kind_parameters, only: rkind, clen
     use constants, only: imi, zero,one,two,three,half,fourth, pi, kappa
     use decomp_2d
