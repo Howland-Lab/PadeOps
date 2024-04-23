@@ -16,7 +16,7 @@ module AD_Coriolis_parameters
     real(rkind), dimension(:,:,:), allocatable :: utarget0, vtarget0, wtarget0
     ! variables set by the inputfile: 
     real(rkind) :: fringe_fact, lambdafact, freq_inflow, amplit_inflow, dt_max 
-    integer :: N = 10
+    integer :: N = 10  ! minimum number of time steps per period
 
     contains
 
@@ -72,13 +72,16 @@ subroutine init_fringe_targets(inputfile, igp)
     ! get the fraction of the domain encompassed by the fringe
     call igp%fringe_x%getFringeFraction(fringe_fact)
     call igp%fringe_x%getLambdaFact(lambdafact)
-    !call message(0, "DEBUG INIT: LAMBDA_FACT", lambdafact)
-    !call message(0, "DEBUG INIT: FRINGE_FACT", fringe_fact)
     
     ! save frequency and amplitude variables: 
     freq_inflow = freq
     amplit_inflow = amplit
-    dt_max = one / freq_inflow / N
+    if (freq_inflow == zero) then
+        dt_max = 100.d0  ! don't limit dt based on 
+    else
+        dt_max = one / freq_inflow / N
+    endif
+
 end subroutine
 
 subroutine update_fringe_targets(inputfile, igp)
