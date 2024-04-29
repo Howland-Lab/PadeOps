@@ -26,14 +26,12 @@ contains
         if (mod(gp%step,nt_print2screen) == 0) then
             maxDiv = maxval(gp%divergence)
             DomMaxDiv = p_maxval(maxDiv)
-            call message(0,"----------------------------") 
             call message(0,"Time",gp%tsim)
             call message(1,"TIDX:",gp%step)
             call message(1,"MaxDiv:",DomMaxDiv)
-            ! Debugging the velocity... what's going on? 
-            call message(1,"u-vel at (1,1,1):", gp%u(1,1,1))   
-            ! call message(1,"u-val at (Nx/2,1,1):", gp%u(idx,1,1))
-            ! call message(1,"u-val at (Nx,1,1):", gp%u(gp%nx,1,1))
+
+            call message(1,"u-vel at (1,1,1):", gp%u(1,1,1))  ! phase this out (was for debugging)
+            call message(1,"u_inf:", gp%u(1,1,1))  ! this is the same thing, aliased differently
             call message_min_max(1,"Bounds for u:", p_minval(minval(gp%u)), p_maxval(maxval(gp%u)))
             call message_min_max(1,"Bounds for v:", p_minval(minval(gp%v)), p_maxval(maxval(gp%v)))
             call message_min_max(1,"Bounds for w:", p_minval(minval(gp%w)), p_maxval(maxval(gp%w)))
@@ -42,6 +40,7 @@ contains
             end if
             call toc()
             call tic()
+            call message(0,"------------------------------------------------") 
         end if 
 
     end subroutine

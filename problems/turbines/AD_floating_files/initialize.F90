@@ -16,7 +16,7 @@ module AD_Coriolis_parameters
     real(rkind), dimension(:,:,:), allocatable :: utarget0, vtarget0, wtarget0
     ! variables set by the inputfile: 
     real(rkind) :: fringe_fact, lambdafact, freq_inflow, amplit_inflow, dt_max 
-    integer :: N = 10  ! minimum number of time steps per period
+    integer :: N = 20  ! minimum number of time steps per period
 
     contains
 

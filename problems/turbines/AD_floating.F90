@@ -50,8 +50,8 @@ program AD_Coriolis
        call check_dt(igp)                                               !<-- Checks that dt meets frequency criteria
        call igp%timeAdvance()                                           !<-- Time stepping scheme + Pressure Proj. (see igrid.F90)
        call budg_tavg%doBudgets()       
-       call doTemporalStuff(igp)                                        !<-- Go to the temporal hook (see temporalHook.F90)
        call update_fringe_targets(inputfile, igp)                       !<-- Updates fringe targets sinusoidally
+       call doTemporalStuff(igp)                                        !<-- Go to the temporal hook (see temporalHook.F90)
        
     end do 
     
