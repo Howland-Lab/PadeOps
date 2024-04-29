@@ -774,11 +774,12 @@ subroutine getForceRHS(this, dt, u, v, wC, urhs, vrhs, wrhs, newTimeStep, inst_h
                this%step=this%step+1
            case (5)
                do i = 1, this%nTurbines
-                    if (this%useDynamicTurbine) then  ! TODO move outside switch/case
+                    ! TODO move outside switch/case
+                    if (this%useDynamicTurbine) then  
                         call this%dynamicArray(i)%time_advance(dt)
                     endif
 
-                    call message(2, "Turbine yaw: ", this%gamma(i))
+                    ! call message(2, "Turbine yaw: ", this%gamma(i))
                     call this%turbArrayADM_fil(i)%get_RHS(u,v,wC,this%fx,this%fy,this%fz, this%gamma(i), this%theta(i))
                end do
            case (6)

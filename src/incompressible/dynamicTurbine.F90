@@ -27,11 +27,11 @@ module dynamicTurbineMod
         real(rkind) :: surge_freq, surge_amplitude
 
         ! methods to implement motion: 
-        logical :: use_dynamic_turbine, use_simple_periodic  ! currently the only motion
+        logical :: use_dynamic_turbine, use_simple_periodic, verbose 
 
         logical :: do_redraw = .false.  ! redraw turbine this timestep? 
         
-        type(actuatorDisk_filtered) :: turbine  ! TODO: make a generic basicTurbine class
+        type(actuatorDisk_filtered), pointer :: turbine  ! TODO: make a generic basicTurbine class
         
     contains
         procedure :: init
@@ -45,34 +45,30 @@ contains
 
 subroutine init(this, turbine)
     class(dynamicTurbine), intent(inout)   :: this
-    class(actuatorDisk_filtered), intent(in) :: turbine  ! TODO make generic turbine
-!    integer, intent(in) :: turbine_id
+    class(actuatorDisk_filtered), intent(in), target :: turbine  ! TODO make generic turbine
     
-    logical :: use_dynamic_turbine = .true., use_simple_periodic = .true.
+    logical :: use_dynamic_turbine = .true., use_simple_periodic = .true., verbose = .false.
     character(len=clen) :: fname
     real(rkind) :: surge_freq = zero, surge_amplitude = zero
 
     ! read namelist
-    namelist /DYNAMICTURBINE/ use_simple_periodic, surge_freq, surge_amplitude
-
-    ! TODO consolidate naming conventions in turbineMod.F90 and ADM files and here
-!    write(tempname,"(A13,I4.4,A10)") "ActuatorDisk_", turbine_id, "_input.inp"
-!    fname = InputDir(:len_trim(InputDir))//"/"//trim(tempname)
-    call turbine%get_fname(fname) 
+    namelist /DYNAMICTURBINE/ use_simple_periodic, surge_freq, surge_amplitude, verbose
 
     ioUnit = 55
+    call turbine%get_fname(fname)  ! get inputfile name from turbine
     open(unit=ioUnit, file=trim(fname), form='FORMATTED', action="read")
     read(unit=ioUnit, NML=DYNAMICTURBINE)
     close(ioUnit)
 
-    this%turbine = turbine
+    this%turbine => turbine
+    this%verbose = verbose
     this%time = zero  ! TODO - may need to pass a non-zero start-time in 
     call this%turbine%get_pos(this%xloc, this%yloc, this%zloc)
     call this%turbine%get_angle(this%yaw, this%tilt)
 
     ! save namelist variables
     this%use_dynamic_turbine = use_dynamic_turbine
-    this%use_simple_periodic = use_simple_periodic  ! simple periodic motion given by update_periodic
+    this%use_simple_periodic = use_simple_periodic  ! simple periodic motion given by sinusoid_update
     this%surge_freq = surge_freq
     this%surge_amplitude = surge_amplitude
 
@@ -82,11 +78,10 @@ end subroutine
 
 subroutine destroy(this)
     class(dynamicTurbine), intent(inout) :: this
-
-    ! deallocate stuff TODO
+    ! nothing to deallocate at the moment
 end subroutine
 
-! do time advancement step
+! do time advancement step - consider passing time instead of dt into this function !
 subroutine time_advance(this, dt)
     class(dynamicTurbine), intent(inout) :: this
     real(rkind), intent(in) :: dt
@@ -94,12 +89,11 @@ subroutine time_advance(this, dt)
     ! STEP 1: Update time
     this%time = this%time + dt
 
-    ! STEP 2: first, update the position & velocity of the turbine 
-    ! (if not needed, skip time_advance)
+    ! STEP 2: first, update the position & velocity of the turbine (if not needed, skip time_advance)
     if (this%use_simple_periodic) then
         call this%sinusoid_update()
     else
-        call gracefulExit("Missing time advance type in DYNAMICTURBINE module", 423)
+        call gracefulExit("Unknown or missing time advance type in DYNAMICTURBINE module", 423)
     endif
     
     ! STEP 3: redraw the turbine forcing kernel
@@ -116,6 +110,12 @@ subroutine time_advance(this, dt)
 
     ! STEP 4: update turbine velocity
     call this%turbine%set_ut(this%ut, this%vt, this%wt)
+
+    if (this%verbose) then
+        call message(0, 'dynamicTurbine: time_advance called at t', this%time)
+        call message(1, 'dynamicTurbine: position delta x', this%delx)
+        call message(1, 'dynamicTurbine: velocity uturb', this%ut)
+    endif
 
 end subroutine
 
@@ -135,6 +135,5 @@ subroutine sinusoid_update(this)
     endif
 
 end subroutine
-
 
 end module
