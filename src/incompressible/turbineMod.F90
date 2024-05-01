@@ -768,12 +768,12 @@ subroutine getForceRHS(this, dt, u, v, wC, urhs, vrhs, wrhs, newTimeStep, inst_h
                this%step=this%step+1
            case (5)
                do i = 1, this%nTurbines
-                    call message(2, "Turbine yaw: ", this%gamma(i))
+                    ! call message(2, "Turbine yaw: ", this%gamma(i))
                     call this%turbArrayADM_fil(i)%get_RHS(u,v,wC,this%fx,this%fy,this%fz, this%gamma(i), this%theta(i))
                end do
            case (6)
                do i = 1, this%nTurbines
-                    call message(2, "Turbine yaw: ", this%gamma(i))
+                    ! call message(2, "Turbine yaw: ", this%gamma(i))
                     call this%turbArrayADM_ct(i)%get_RHS(u,v,wC,this%fx,this%fy,this%fz, this%gamma(i), this%theta(i))
                end do
            end select 
