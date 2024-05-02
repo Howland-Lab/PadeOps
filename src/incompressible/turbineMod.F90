@@ -11,6 +11,7 @@ module turbineMod
     use actuatorDisk_FilteredMod, only: actuatorDisk_filtered
     use actuatorDisk_CTMod, only: actuatorDisk_CT
     use dynamicYawMod, only: dynamicYaw
+    use dynamicTurbineMod, only: dynamicTurbine
     use exits, only: GracefulExit, message
     use spectralMod, only: spectral  
     use mpi 
@@ -45,6 +46,7 @@ module turbineMod
         type(actuatorDisk_filtered), allocatable, dimension(:) :: turbArrayADM_fil
         type(actuatorDisk_CT), allocatable, dimension(:) :: turbArrayADM_CT
         type(dynamicYaw) :: dyaw
+        type(dynamicTurbine), allocatable, dimension(:) :: dynamicArray
 
         type(decomp_info), pointer :: gpC, sp_gpC, gpE, sp_gpE
         type(spectral), pointer :: spectC, spectE
@@ -67,7 +69,7 @@ module turbineMod
         real(rkind), allocatable, dimension(:,:,:) :: ySendBuf, zSendBuf, yRightHalo, zRightHalo, zLeftHalo
 
         real(rkind), dimension(:,:,:), allocatable :: rbuff, blanks, speed, scalarSource
-        logical :: dumpTurbField = .false., useDynamicYaw, firstStep
+        logical :: dumpTurbField = .false., useDynamicYaw, firstStep, useDynamicTurbine
         integer :: step = 0, ADM_Type, yawUpdateInterval 
         character(len=clen)                           :: powerDumpDir
         ! Variables to link domain and control
@@ -172,7 +174,7 @@ subroutine init(this, inputFile, gpC, gpE, spectC, spectE, cbuffyC, cbuffYE, cbu
     complex(rkind), dimension(:,:,:,:), target, intent(inout) :: cbuffyC, cbuffyE, cbuffzC, cbuffzE
     real(rkind), dimension(:,:,:,:), intent(in) :: mesh
     real(rkind), intent(in) :: dx, dy, dz
-    logical :: useWindTurbines = .TRUE., useDynamicYaw = .FALSE. 
+    logical :: useWindTurbines = .TRUE., useDynamicYaw = .FALSE., useDynamicTurbine = .FALSE. 
     real(rkind) :: xyzPads(6)
     logical :: ADM = .TRUE., WriteTurbineForce  ! .FALSE. implies ALM
     ! Dynamic yaw stuff
@@ -182,7 +184,8 @@ subroutine init(this, inputFile, gpC, gpE, spectC, spectE, cbuffyC, cbuffYE, cbu
     integer :: i, ierr, ADM_Type = 2
 
     namelist /WINDTURBINES/ useWindTurbines, num_turbines, ADM, turbInfoDir, ADM_Type, & 
-                            WriteTurbineForce, powerDumpDir, useDynamicYaw, yawUpdateInterval, inputDirDyaw
+                            WriteTurbineForce, powerDumpDir, useDynamicYaw, yawUpdateInterval, inputDirDyaw, & 
+                            useDynamicTurbine
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -211,6 +214,7 @@ subroutine init(this, inputFile, gpC, gpE, spectC, spectE, cbuffyC, cbuffYE, cbu
     this%nTurbines = num_turbines;
     this%powerDumpDir = powerDumpDir
     this%useDynamicYaw = useDynamicYaw
+    this%useDynamicTurbine = useDynamicTurbine
     this%yawUpdateInterval = yawUpdateInterval
     this%Tf = this%yawUpdateInterval
     this%hubIndex = 1
@@ -301,16 +305,18 @@ subroutine init(this, inputFile, gpC, gpE, spectC, spectE, cbuffyC, cbuffYE, cbu
 
       case (5)
          ! Allocate turbine array + buffers
-         allocate (this%turbArrayADM_fil(this%nTurbines))
-         ! allocate (this%rbuff(this%gpC%xsz(1), this%gpC%xsz(2), this%gpC%xsz(3)))
-         ! allocate (this%blanks(this%gpC%xsz(1), this%gpC%xsz(2), this%gpC%xsz(3)))
-         ! allocate (this%speed(this%gpC%xsz(1), this%gpC%xsz(2), this%gpC%xsz(3)))
-         ! allocate (this%scalarSource(this%gpC%xsz(1), this%gpC%xsz(2), this%gpC%xsz(3)))
+         allocate(this%turbArrayADM_fil(this%nTurbines))
+         allocate(this%dynamicArray(this%nTurbines))  ! TODO make generic turbine and move this outside
+
          do i = 1, this%nTurbines
              call this%turbArrayADM_fil(i)%init(turbInfoDir, i, mesh(:,:,:,1), mesh(:,:,:,2), mesh(:,:,:,3))
-             !call this%turbArrayADM_fil(i)%link_memory_buffers(this%rbuff, this%blanks, this%speed, this%scalarSource)
-             this%gamma(i) = this%turbArrayADM_fil(i)%yaw*pi/180.d0  ! stored in RADIANS
-             this%theta(i) = 0.d0
+             this%gamma(i) = this%turbArrayADM_fil(i)%yaw*pi/180.d0  ! stored in RADIANS  TODO - phase this out
+             this%theta(i) = 0.d0  ! tilt angle
+             
+             ! initialize turbine dynamics
+             if (this%useDynamicTurbine) then
+                 call this%dynamicArray(i)%init(this%turbArrayADM_fil(i))
+             endif
          end do
          call message(0,"FILTERED ADM WIND TURBINE (Type 5) array initialized")
 
@@ -319,7 +325,7 @@ subroutine init(this, inputFile, gpC, gpE, spectC, spectE, cbuffyC, cbuffYE, cbu
         allocate (this%turbArrayADM_CT(this%nTurbines))
          do i = 1, this%nTurbines
              call this%turbArrayADM_CT(i)%init(turbInfoDir, i, mesh(:,:,:,1), mesh(:,:,:,2), mesh(:,:,:,3))
-             this%gamma(i) = this%turbArrayADM_CT(i)%yaw*pi/180.d0  ! stored in RADIANS
+             this%gamma(i) = this%turbArrayADM_CT(i)%yaw*pi/180.d0  ! stored in RADIANS TODO - phase this out
              this%theta(i) = 0.d0
          end do
          call message(0,"CT ADM WIND TURBINE (Type 6) array initialized")
@@ -768,8 +774,12 @@ subroutine getForceRHS(this, dt, u, v, wC, urhs, vrhs, wrhs, newTimeStep, inst_h
                this%step=this%step+1
            case (5)
                do i = 1, this%nTurbines
-                    ! call message(2, "Turbine yaw: ", this%gamma(i))
-                    call this%turbArrayADM_fil(i)%get_RHS(u,v,wC,this%fx,this%fy,this%fz, this%gamma(i), this%theta(i))
+                    ! TODO move outside switch/case
+                    if (this%useDynamicTurbine) then  
+                        call this%dynamicArray(i)%time_advance(dt)
+                    endif
+
+                    call this%turbArrayADM_fil(i)%get_RHS(u,v,wC,this%fx,this%fy,this%fz)
                end do
            case (6)
                do i = 1, this%nTurbines
