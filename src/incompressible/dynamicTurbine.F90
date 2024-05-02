@@ -24,7 +24,7 @@ module dynamicTurbineMod
         real(rkind) :: ut, vt, wt  ! turbine velocity direction components
         real(rkind) :: yaw, tilt, roll = zero  ! turbine angles 
         real(rkind) :: time  ! simulation time, non-dimensional
-        real(rkind) :: surge_freq, surge_amplitude
+        real(rkind) :: surge_freq, surge_amplitude, pitch_amplitude
 
         ! methods to implement motion: 
         logical :: use_dynamic_turbine, use_simple_periodic, verbose 
@@ -49,10 +49,10 @@ subroutine init(this, turbine)
     
     logical :: use_dynamic_turbine = .true., use_simple_periodic = .true., verbose = .false.
     character(len=clen) :: fname
-    real(rkind) :: surge_freq = zero, surge_amplitude = zero
+    real(rkind) :: surge_freq = zero, surge_amplitude = zero, pitch_amplitude = zero
 
     ! read namelist
-    namelist /DYNAMICTURBINE/ use_simple_periodic, surge_freq, surge_amplitude, verbose
+    namelist /DYNAMICTURBINE/ use_simple_periodic, surge_freq, surge_amplitude, verbose, pitch_amplitude
 
     ioUnit = 55
     call turbine%get_fname(fname)  ! get inputfile name from turbine
@@ -61,16 +61,17 @@ subroutine init(this, turbine)
     close(ioUnit)
 
     this%turbine => turbine
-    this%verbose = verbose
+    this%verbose = verbose  ! add additional print statements
     this%time = zero  ! TODO - may need to pass a non-zero start-time in 
     call this%turbine%get_pos(this%xloc, this%yloc, this%zloc)
-    call this%turbine%get_angle(this%yaw, this%tilt)
+    call this%turbine%get_angle(this%yaw, this%tilt)  ! stored in DEGREES
 
     ! save namelist variables
     this%use_dynamic_turbine = use_dynamic_turbine
     this%use_simple_periodic = use_simple_periodic  ! simple periodic motion given by sinusoid_update
-    this%surge_freq = surge_freq
-    this%surge_amplitude = surge_amplitude
+    this%surge_freq = surge_freq            ! surge frequency, non-dimensionalized
+    this%surge_amplitude = surge_amplitude  ! surge amplitude =  u_d,max/U
+    this%pitch_amplitude = pitch_amplitude  ! pitch amplitude, in degrees
 
     call message(1, 'Initialized dynamicTurbine module')
 
@@ -85,6 +86,7 @@ end subroutine
 subroutine time_advance(this, dt)
     class(dynamicTurbine), intent(inout) :: this
     real(rkind), intent(in) :: dt
+    real(rkind) :: tmp
 
     ! STEP 1: Update time
     this%time = this%time + dt
@@ -99,7 +101,7 @@ subroutine time_advance(this, dt)
     ! STEP 3: redraw the turbine forcing kernel
     if (this%do_redraw) then
         call this%turbine%set_pos(this%xloc + this%delx, this%yloc + this%dely, this%zloc + this%delz)
-        call this%turbine%set_angle(this%yaw, this%tilt)  ! TODO implement these functions
+        call this%turbine%set_angle(this%yaw, this%tilt)
 
         ! now, redraw the turbine forcing kernel
         call this%turbine%redraw()
@@ -112,9 +114,14 @@ subroutine time_advance(this, dt)
     call this%turbine%set_ut(this%ut, this%vt, this%wt)
 
     if (this%verbose) then
+        tmp = this%turbine%get_udisk()
         call message(0, 'dynamicTurbine: time_advance called at t', this%time)
         call message(1, 'dynamicTurbine: position delta x', this%delx)
         call message(1, 'dynamicTurbine: velocity uturb', this%ut)
+        ! call message(1, 'dynamicTurbine: velocity udisk', tmp)  ! this lags one time step
+        if (this%pitch_amplitude > zero) then
+            call message(1, 'dynamicTurbine: turbine tilt (deg.)', this%tilt)
+        endif
     endif
 
 end subroutine
@@ -125,13 +132,16 @@ subroutine sinusoid_update(this)
     real(rkind) :: omega
 
     omega = two * pi * this%surge_freq
-    if (.not. ((this%surge_freq == zero) .or. (this%surge_amplitude) == zero)) then
+    if (.not. (this%surge_freq == zero)) then
         ! sinusoid needs updating every timestep as long as f != 0, A != 0
         this%do_redraw = .true.
 
         ! TODO update to include other DOF
-        this%ut = this%surge_amplitude * sin(omega * this%time)
-        this%delx = this%surge_amplitude / omega * (one - cos(omega * this%time))
+        this%ut = this%surge_amplitude * cos(omega * this%time)
+        this%delx = this%surge_amplitude / omega * sin(omega * this%time)
+        ! update the pitch (tilt) as well
+        this%tilt = this%pitch_amplitude * sin(omega * this%time)
+        
     endif
 
 end subroutine

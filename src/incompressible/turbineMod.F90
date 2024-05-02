@@ -310,7 +310,7 @@ subroutine init(this, inputFile, gpC, gpE, spectC, spectE, cbuffyC, cbuffYE, cbu
 
          do i = 1, this%nTurbines
              call this%turbArrayADM_fil(i)%init(turbInfoDir, i, mesh(:,:,:,1), mesh(:,:,:,2), mesh(:,:,:,3))
-             this%gamma(i) = this%turbArrayADM_fil(i)%yaw*pi/180.d0  ! stored in RADIANS
+             this%gamma(i) = this%turbArrayADM_fil(i)%yaw*pi/180.d0  ! stored in RADIANS  TODO - phase this out
              this%theta(i) = 0.d0  ! tilt angle
              
              ! initialize turbine dynamics
@@ -325,7 +325,7 @@ subroutine init(this, inputFile, gpC, gpE, spectC, spectE, cbuffyC, cbuffYE, cbu
         allocate (this%turbArrayADM_CT(this%nTurbines))
          do i = 1, this%nTurbines
              call this%turbArrayADM_CT(i)%init(turbInfoDir, i, mesh(:,:,:,1), mesh(:,:,:,2), mesh(:,:,:,3))
-             this%gamma(i) = this%turbArrayADM_CT(i)%yaw*pi/180.d0  ! stored in RADIANS
+             this%gamma(i) = this%turbArrayADM_CT(i)%yaw*pi/180.d0  ! stored in RADIANS TODO - phase this out
              this%theta(i) = 0.d0
          end do
          call message(0,"CT ADM WIND TURBINE (Type 6) array initialized")
@@ -779,12 +779,11 @@ subroutine getForceRHS(this, dt, u, v, wC, urhs, vrhs, wrhs, newTimeStep, inst_h
                         call this%dynamicArray(i)%time_advance(dt)
                     endif
 
-                    ! call message(2, "Turbine yaw: ", this%gamma(i))
-                    call this%turbArrayADM_fil(i)%get_RHS(u,v,wC,this%fx,this%fy,this%fz, this%gamma(i), this%theta(i))
+                    call this%turbArrayADM_fil(i)%get_RHS(u,v,wC,this%fx,this%fy,this%fz)
                end do
            case (6)
                do i = 1, this%nTurbines
-                    call message(2, "Turbine yaw: ", this%gamma(i))
+                    ! call message(2, "Turbine yaw: ", this%gamma(i))
                     call this%turbArrayADM_ct(i)%get_RHS(u,v,wC,this%fx,this%fy,this%fz, this%gamma(i), this%theta(i))
                end do
            end select 

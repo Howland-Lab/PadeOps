@@ -59,10 +59,11 @@ module actuatorDisk_FilteredMod
         procedure :: get_angle
         procedure :: get_fname
         procedure :: get_ut
+        procedure :: get_udisk  ! velocity that the turbine sees
         procedure :: set_pos
         procedure :: set_angle
+        procedure :: set_ut
         procedure :: redraw
-        procedure :: set_ut 
     end type
 
 
@@ -277,7 +278,7 @@ subroutine get_weights(this)
     real(rkind), dimension(this%nxLoc) :: R1
     real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc) :: R
         
-    if (abs(this%yaw) < 1e-3) then
+    if ((abs(this%yaw) < 1e-3) .and. (abs(this%tilt) < 1e-3)) then
         if (this%quickDecomp) then
             !aligned with the x-direction, use the "quick" kernel creation
             call this%get_R2(this%ys, this%zs,R2)
@@ -365,12 +366,12 @@ subroutine sample_on_circle(diam, xcen, ycen, xloc, yloc, dx, dy)
 end subroutine
 
 ! Right hand side forcing term for the ADM
-subroutine get_RHS(this, u, v, w, rhsxvals, rhsyvals, rhszvals, yaw, theta)
+subroutine get_RHS(this, u, v, w, rhsxvals, rhsyvals, rhszvals)
     class(actuatordisk_filtered), intent(inout) :: this
     real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc), intent(inout) :: rhsxvals, rhsyvals, rhszvals
     real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc), intent(in)    :: u, v, w
-    real(rkind), intent(in) :: yaw, theta
-    real(rkind) :: usp_sq, force, vface!, gamma
+    real(rkind) :: yaw, tilt
+    real(rkind) :: usp_sq, force, vface
     real(rkind), dimension(3,1) :: n=[1,0,0], tau=[0,1,0] !xn, Ft
     real(rkind), dimension(3,3) :: R, T
 
@@ -378,9 +379,9 @@ subroutine get_RHS(this, u, v, w, rhsxvals, rhsyvals, rhszvals, yaw, theta)
     if (.not. this%useDynamicYaw .and. (this%yaw - yaw*180.d0/pi)>1.d-8) then
         call GracefulExit("Turbine prescribed yaw changed, but useDynamicYaw is OFF", 423)
     end if
-   
-    this%yaw = yaw*180.d0/pi
-    this%tilt = theta*180.d0/pi  ! For now, these are stored in degrees but input in radians ...?
+
+    yaw = this%yaw * pi/180.d0
+    tilt = this%tilt * pi/180.d0
 
     n = reshape([1,0,0], shape(n))  ! reset the normal vector
     tau = reshape([0, 1, 0], shape(tau))  ! also reset the tangent vector
@@ -388,9 +389,9 @@ subroutine get_RHS(this, u, v, w, rhsxvals, rhsyvals, rhszvals, yaw, theta)
     R = reshape([cos(yaw), -sin(yaw), 0.d0, &
                  sin(yaw), cos(yaw), 0.d0, &
                  0.d0, 0.d0, 1.d0], shape(R), order=[2, 1])
-    T = reshape([cos(theta), zero, sin(theta), &
+    T = reshape([cos(tilt), zero, sin(tilt), &
                  zero, one, zero, &
-                 -sin(theta), zero, cos(theta)], shape(T), order=[2, 1])
+                 -sin(tilt), zero, cos(tilt)], shape(T), order=[2, 1])
     n = matmul(T, matmul(R, n))
     tau = matmul(T, matmul(R, tau))
 
@@ -502,6 +503,13 @@ subroutine get_ut(this, ut, vt, wt)
     
     ut = this%uturb; vt = this%vturb; wt = this%wturb
 end subroutine
+
+! accessor for disk velocity
+function get_udisk(this) result(udisk)
+    class(actuatordisk_filtered), intent(in) :: this
+    real(rkind) :: udisk
+    udisk = this%ut    
+end function
 
 ! rebuilds forcing kernel
 subroutine redraw(this)
