@@ -211,6 +211,7 @@ module budgets_time_avg_deficit_mod
          integer :: tidx_dump 
          integer :: tidx_compute
          integer :: tidx_budget_start 
+         integer :: dump_only
          real(rkind) :: time_budget_start 
          logical :: do_budgets
          logical :: forceDump
@@ -263,10 +264,10 @@ module budgets_time_avg_deficit_mod
          character(len=clen) :: restart_dir = "NULL"
          integer :: ioUnit, ierr,  budgetType = 1, restart_tid = 0, restart_rid = 0, restart_counter = 0
          logical :: restart_budgets = .false. 
-         integer :: tidx_compute = 1000000, tidx_dump = 1000000, tidx_budget_start = -100
+         integer :: tidx_compute = 1000000, tidx_dump = 1000000, tidx_budget_start = -100, dump_only=-1
          real(rkind) :: time_budget_start = -1.0d0
          logical :: do_budgets = .false. 
-         namelist /BUDGET_TIME_AVG_DEFICIT/ budgetType, budgets_dir, restart_budgets, restart_dir, restart_rid, restart_tid, restart_counter, tidx_dump, tidx_compute, do_budgets, tidx_budget_start, time_budget_start
+         namelist /BUDGET_TIME_AVG_DEFICIT/ budgetType, budgets_dir, restart_budgets, restart_dir, restart_rid, restart_tid, restart_counter, tidx_dump, tidx_compute, dump_only, do_budgets, tidx_budget_start, time_budget_start
          
          restart_dir = "NULL"
 
@@ -285,6 +286,7 @@ module budgets_time_avg_deficit_mod
          this%tidx_compute = tidx_compute
          this%tidx_budget_start = tidx_budget_start  
          this%time_budget_start = time_budget_start  
+         this%dump_only = dump_only
          this%useWindTurbines = this%prim_budget%igrid_sim%useWindTurbines
          this%isStratified    = this%prim_budget%igrid_sim%isStratified
          this%useCoriolis    = this%prim_budget%igrid_sim%useCoriolis
@@ -413,24 +415,47 @@ module budgets_time_avg_deficit_mod
      subroutine DumpBudget(this)
          class(budgets_time_avg_deficit), intent(inout) :: this
          
-         ! MKE budget is only assembled before dumping
+        ! MKE budget is only assembled before dumping
         if (this%budgetType>1) call this%AssembleBudget2() 
         
-         ! Budget 0: 
-         call this%dumpbudget0()
- 
-         ! Budget 1: 
-         if (this%budgetType>0) then
-             call this%dumpbudget1()
-         end if
- 
-         if (this%budgetType>1) then
-             call this%dumpbudget2()
-         end if 
+        if (this%dump_only>0) then
+            select case (this%dump_only)
 
-         if (this%budgetType>2) then
-            call this%dumpbudget3()
-        end if 
+            case(0)
+                ! Budget 0: 
+                call this%dumpbudget0()    
+
+            case(1)
+                ! Budget 1:
+                call this%dumpbudget1()
+
+            case(2)
+                ! Budget 2:
+                call this%dumpbudget2
+
+            case(3)
+                ! Budget3:
+                call this%dumpbudget3
+
+            end select       
+
+        else
+            ! Budget 0: 
+            call this%dumpbudget0()
+    
+            ! Budget 1: 
+            if (this%budgetType>0) then
+                call this%dumpbudget1()
+            end if
+    
+            if (this%budgetType>1) then
+                call this%dumpbudget2()
+            end if 
+
+            if (this%budgetType>2) then
+                call this%dumpbudget3()
+            end if 
+        end if
  
      end subroutine 
  
@@ -1706,25 +1731,25 @@ module budgets_time_avg_deficit_mod
         ! subtract base TKE advection like term
         this%budget_3(:,:,:,21) = this%budget_3(:,:,:,21) + buff3
 
-        buff2 = half*(this%pre_budget%budget_0(:,:,:,5)* this%budget_0(:,:,:,1) + this%pre_budget%budget_0(:,:,:,6)*this%budget_0(:,:,:,2) &
-                             + this%pre_budget%budget_0(:,:,:,7)*this%budget_0(:,:,:,3))
+        buff2 = half*(this%budget_0(:,:,:,11)* this%pre_budget%budget_0(:,:,:,1) + this%pre_budget%budget_0(:,:,:,2)*this%budget_0(:,:,:,12) &
+                             + this%pre_budget%budget_0(:,:,:,3)*this%budget_0(:,:,:,14))
         call this%ddx_R2R(buff2,buff)
         buff3 = buff
 
-        buff2 = half*(this%pre_budget%budget_0(:,:,:,6)* this%budget_0(:,:,:,1) + this%pre_budget%budget_0(:,:,:,8)*this%budget_0(:,:,:,2) &
-                             + this%pre_budget%budget_0(:,:,:,9)*this%budget_0(:,:,:,3))
+        buff2 = half*(this%pre_budget%budget_0(:,:,:,1)* this%budget_0(:,:,:,13) + this%pre_budget%budget_0(:,:,:,2)*this%budget_0(:,:,:,16) &
+                             + this%pre_budget%budget_0(:,:,:,3)*this%budget_0(:,:,:,17))
         call this%ddy_R2R(buff2,buff)
         buff3 = buff3 + buff
 
-        buff2 = half*(this%pre_budget%budget_0(:,:,:,7)* this%budget_0(:,:,:,1) + this%pre_budget%budget_0(:,:,:,9)*this%budget_0(:,:,:,2) &
-                             + this%pre_budget%budget_0(:,:,:,10)*this%budget_0(:,:,:,3))
+        buff2 = half*(this%pre_budget%budget_0(:,:,:,1)* this%budget_0(:,:,:,15) + this%pre_budget%budget_0(:,:,:,2)*this%budget_0(:,:,:,18) &
+                             + this%pre_budget%budget_0(:,:,:,3)*this%budget_0(:,:,:,19))
         call this%ddz_R2R(buff2,buff)
         buff3 = buff3 +  buff
 
         ! subtract base MKE turbulent transport like term
         this%budget_3(:,:,:,21) = this%budget_3(:,:,:,21) + buff3
 
-        this%budget_3(:,:,:,22) = this%prim_budget%budget_3(:,:,:,3) - this%pre_budget%budget_3(:,:,:,3) - this%budget_3(:,:,:,3) - this%budget_3(:,:,:,21)
+        this%budget_3(:,:,:,22) = (this%prim_budget%budget_3(:,:,:,3) - this%pre_budget%budget_3(:,:,:,3))/(real(this%counter,rkind) + 1.d-18) - this%budget_3(:,:,:,3) - this%budget_3(:,:,:,21)
 
         ! 4. Pressure transport         
         this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) - this%budget_2(:,:,:,4)
@@ -1778,18 +1803,18 @@ module budgets_time_avg_deficit_mod
         ! subtract base TKE advection like term
         this%budget_3(:,:,:,21) = this%budget_3(:,:,:,21) - buff3
 
-        buff2 = half*(this%pre_budget%budget_0(:,:,:,5)* this%budget_0(:,:,:,1) + this%pre_budget%budget_0(:,:,:,6)*this%budget_0(:,:,:,2) &
-                             + this%pre_budget%budget_0(:,:,:,7)*this%budget_0(:,:,:,3))
+        buff2 = half*(this%budget_0(:,:,:,11)* this%pre_budget%budget_0(:,:,:,1) + this%pre_budget%budget_0(:,:,:,2)*this%budget_0(:,:,:,12) &
+                             + this%pre_budget%budget_0(:,:,:,3)*this%budget_0(:,:,:,14))
         call this%ddx_R2R(buff2,buff)
         buff3 = buff
 
-        buff2 = half*(this%pre_budget%budget_0(:,:,:,6)* this%budget_0(:,:,:,1) + this%pre_budget%budget_0(:,:,:,8)*this%budget_0(:,:,:,2) &
-                             + this%pre_budget%budget_0(:,:,:,9)*this%budget_0(:,:,:,3))
+        buff2 = half*(this%pre_budget%budget_0(:,:,:,1)* this%budget_0(:,:,:,13) + this%pre_budget%budget_0(:,:,:,2)*this%budget_0(:,:,:,16) &
+                             + this%pre_budget%budget_0(:,:,:,3)*this%budget_0(:,:,:,17))
         call this%ddy_R2R(buff2,buff)
         buff3 = buff3 + buff
 
-        buff2 = half*(this%pre_budget%budget_0(:,:,:,7)* this%budget_0(:,:,:,1) + this%pre_budget%budget_0(:,:,:,9)*this%budget_0(:,:,:,2) &
-                             + this%pre_budget%budget_0(:,:,:,10)*this%budget_0(:,:,:,3))
+        buff2 = half*(this%pre_budget%budget_0(:,:,:,1)* this%budget_0(:,:,:,15) + this%pre_budget%budget_0(:,:,:,2)*this%budget_0(:,:,:,18) &
+                             + this%pre_budget%budget_0(:,:,:,3)*this%budget_0(:,:,:,19))
         call this%ddz_R2R(buff2,buff)
         buff3 = buff3 +  buff
 
