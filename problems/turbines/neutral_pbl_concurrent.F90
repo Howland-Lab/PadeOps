@@ -35,7 +35,7 @@ program neutral_pbl_concurrent
     close(ioUnit)    
 
     call primary%init(primary_inputFile, .true.)                               
-    call primary%start_io(.true.)                                          
+    call primary%start_io(.false.)                                          
     call primary%printDivergence()
     
     if (primary%useScalars) then

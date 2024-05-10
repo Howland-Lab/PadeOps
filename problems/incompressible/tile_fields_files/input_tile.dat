@@ -1,0 +1,16 @@
+&INPUT
+nx 				= 256       ! Number of x points in original simulation
+ny 				= 256       ! Number of y points in original simulation
+nz 				= 256       ! Number of z points in original simulation
+inputdir  		= "XXX"     ! Directory for input files
+outputdir 		= "XXX"     ! Directory for output files
+ntile_x 		= 2         ! Integer number of tiles in x
+ntile_y 		= 1         ! Integer number of tiles in y
+ntile_z 		= 1         ! Integer number of tiles in z - CHECK: must be periodic in z to tile in z
+periodicInZ 	= .false.   ! Periodic in z? 
+inputfile_RID 	= 02        ! Restart file ID of input
+inputfile_TID 	= 33829     ! Restart time ID of input
+outputfile_RID 	= 03        ! New restart file ID of output
+outputfile_TID 	= 0         ! New restart time ID of output
+isStratified	= .true.    ! Copy potential temperature fields if true
+/
