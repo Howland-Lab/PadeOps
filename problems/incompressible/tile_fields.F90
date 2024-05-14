@@ -1,9 +1,11 @@
 module TileFieldsMod
     use kind_parameters, only: rkind
     use exits, only: GracefulExit, message
-    use constants, only : one
+    use constants, only : zero, one
     
     implicit none
+    integer :: seed = 321341  ! seed for pseudo-random perturbations
+
     contains
 
     ! tile arrays along axis 1
@@ -98,6 +100,31 @@ module TileFieldsMod
             arrOut(:, :, nzf) = arrIn(:, :, nz)  ! set equal top boundary
         endif
     end subroutine
+
+    ! Add pseudo-random perturbations at the first grid level
+    subroutine add_perturbations(arr, pfact, nlevels)
+        use random,             only: gaussian_random
+        real(rkind), dimension(:,:,:), intent(inout) :: arr
+        real(rkind), intent(in) :: pfact  ! magnitude of perturbations
+        real(rkind), dimension(:,:,:), allocatable :: randArr
+        integer, intent(in), optional :: nlevels
+        integer :: N, k
+
+        if (present(nlevels)) then
+            N = nlevels
+        else 
+            N = 10  ! take some default value
+        endif
+
+        ! Add random numbers
+        allocate(randArr(size(arr, 1), size(arr, 2), size(arr, 3)))
+        call gaussian_random(randArr, zero, one, seed)
+        do k = 1,min(size(arr,3), N)
+            arr(:,:,k) = arr(:, :, k) + pfact*randArr(:,:,k)
+        end do
+        deallocate(randArr)
+        call message(1, 'Added perturbations in the bottom N levels', min(size(arr,3), N))
+    end subroutine
 end module
 
 
@@ -118,19 +145,19 @@ program tileFields
     character(len=clen) :: outputdir, inputdir
     integer :: ioUnit, nx, ny, nz, ierr, inputFile_TID, inputFile_RID, outputFile_TID, outputFile_RID
     integer :: ntile_x=2, ntile_y=1, ntile_z=1, nxf, nyf, nzf
+    integer :: i
     logical :: tileInZ = .false., isStratified = .false., periodicInZ = .false. 
     type(decomp_info) :: gpC, gpE, gpC_upX, gpC_upXY, gpC_upXYZ, gpE_upX, gpE_upXY, gpE_upXYZ 
     real(rkind), dimension(:,:,:), allocatable :: f, fxup_inX, fxup_inY, fxyup_inY 
     real(rkind), dimension(:,:,:), allocatable :: fxyup_inZ, fxyup_inX, fxyzup_inZ, fxyzup_inY, fxyzup_inX
+    real(rkind) :: tsim, pfact=one
     character(len=clen) :: tempname, fname
-    real(rkind) :: tsim 
     character(len=clen), dimension(3) :: keys
-    integer :: i
     keys = [character(len=clen) :: "_u.", "_v.", "_T."]  !<-- cell-centered field names
 
     namelist /INPUT/ nx, ny, nz, ntile_x, ntile_y, ntile_z, &
     inputdir, outputdir, inputFile_TID, inputFile_RID, &
-    outputFile_TID, outputFile_RID, isStratified, PeriodicInZ
+    outputFile_TID, outputFile_RID, isStratified, PeriodicInZ, pfact
 
     call MPI_Init(ierr)               !<-- Begin MPI
     call GETARG(1,inputfile)          !<-- Get the location of the input file
@@ -207,16 +234,27 @@ program tileFields
                 ! do tiling
                 call tile_z(fxyup_inZ, fxyzup_inZ)
 
+                ! add pseudo-random perturbations to break peridicity
+                if ((trim(keys(i)) == "_T.") .and. (pfact > 0)) then
+                    call message(1, 'Adding perturbations in the temperature field with magnitude', pfact)
+                    call add_perturbations(fxyzup_inZ, pfact)
+                endif
+
                 call transpose_z_to_y(fxyzup_inZ,fxyzup_inY,gpC_upXYZ)
                 call transpose_y_to_x(fxyzup_inY,fxyzup_inX,gpC_upXYZ)
                 call decomp_2d_write_one(1,fxyzup_inX,fname, gpC_upXYZ)  ! write tiled fields
-
             else
                 call GraceFulExit("ERROR: cannot tile in z if not periodic", 999)
 
             endif 
 
         else
+            ! still check if pfact > 0 (pseudo-random perturbations)
+            if ((trim(keys(i)) == "_T.") .and. (pfact > 0)) then
+                call message(1, 'Adding perturbations in the temperature field with magnitude', pfact)
+                call add_perturbations(fxyup_inY, pfact)
+            endif
+
             ! no tiling in z, write fields
             call transpose_y_to_x(fxyup_inY,fxyup_inX,gpC_upXY)
             call decomp_2d_write_one(1,fxyup_inX,fname, gpC_upXY)  ! write tiled fields
