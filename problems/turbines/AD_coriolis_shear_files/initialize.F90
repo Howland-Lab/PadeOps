@@ -29,14 +29,22 @@ subroutine init_fringe_targets(inputfile, mesh)
     character(len=*),                intent(in)    :: inputfile
     real(rkind), dimension(:,:,:,:), intent(in), target    :: mesh
     real(rkind), dimension(:,:,:), pointer :: z
+<<<<<<< HEAD
     real(rkind) :: Lx, Ly, Lz, uInflow, vInflow, yaw 
+=======
+    real(rkind) :: Lx, Ly, Lz, uInflow, vInflow, inflowAngle, alphaShear  
+>>>>>>> main
     real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid
     integer :: ioUnit
     integer :: InflowProfileType
     logical :: useGeostrophicForcing
 
     namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, & 
+<<<<<<< HEAD
                                 InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw
+=======
+                                InflowProfileAmplit, InflowProfileThick, InflowProfileType, inflowAngle, alphaShear
+>>>>>>> main
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -228,6 +236,8 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     integer :: nz, nzE
     real(rkind)  :: Lx = one, Ly = one, Lz = one, G_alpha, yaw
     real(rkind) :: uInflow, vInflow  
+    real(rkind)  :: Lx = one, Ly = one, Lz = one, G_alpha
+    real(rkind) :: uInflow, vInflow, inflowAngle, alphaShear
     real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid
     integer :: InflowProfileType
     
@@ -342,7 +352,7 @@ subroutine setInhomogeneousNeumannBC_Temp(inputfile, wTh_surf)
     integer :: ioUnit 
     real(rkind) :: ThetaRef, Lx, Ly, Lz, yaw
     logical :: initPurturbations = .false. 
-    real(rkind) :: uInflow, vInflow  
+    real(rkind) :: uInflow, vInflow, inflowAngle, alphaShear  
     real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid
     integer :: InflowProfileType
     namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, & 
@@ -365,7 +375,7 @@ subroutine setDirichletBC_Temp(inputfile, Tsurf, dTsurf_dt)
     real(rkind), intent(out) :: Tsurf, dTsurf_dt
     real(rkind) :: ThetaRef, Lx, Ly, Lz, G_alpha, yaw
     integer :: iounit
-    real(rkind) :: uInflow, vInflow  
+    real(rkind) :: uInflow, vInflow, inflowAngle, alphaShear  
     real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid
     integer :: InflowProfileType
     namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, & 
@@ -390,7 +400,7 @@ subroutine set_Reference_Temperature(inputfile, Tref)
     real(rkind), intent(out) :: Tref
     real(rkind) :: Lx, Ly, Lz, G_alpha, yaw
     integer :: iounit
-    real(rkind) :: uInflow, vInflow  
+    real(rkind) :: uInflow, vInflow, inflowAngle, alphaShear  
     real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid
     integer :: InflowProfileType
     
@@ -455,5 +465,4 @@ subroutine setScalar_source(decompC, inpDirectory, mesh, scalar_id, scalarSource
 
     scalarSource = 0.d0
 end subroutine 
-
 
