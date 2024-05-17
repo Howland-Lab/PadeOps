@@ -1023,11 +1023,12 @@ contains
             deallocate(this%uc, this%vc, this%wc, this%usgs, this%vsgs, this%wsgs, this%px, this%py, this%pz, this%uturb)  
             deallocate(this%budget_0, this%budget_1)
             deallocate(this%runningSum_sc)
+
+            if(this%useWindTurbines) then
+                deallocate(this%runningSum_sc_turb)
+                deallocate(this%runningSum_turb)
+            endif
         end if
-        if(this%useWindTurbines) then
-            deallocate(this%runningSum_sc_turb)
-            deallocate(this%runningSum_turb)
-        endif
 
     end subroutine 
 
