@@ -1261,11 +1261,7 @@ contains
        
        ! STEP 24: Compute pressure  
        if ((this%storePressure) .or. (this%fastCalcPressure)) then
-           ! HOTFIX - disable dt on the initialization time step (see dynamicTurbine.F90)
-           tmpmn = this%dt
-           this%dt = zero
            call this%ComputePressure()
-           this%dt = tmpmn  ! restore dt - this is computed in STEP 28 anyway
        end if 
 
        ! STEP 25: Schedule time dumps
