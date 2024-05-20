@@ -73,9 +73,8 @@ subroutine init(this, inputDir, ActuatorDisk_T2ID, xG, yG, zG)
     integer :: xLc(1), yLc(1), zLc(1), xst, xen, yst, yen, zst, zen, ierr, xlen
     integer  :: ntry = 100
     real(rkind) :: time2initialize = 0, correction_factor = 1.0d0, normfact_p
-    integer :: shapiro_correction
 
-    namelist /ACTUATOR_DISK/ xLoc, yLoc, zLoc, diam, cT, yaw, tilt!, shapiro_correction
+    namelist /ACTUATOR_DISK/ xLoc, yLoc, zLoc, diam, cT, yaw, tilt
     
     ! Read input file for this turbine    
     write(tempname,"(A13,I4.4,A10)") "ActuatorDisk_", ActuatorDisk_T2ID, "_input.inp"
@@ -95,12 +94,6 @@ subroutine init(this, inputDir, ActuatorDisk_T2ID, xG, yG, zG)
     this%delta = epsFact * (dx*dy*dz)**(1.d0/3.d0)
     this%OneByDelSq = 1.d0/(this%delta**2)
     this%tInd = 1
-    
-    !write(*,*) this%M
-    !if (shapiro_correction) then
-    !    this%M = (1.d0 + (cT/4.d0) * (1.d0/((3.d0*pi)**0.5d0)) * this%delta / (this%diam/2.d0) ) ** -1.d0
-    !endif
-    !write(*,*) this%M
 
     allocate(tmp(size(xG,2),size(xG,3)))
     allocate(tmp_tag(size(xG,2),size(xG,3)))
