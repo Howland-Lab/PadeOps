@@ -1683,10 +1683,15 @@ contains
     subroutine AssembleBudget1(this)
         class(budgets_xy_avg), intent(inout) :: this
 !        real(rkind), dimension(:,:,:), allocatable :: tmp1, tmp2
-        real(rkind), dimension(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)) :: tmp1, tmp2
+        real(rkind), dimension(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)) :: Fg_x, Fg_y
+        real(rkind), dimension(this%nz) :: tmp1, tmp2
 
         ! Get the geostrophic forcing 
-        call this%igrid_sim%get_geostrophic_forcing(tmp1, tmp2)         ! Forcing in x and y directions respectively 
+        call this%igrid_sim%get_geostrophic_forcing(Fg_x, Fg_y)         ! Forcing in x and y directions respectively 
+
+        ! Modified geostrophic forcing is a 3D array in x,y,z; now xy-avg: 
+        call this%get_xy_meanC_from_fC(Fg_x, tmp1)
+        call this%get_xy_meanC_from_fC(Fg_y, tmp2)
         
         if (this%do_timeavg) then
                 ! Get u- momentum budget

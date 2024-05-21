@@ -18,6 +18,7 @@ module budgets_time_avg_mod
    ! BUDGET_1: momentum equation terms (Budget0 also computed) 
    ! BUDGET_2: MKE budget (Budget0 and Budget1 also computed) 
    ! BUDGET 3: TKE budget (Budget 0, 1 and 2 also included)
+   ! BUDGET 4: Reynolds stress budget
 
 
    ! BUDGET_0 term indices:
@@ -331,9 +332,10 @@ contains
             end if 
 
             if (restart_budgets) then
-               call message(0,"Budget restart")
+               call message(0, "budget_time_avg: Initializing budget restart")
                this%counter = restart_counter
                call this%RestartBudget(restart_dir, restart_rid, restart_tid, restart_counter)
+               call message(1, "budget_time_avg: Budget restarts initialized")
             else
                 call this%resetBudget()
             end if
@@ -691,7 +693,6 @@ contains
     ! ---------------------- Budget 1 ------------------------
     subroutine AssembleBudget1(this)
         class(budgets_time_avg), intent(inout) :: this
-        real(rkind), dimension(:,:,:), allocatable :: tmp1, tmp2
 
         ! STEP 1: Get 4 terms from u-equation 
         call this%igrid_sim%spectC%ifft(this%uc,this%igrid_sim%rbuffxC(:,:,:,1))
