@@ -1,9 +1,9 @@
 ! Template for PadeOps
 
-#include "half_channel_Retau_files/initialize.F90"       
-#include "half_channel_Retau_files/temporalHook.F90"  
+#include "half_channel_Retau_varyz0_files/initialize.F90"       
+#include "half_channel_Retau_varyz0_files/temporalHook.F90"  
 
-program half_channel_Retau
+program half_channel_Retau_varyz0
     use mpi
     use kind_parameters,  only: clen
     use IncompressibleGrid, only: igrid
@@ -33,9 +33,8 @@ program half_channel_Retau
     call igp%start_io()                !<-- Start I/O by creating a header file (see io.F90)
 
     call igp%printDivergence()
- 
-    call budg_xy%init(inputfile, igp)   !<-- Budget class initialization
 
+    call budg_xy%init(inputfile, igp)
     call budg_tavg%init(inputfile, igp) !<-- Budget class initialization
  
     call tic() 
@@ -43,15 +42,15 @@ program half_channel_Retau
        
        call igp%timeAdvance()     !<-- Time stepping scheme + Pressure Proj. (see igridWallM.F90)
        call doTemporalStuff(igp)     !<-- Go to the temporal hook (see temporalHook.F90)
-       
-       ! call budg_xy%ResetBudgets()    !<--- call resetBudgets if the problem is non-stationary
-       call budg_xy%doBudgets()         !<--- perform budget related operations
-
+      
+       call budg_xy%doBudgets()       !<--- perform budget related operations
        ! call budg_tavg%ResetBudgets()  !<--- call resetBudgets if the problem is non-stationary
        call budg_tavg%doBudgets()       !<--- perform budget related operations
     end do
 
- 
+    call budg_xy%destroy()
+    call budg_tavg%destroy()           !<-- release memory taken by the budget class
+
     call igp%finalize_io()                  !<-- Close the header file (wrap up i/o)
 
     call igp%destroy()                !<-- Destroy the IGRID derived type 

@@ -7,6 +7,7 @@ end subroutine
 subroutine initWallModel(this, SurfaceFilterFact)
    class(sgs_igrid), intent(inout) :: this
    real(rkind), intent(in) :: SurfaceFilterFact
+   integer :: i   ! YIS: added for for loop 
 
    this%useWallModel = .true.
    allocate(this%tauijWM(this%gpE%xsz(1),this%gpE%xsz(2),this%gpE%xsz(3),2))
@@ -34,6 +35,23 @@ subroutine initWallModel(this, SurfaceFilterFact)
       allocate(this%Linv_surf(this%gpC%zsz(1),this%gpC%zsz(2)))
       allocate(this%T_surf(this%gpC%zsz(1),this%gpC%zsz(2)))
       allocate(this%filteredSpeedSq(this%gpC%xsz(1),this%gpC%xsz(2),this%gpC%xsz(3))) ! Howland: Added 1/25/21
+
+      ! YIS start
+      if (this%z0_field) then
+          allocate(this%z0_surf(this%gpC%zsz(1),this%gpC%zsz(2)))  
+          ! Initialize z0init values
+          do i = 1, 10
+              this%z0_surf(i, :) = 6.8d-5
+          end do
+          do i = 11, 13
+              this%z0_surf(i, :) = 6.8d-3
+          end do
+          do i = 14, 32
+              this%z0_surf(i, :) = 6.8d-5
+          end do
+      end if
+      ! YIS end   
+
       call this%spectC%ResetSurfaceFilter(SurfaceFilterFact)
       call message(2,"Fully local wall model set up with a filter factor:", SurfaceFilterFact)
    end if 
@@ -239,8 +257,13 @@ subroutine compute_surface_stress(this)
     ! Compute local wall-quantities at each wall node
     do j = 1,this%gpC%zsz(2)
         do i = 1,this%gpC%zsz(1)
-            call this%compute_local_wallmodel(this%usurf_filt(i,j), this%vsurf_filt(i,j), this%Tmatch_filt(i,j), & 
-                this%wTheta_surf(i,j), this%ustar_surf(i,j), this%Linv_surf(i,j), this%PsiM_surf(i,j), this%T_surf(i,j))
+            if (this%z0_field) then
+                call this%compute_local_wallmodel(this%usurf_filt(i,j), this%vsurf_filt(i,j), this%Tmatch_filt(i,j), & 
+                    this%wTheta_surf(i,j), this%ustar_surf(i,j), this%Linv_surf(i,j), this%PsiM_surf(i,j), this%T_surf(i,j), this%z0_surf(i,j))
+            else
+                call this%compute_local_wallmodel(this%usurf_filt(i,j), this%vsurf_filt(i,j), this%Tmatch_filt(i,j), &
+                    this%wTheta_surf(i,j), this%ustar_surf(i,j), this%Linv_surf(i,j), this%PsiM_surf(i,j), this%T_surf(i,j), this%z0)
+            end if 
         end do 
     end do 
 
@@ -262,9 +285,9 @@ subroutine compute_surface_stress(this)
     this%InvObLength = p_sum(sum(this%Linv_surf))/real(this%gpC%xsz(1)*this%gpC%ysz(2),rkind)
 end subroutine 
 
-subroutine compute_local_wallmodel(this, ux, uy, Tmn, wTh_surf, ustar, Linv, PsiM, T_surf)
+subroutine compute_local_wallmodel(this, ux, uy, Tmn, wTh_surf, ustar, Linv, PsiM, T_surf, z0)   ! YIS: z0 added
     class(sgs_igrid), intent(inout) :: this
-    real(rkind), intent(in) :: ux, uy, Tmn
+    real(rkind), intent(in) :: ux, uy, Tmn, z0     ! YIS: z0 added
     real(rkind), intent(out) :: wTh_surf, ustar, Linv, PsiM, T_surf
 
     real(rkind) :: ustarNew, ustarDiff, dTheta, at
@@ -341,7 +364,7 @@ subroutine compute_local_wallmodel(this, ux, uy, Tmn, wTh_surf, ustar, Linv, Psi
           T_surf = Tmn + wTh*(at-PsiH)/(ustar*kappa)
       end select
    else
-          ustar = sqrt(ux*ux + uy*uy)*kappa/(log(hwm/this%z0))
+          ustar = sqrt(ux*ux + uy*uy)*kappa/(log(hwm/z0))
           Linv = zero
           wTh_surf = zero
           PsiM = zero
@@ -438,6 +461,8 @@ subroutine getSurfaceQuantities(this)
           this%PsiM = PsiM
       end select
    else
+          ! This will also need a definition of z0 that is either local or
+          ! not????? but not implemented here yet YIS
           this%ustar = this%Uspmn*kappa/(log(hwm/this%z0))
           this%invObLength = zero
           this%wTh_surf = zero

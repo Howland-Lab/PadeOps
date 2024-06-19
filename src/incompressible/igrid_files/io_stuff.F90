@@ -582,18 +582,19 @@
 
        select case (this%ioType) 
        case(0)
-           call this%dumpFullField(this%u,'uVel')
-           call this%dumpFullField(this%v,'vVel')
-           call this%dumpFullField(this%wC,'wVel')
+           call this%dumpFullField(this%u,'uVel')             ! YIS
+           call this%dumpFullField(this%v,'vVel')             ! YIS 
+           call this%dumpFullField(this%wC,'wVel')            ! YIS 
+           ! call this%dumpFullField(sqrt((this%u)**2 + (this%v)**2),'WiSp')                                ! YIS
            call this%dump_scalar_fields()
            call this%dumpVisualizationInfo()
-           if (this%isStratified .or. this%initspinup) call this%dumpFullField(this%T,'potT')
-           if (this%fastCalcPressure) call this%dumpFullField(this%pressure,'prss')
+           if (this%isStratified .or. this%initspinup) call this%dumpFullField(this%T,'potT')            ! YIS 
+           if (this%fastCalcPressure) call this%dumpFullField(this%pressure,'prss')                      ! YIS
            if (this%computeDNSpressure) call this%dumpFullField(this%pressure_dns,'pdns')
            if (this%computeturbinepressure) call this%dumpFullField(this%pressure_turbine,'ptrb')
            if (this%computefringepressure) call this%dumpFullField(this%pressure_fringe,'pfrn')
-           if ((this%useSGS) .and. (this%dump_NU_SGS)) call this%dumpFullField(this%nu_SGS,'nSGS')
-           if ((this%useSGS) .and. (this%dump_KAPPA_SGS) .and. (this%isStratified)) call this%dumpFullField(this%kappaSGS,'kSGS')
+           if ((this%useSGS) .and. (this%dump_NU_SGS)) call this%dumpFullField(this%nu_SGS,'nSGS')            ! YIS 
+           if ((this%useSGS) .and. (this%dump_KAPPA_SGS) .and. (this%isStratified)) call this%dumpFullField(this%kappaSGS,'kSGS')    ! YIS
            if ((this%useSGS) .and. (this%dump_KAPPA_SGS) .and. (this%isStratified) .and. associated(this%kappa_bounding)) then
               call this%dumpFullField(this%kappa_bounding,'kBND')
            end if 

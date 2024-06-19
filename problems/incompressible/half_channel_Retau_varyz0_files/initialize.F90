@@ -1,4 +1,4 @@
-module half_channel_Retau_parameters
+module half_channel_Retau_varyz0_parameters
 
     use exits, only: message
     use kind_parameters,  only: rkind
@@ -16,7 +16,7 @@ module half_channel_Retau_parameters
 end module     
 
 subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
-    use half_channel_Retau_parameters    
+    use half_channel_Retau_varyz0_parameters    
     use kind_parameters,  only: rkind
     use constants,        only: one,two
     use decomp_2d,        only: decomp_info
@@ -25,13 +25,14 @@ subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
     type(decomp_info),                                          intent(in)    :: decomp
     real(rkind),                                                intent(inout) :: dx,dy,dz
     real(rkind), dimension(:,:,:,:), intent(inout) :: mesh
-    real(rkind) :: z0init
     integer :: i,j,k, ioUnit
     character(len=*),                intent(in)    :: inputfile
     integer :: ix1, ixn, iy1, iyn, iz1, izn
     real(rkind)  :: Lx = one, Ly = one, Lz = one
     logical :: initPurturbations = .false. 
-    namelist /PBLINPUT/ Lx, Ly, Lz, z0init, initPurturbations
+    real(rkind) :: z0init
+    logical :: z0_field   ! YIS
+    namelist /PBLINPUT/ Lx, Ly, Lz, z0_field, z0init, initPurturbations   ! YIS    
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -72,7 +73,7 @@ subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
 end subroutine
 
 subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
-    use half_channel_Retau_parameters    
+    use half_channel_Retau_varyz0_parameters    
     use kind_parameters,    only: rkind
     use constants,          only: zero, one, two, pi, half
     use gridtools,          only: alloc_buffs
@@ -87,21 +88,23 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     real(rkind), dimension(:,:,:,:), intent(inout), target :: fieldsC
     real(rkind), dimension(:,:,:,:), intent(inout), target :: fieldsE
     integer :: ioUnit
+    integer :: i, j, nx, ny        ! YIS
     real(rkind), dimension(:,:,:), pointer :: u, v, w, wC, x, y, z
-    real(rkind) :: z0init, epsnd = 0.02
+    real(rkind), dimension(:,:), allocatable :: z0init_surf    ! YIS
+    real(rkind) :: z0init, epsnd = 0.02 
     real(rkind), dimension(:,:,:), allocatable :: randArr, ybuffC, ybuffE, zbuffC, zbuffE
     integer :: nz, nzE
     real(rkind) :: Xperiods = 3.d0, Yperiods = 3.d0!, Zperiods = 1.d0
     real(rkind) :: zpeak = 0.2d0, noiseAmp = 1.d-2
     real(rkind)  :: Lx = one, Ly = one, Lz = one
     logical :: initPurturbations = .true. 
-    namelist /PBLINPUT/ Lx, Ly, Lz, z0init, initPurturbations
+    logical :: z0_field   ! YIS
+    namelist /PBLINPUT/ Lx, Ly, Lz, z0_field, z0init, initPurturbations         ! YIS
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
     read(unit=ioUnit, NML=PBLINPUT)
     close(ioUnit)    
-
 
     u  => fieldsC(:,:,:,1)
     v  => fieldsC(:,:,:,2)
@@ -115,18 +118,48 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     epsnd = 5.d0
 
     
-    ! Initialize a z0init field here?
+    ! YIS start
+    ! This is currently a specific z0 field; will need to write code that allows
+    ! more variations
+    allocate(z0init_surf(size(wC,1),size(wC,2)))
+    ! Initialize z0init matrix if the flag is set
+    if (z0_field) then
+        ! Initialize z0init values
+        do i = 1, 10
+            z0init_surf(i, :) = 6.8d-5
+        end do
+        do i = 11, 13
+            z0init_surf(i, :) = 6.8d-3
+        end do
+        do i = 14, 32
+            z0init_surf(i, :) = 6.8d-5
+        end do
+    else
+        ! Default initialization or handle error if needed
+        ! For simplicity, initializing to zero in this example
+        z0init_surf = 0.0_rkind
+    end if
+    ! YIS end    
 
-    
     if (initPurturbations) then
       u = (one/kappa)*log(z/z0init) + epsnd*cos(Yperiods*two*pi*y/Ly)*exp(-half*(z/zpeak/Lz)**2)
       v = epsnd*(z/Lz)*cos(Xperiods*two*pi*x/Lx)*exp(-half*(z/zpeak/Lz)**2)
     else
-      u = (one/kappa)*log(z/z0init) 
-      v = zero  
-    end if 
-    wC= zero  
-   
+      if (z0_field) then
+          do j=1,size(mesh,2)
+              do i=1,size(mesh,1)
+                  u(i,j,:) = (one/kappa)*log(z(i,j,:)/z0init_surf(i,j))
+              end do
+          end do
+      else
+          u = (one/kappa)*log(z/z0init)
+      end if
+      v = zero
+    end if
+    wC= zero
+
+    deallocate(z0init_surf)
+ 
     allocate(randArr(size(wC,1),size(wC,2),size(wC,3)))
     
     call gaussian_random(randArr,zero,one,seedu + 100*nrank)
@@ -216,10 +249,12 @@ subroutine setDirichletBC_Temp(inputfile, Tsurf, dTsurf_dt)
 
     character(len=*),                intent(in)    :: inputfile
     real(rkind), intent(out) :: Tsurf, dTsurf_dt
-    real(rkind) :: ThetaRef, Lx, Ly, Lz, z0init
+    real(rkind) :: ThetaRef, Lx, Ly, Lz
     integer :: iounit
     logical :: initPurturbations = .false. 
-    namelist /PBLINPUT/ Lx, Ly, Lz, z0init, initPurturbations
+    real(rkind) :: z0init
+    logical :: z0_field   ! YIS
+    namelist /PBLINPUT/ Lx, Ly, Lz, z0_field, z0init, initPurturbations   ! YIS
     
     Tsurf = zero; dTsurf_dt = zero; ThetaRef = one
     
@@ -238,10 +273,12 @@ subroutine set_Reference_Temperature(inputfile, Tref)
     implicit none 
     character(len=*),                intent(in)    :: inputfile
     real(rkind), intent(out) :: Tref
-    real(rkind) :: Lx, Ly, Lz, z0init
+    real(rkind) :: Lx, Ly, Lz
     integer :: iounit
-    logical :: initPurturbations = .false. 
-    namelist /PBLINPUT/ Lx, Ly, Lz, z0init, initPurturbations
+    logical :: initPurturbations = .false.
+    real(rkind) :: z0init
+    logical :: z0_field   ! YIS
+    namelist /PBLINPUT/ Lx, Ly, Lz, z0_field, z0init, initPurturbations   ! YIS 
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')

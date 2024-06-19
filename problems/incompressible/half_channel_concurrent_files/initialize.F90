@@ -1,8 +1,10 @@
-module half_channel_Retau_parameters
+module half_channel_concurrent_parameters
+
+      ! TAKE CARE OF TIME NON-DIMENSIONALIZATION IN THIS MODULE
 
     use exits, only: message
     use kind_parameters,  only: rkind
-    use constants, only: kappa 
+    use constants, only: zero, kappa, pi 
     implicit none
     integer :: seedu = 321341
     integer :: seedv = 423424
@@ -10,97 +12,45 @@ module half_channel_Retau_parameters
     real(rkind) :: randomScaleFact = 0.002_rkind ! 0.2% of the mean value
     integer :: nxg, nyg, nzg
     
-    real(rkind), parameter :: xdim = 1000._rkind, udim = 0.45_rkind
+    real(rkind), parameter :: xdim = 1000._rkind, udim =0.45_rkind
     real(rkind), parameter :: timeDim = xdim/udim
 
 end module     
 
-subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
-    use half_channel_Retau_parameters    
-    use kind_parameters,  only: rkind
-    use constants,        only: one,two
-    use decomp_2d,        only: decomp_info
-    implicit none
-
-    type(decomp_info),                                          intent(in)    :: decomp
-    real(rkind),                                                intent(inout) :: dx,dy,dz
-    real(rkind), dimension(:,:,:,:), intent(inout) :: mesh
-    real(rkind) :: z0init
-    integer :: i,j,k, ioUnit
-    character(len=*),                intent(in)    :: inputfile
-    integer :: ix1, ixn, iy1, iyn, iz1, izn
-    real(rkind)  :: Lx = one, Ly = one, Lz = one
-    logical :: initPurturbations = .false. 
-    namelist /PBLINPUT/ Lx, Ly, Lz, z0init, initPurturbations
-
-    ioUnit = 11
-    open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
-    read(unit=ioUnit, NML=PBLINPUT)
-    close(ioUnit)    
-
-    !Lx = two*pi; Ly = two*pi; Lz = one
-
-    nxg = decomp%xsz(1); nyg = decomp%ysz(2); nzg = decomp%zsz(3)
-
-    ! If base decomposition is in Y
-    ix1 = decomp%xst(1); iy1 = decomp%xst(2); iz1 = decomp%xst(3)
-    ixn = decomp%xen(1); iyn = decomp%xen(2); izn = decomp%xen(3)
-    
-    associate( x => mesh(:,:,:,1), y => mesh(:,:,:,2), z => mesh(:,:,:,3) )
-
-        dx = Lx/real(nxg,rkind)
-        dy = Ly/real(nyg,rkind)
-        dz = Lz/real(nzg,rkind)
-
-        do k=1,size(mesh,3)
-            do j=1,size(mesh,2)
-                do i=1,size(mesh,1)
-                    x(i,j,k) = real( ix1 + i - 1, rkind ) * dx
-                    y(i,j,k) = real( iy1 + j - 1, rkind ) * dy
-                    z(i,j,k) = real( iz1 + k - 1, rkind ) * dz + dz/two
-                end do
-            end do
-        end do
-
-        ! Shift everything to the origin 
-        x = x - dx
-        y = y - dy
-        z = z - dz 
-
-    end associate
-
-end subroutine
 
 subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
-    use half_channel_Retau_parameters    
+    use half_channel_concurrent_parameters
     use kind_parameters,    only: rkind
     use constants,          only: zero, one, two, pi, half
     use gridtools,          only: alloc_buffs
     use random,             only: gaussian_random
-    use decomp_2d          
+    use decomp_2d
     use reductions,         only: p_maxval
     implicit none
     type(decomp_info),               intent(in)    :: decompC
     type(decomp_info),               intent(in)    :: decompE
     character(len=*),                intent(in)    :: inputfile
+    integer :: i, j, nx, ny        ! YIS
+    real(rkind), dimension(:,:), allocatable :: z0init_surf    ! YIS
     real(rkind), dimension(:,:,:,:), intent(in), target    :: mesh
     real(rkind), dimension(:,:,:,:), intent(inout), target :: fieldsC
     real(rkind), dimension(:,:,:,:), intent(inout), target :: fieldsE
     integer :: ioUnit
     real(rkind), dimension(:,:,:), pointer :: u, v, w, wC, x, y, z
-    real(rkind) :: z0init, epsnd = 0.02
+    real(rkind) :: z0init = 0.1d0, epsnd = 0.02
     real(rkind), dimension(:,:,:), allocatable :: randArr, ybuffC, ybuffE, zbuffC, zbuffE
     integer :: nz, nzE
     real(rkind) :: Xperiods = 3.d0, Yperiods = 3.d0!, Zperiods = 1.d0
     real(rkind) :: zpeak = 0.2d0, noiseAmp = 1.d-2
     real(rkind)  :: Lx = one, Ly = one, Lz = one
-    logical :: initPurturbations = .true. 
-    namelist /PBLINPUT/ Lx, Ly, Lz, z0init, initPurturbations
+    logical :: initPurturbations = .true.
+    logical :: z0_field = .false.  ! YIS
+    namelist /PBLINPUT/ Lx, Ly, Lz, z0_field, z0init, initPurturbations
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
     read(unit=ioUnit, NML=PBLINPUT)
-    close(ioUnit)    
+    close(ioUnit)
 
 
     u  => fieldsC(:,:,:,1)
@@ -111,27 +61,57 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     z => mesh(:,:,:,3)
     y => mesh(:,:,:,2)
     x => mesh(:,:,:,1)
- 
+
     epsnd = 5.d0
 
-    
-    ! Initialize a z0init field here?
+    ! YIS start
+    ! This is currently a specific z0 field; will need to write code that allows
+    ! more variations
+    allocate(z0init_surf(size(wC,1),size(wC,2)))
+    ! Initialize z0init matrix if the flag is set
+    if (z0_field) then
+        ! Initialize z0init values
+        do i = 1, 10
+            z0init_surf(i, :) = 6.8d-5
+        end do
+        do i = 11, 13
+            z0init_surf(i, :) = 6.8d-3
+        end do
+        do i = 14, 32
+            z0init_surf(i, :) = 6.8d-5
+        end do
+    else
+        ! Default initialization or handle error if needed
+        ! For simplicity, initializing to zero in this example
+        z0init_surf = 0.0_rkind
+    end if
+    ! YIS end
 
-    
     if (initPurturbations) then
       u = (one/kappa)*log(z/z0init) + epsnd*cos(Yperiods*two*pi*y/Ly)*exp(-half*(z/zpeak/Lz)**2)
       v = epsnd*(z/Lz)*cos(Xperiods*two*pi*x/Lx)*exp(-half*(z/zpeak/Lz)**2)
     else
-      u = (one/kappa)*log(z/z0init) 
-      v = zero  
-    end if 
-    wC= zero  
-   
+      ! YIS: will have to change at some point to change this to take in a z0 field
+      if (z0_field) then
+          do j=1,size(mesh,2)
+              do i=1,size(mesh,1)
+                  u(i,j,:) = (one/kappa)*log(z(i,j,:)/z0init_surf(i,j))
+              end do
+          end do          
+      else
+          u = (one/kappa)*log(z/z0init)
+      end if
+      v = zero
+    end if
+    wC= zero
+
+    deallocate(z0init_surf)
+
     allocate(randArr(size(wC,1),size(wC,2),size(wC,3)))
-    
+
     call gaussian_random(randArr,zero,one,seedu + 100*nrank)
     u  = u + noiseAmp*randArr
-    
+
     call gaussian_random(randArr,zero,one,seedv + 100*nrank)
     v  = v + noiseAmp*randArr
 
@@ -143,7 +123,7 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
 
     allocate(zbuffC(decompC%zsz(1),decompC%zsz(2), decompC%zsz(3)))
     allocate(zbuffE(decompE%zsz(1),decompE%zsz(2), decompE%zsz(3)))
-   
+
     nz = decompC%zsz(3)
     nzE = nz + 1
 
@@ -152,17 +132,60 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     zbuffE = zero
     zbuffE(:,:,2:nzE-1) = half*(zbuffC(:,:,1:nz-1) + zbuffC(:,:,2:nz))
     call transpose_z_to_y(zbuffE,ybuffE,decompE)
-    call transpose_y_to_x(ybuffE,w,decompE) 
-    
+    call transpose_y_to_x(ybuffE,w,decompE)
 
-    deallocate(ybuffC,ybuffE,zbuffC, zbuffE) 
-  
-      
+
+    deallocate(ybuffC,ybuffE,zbuffC, zbuffE)
+
+
     nullify(u,v,w,x,y,z)
-   
+
 
     call message(0,"Velocity Field Initialized")
 
+end subroutine
+
+
+subroutine setInhomogeneousNeumannBC_Temp(inputfile, wTh_surf)
+    use kind_parameters,    only: rkind
+    use constants, only: one, zero
+    implicit none
+
+    character(len=*),                intent(in)    :: inputfile
+    real(rkind), intent(out) :: wTh_surf
+    integer :: iounit, directionID
+    namelist /ScalarSourceTestingINPUT/ directionID
+
+    ioUnit = 11
+    open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
+    read(unit=ioUnit, NML=ScalarSourceTestingINPUT)
+    close(ioUnit)
+
+    ! Do nothing really since this is an unstratified simulation
+end subroutine
+
+
+subroutine setDirichletBC_Temp(inputfile, Tsurf, dTsurf_dt)
+    use kind_parameters,    only: rkind
+    use constants,          only: zero, one
+    implicit none
+
+    character(len=*),                intent(in)    :: inputfile
+    real(rkind), intent(out) :: Tsurf, dTsurf_dt
+    real(rkind) :: ThetaRef, Lx, Ly, Lz, z0init
+    integer :: iounit
+    logical :: initPurturbations = .false.
+    logical :: z0_field = .false.   ! YIS
+    namelist /PBLINPUT/ Lx, Ly, Lz, z0_field, z0init, initPurturbations   ! YIS
+
+    Tsurf = zero; dTsurf_dt = zero; ThetaRef = one
+
+    ioUnit = 11
+    open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
+    read(unit=ioUnit, NML=PBLINPUT)
+    close(ioUnit)
+
+    ! Do nothing really since this is an unstratified simulation
 end subroutine
 
 
@@ -175,82 +198,9 @@ subroutine set_planes_io(xplanes, yplanes, zplanes)
 
     allocate(xplanes(nxplanes), yplanes(nyplanes), zplanes(nzplanes))
 
-    xplanes = [64]
-    yplanes = [64]
-    zplanes = [13,39]
-
-end subroutine
-
-subroutine set_KS_planes_io(planesCoarseGrid, planesFineGrid)
-    integer, dimension(:), allocatable,  intent(inout) :: planesFineGrid
-    integer, dimension(:), allocatable,  intent(inout) :: planesCoarseGrid
-    
-    allocate(planesCoarseGrid(1), planesFineGrid(1))
-    planesCoarseGrid = [8]
-    planesFineGrid = [16]
-
-end subroutine
-
-subroutine setInhomogeneousNeumannBC_Temp(inputfile, wTh_surf)
-    use kind_parameters,    only: rkind
-    use constants, only: one, zero 
-    implicit none
-
-    character(len=*),                intent(in)    :: inputfile
-    real(rkind), intent(out) :: wTh_surf
-    integer :: iounit, directionID
-    namelist /ScalarSourceTestingINPUT/ directionID
-     
-    ioUnit = 11
-    open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
-    read(unit=ioUnit, NML=ScalarSourceTestingINPUT)
-    close(ioUnit)    
-
-    ! Do nothing really since this is an unstratified simulation
-end subroutine
-
-subroutine setDirichletBC_Temp(inputfile, Tsurf, dTsurf_dt)
-    use kind_parameters,    only: rkind
-    use constants,          only: zero, one
-    implicit none
-
-    character(len=*),                intent(in)    :: inputfile
-    real(rkind), intent(out) :: Tsurf, dTsurf_dt
-    real(rkind) :: ThetaRef, Lx, Ly, Lz, z0init
-    integer :: iounit
-    logical :: initPurturbations = .false. 
-    namelist /PBLINPUT/ Lx, Ly, Lz, z0init, initPurturbations
-    
-    Tsurf = zero; dTsurf_dt = zero; ThetaRef = one
-    
-
-    ioUnit = 11
-    open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
-    read(unit=ioUnit, NML=PBLINPUT)
-    close(ioUnit)    
-
-    ! Do nothing really since this is an unstratified simulation
-end subroutine
-
-
-subroutine set_Reference_Temperature(inputfile, Tref)
-    use kind_parameters,    only: rkind
-    implicit none 
-    character(len=*),                intent(in)    :: inputfile
-    real(rkind), intent(out) :: Tref
-    real(rkind) :: Lx, Ly, Lz, z0init
-    integer :: iounit
-    logical :: initPurturbations = .false. 
-    namelist /PBLINPUT/ Lx, Ly, Lz, z0init, initPurturbations
-
-    ioUnit = 11
-    open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
-    read(unit=ioUnit, NML=PBLINPUT)
-    close(ioUnit)    
-     
-    Tref = 0.d0
-    
-    ! Do nothing really since this is an unstratified simulation
+    xplanes = [10]
+    yplanes = [10]
+    zplanes = [10,10]
 
 end subroutine
 
@@ -274,8 +224,105 @@ subroutine hook_probes(inputfile, probe_locs)
     probe_locs(1,1) = 0.1d0; probe_locs(2,1) = 0.1d0; probe_locs(3,1) = 0.1d0;
     probe_locs(1,2) = 0.2d0; probe_locs(2,2) = 0.2d0; probe_locs(3,2) = 0.2d0;
 
+end subroutine
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!! THE SUBROUTINES UNDER THIS DON'T TYPICALLY NEED TO BE CHANGED !!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+
+subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
+    use half_channel_concurrent_parameters
+    use kind_parameters,  only: rkind
+    use constants,        only: one,two
+    use decomp_2d,        only: decomp_info
+    implicit none
+
+    type(decomp_info),           intent(in)    ::decomp
+    real(rkind),                 intent(inout) ::dx,dy,dz
+    real(rkind), dimension(:,:,:,:), intent(inout) :: mesh
+    integer :: i,j,k, ioUnit
+    character(len=*),                intent(in)    :: inputfile
+    integer :: ix1, ixn, iy1, iyn, iz1, izn
+    real(rkind)  :: Lx = one, Ly = one, Lz = one
+    logical :: initPurturbations = .false.
+    real(rkind) :: z0init = 0.1d0 
+    logical :: z0_field = .false.  ! YIS
+    namelist /PBLINPUT/ Lx, Ly, Lz, z0_field, z0init, initPurturbations   ! YIS
+
+    ioUnit = 11
+    open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
+    read(unit=ioUnit, NML=PBLINPUT)
+    close(ioUnit)
+
+    !Lx = two*pi; Ly = two*pi; Lz = one
+
+    nxg = decomp%xsz(1); nyg = decomp%ysz(2); nzg = decomp%zsz(3)
+
+    ! If base decomposition is in Y
+    ix1 = decomp%xst(1); iy1 = decomp%xst(2); iz1 = decomp%xst(3)
+    ixn = decomp%xen(1); iyn = decomp%xen(2); izn = decomp%xen(3)
+
+    associate( x => mesh(:,:,:,1), y => mesh(:,:,:,2), z => mesh(:,:,:,3) )
+
+        dx = Lx/real(nxg,rkind)
+        dy = Ly/real(nyg,rkind)
+        dz = Lz/real(nzg,rkind)
+
+        do k=1,size(mesh,3)
+            do j=1,size(mesh,2)
+                do i=1,size(mesh,1)
+                    x(i,j,k) = real( ix1 + i - 1, rkind ) * dx
+                    y(i,j,k) = real( iy1 + j - 1, rkind ) * dy
+                    z(i,j,k) = real( iz1 + k - 1, rkind ) * dz + dz/two
+                end do
+            end do
+        end do
+
+        ! Shift everything to the origin
+        x = x - dx
+        y = y - dy
+        z = z - dz
+
+    end associate
 
 end subroutine
+
+
+subroutine set_Reference_Temperature(inputfile, Tref)
+    use kind_parameters,    only: rkind
+    implicit none
+    character(len=*),                intent(in)    :: inputfile
+    real(rkind), intent(out) :: Tref
+    real(rkind) :: Lx, Ly, Lz, z0init
+    integer :: iounit
+    logical :: initPurturbations = .false.
+    logical :: z0_field = .false.  ! YIS
+    namelist /PBLINPUT/ Lx, Ly, Lz, z0_field, z0init, initPurturbations   ! YIS
+
+    ioUnit = 11
+    open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
+    read(unit=ioUnit, NML=PBLINPUT)
+    close(ioUnit)
+
+    Tref = 0.d0
+
+    ! Do nothing really since this is an unstratified simulation
+
+end subroutine
+
+
+subroutine set_KS_planes_io(planesCoarseGrid, planesFineGrid)
+    integer, dimension(:), allocatable,  intent(inout) :: planesFineGrid
+    integer, dimension(:), allocatable,  intent(inout) :: planesCoarseGrid
+    
+    allocate(planesCoarseGrid(1), planesFineGrid(1))
+    planesCoarseGrid = [8]
+    planesFineGrid = [16]
+
+end subroutine
+
 
 subroutine initScalar(decompC, inpDirectory, mesh, scalar_id, scalarField)
     use kind_parameters, only: rkind
@@ -292,11 +339,11 @@ end subroutine
 subroutine setScalar_source(decompC, inpDirectory, mesh, scalar_id, scalarSource)
     use kind_parameters, only: rkind
     use decomp_2d,        only: decomp_info
-    type(decomp_info),                                          intent(in)    :: decompC
+    type(decomp_info),                                          intent(in)    ::decompC
     character(len=*),                intent(in)    :: inpDirectory
     real(rkind), dimension(:,:,:,:), intent(in)    :: mesh
     integer, intent(in)                            :: scalar_id
     real(rkind), dimension(:,:,:), intent(out)     :: scalarSource
 
     scalarSource = 0.d0
-end subroutine 
+end subroutine

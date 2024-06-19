@@ -61,7 +61,7 @@ module sgsmod_igrid
         real(rkind), dimension(:,:,:,:), allocatable :: tauijWM
         complex(rkind),dimension(:,:,:,:), allocatable :: tauijWMhat_inZ, tauijWMhat_inY
         real(rkind), dimension(:,:,:), allocatable :: filteredSpeedSq
-        real(rkind), dimension(:,:), allocatable :: vsurf_filt, usurf_filt, Tmatch_filt, ustar_surf, PsiM_surf, Linv_surf, T_surf, wTheta_surf   
+        real(rkind), dimension(:,:), allocatable :: vsurf_filt, usurf_filt, Tmatch_filt, ustar_surf, PsiM_surf, Linv_surf, T_surf, wTheta_surf, z0_surf   ! YIS added z0_surf 
         complex(rkind), dimension(:,:,:), allocatable :: Tfilhat, Tfilhatz1, Tfilhatz2
         logical :: useWallModel = .false.
         integer :: botBC_temp = 1
@@ -71,7 +71,8 @@ module sgsmod_igrid
         real(rkind), pointer :: Tsurf, wTh_surf
         complex(rkind), dimension(:,:), allocatable :: q3HAT_AtWall
         integer :: WM_matchingIndex, WallFunctionType = 1 
-        logical :: useFullyLocalWM = .false. 
+        logical :: useFullyLocalWM = .false.
+        logical :: z0_field = .false.    ! YIS added 
 
         ! for dynamic procedures - all are at edges
         type(gaussian) :: gaussianTestFilterZ
@@ -168,7 +169,7 @@ module sgsmod_igrid
             procedure          :: usingDynProc
             procedure          :: set_BuoyancyFactor
             procedure          :: populate_tauij_E_to_C 
-    end type 
+end type 
 
 contains
 
