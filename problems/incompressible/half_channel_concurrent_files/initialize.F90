@@ -71,14 +71,16 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     ! Initialize z0init matrix if the flag is set
     if (z0_field) then
         ! Initialize z0init values
-        do i = 1, 10
-            z0init_surf(i, :) = 6.8d-5
-        end do
-        do i = 11, 13
-            z0init_surf(i, :) = 6.8d-3
-        end do
-        do i = 14, 32
-            z0init_surf(i, :) = 6.8d-5
+        do i = 1, size(z0init_surf, 1)  ! Loop over all rows
+            do j = 1, size(z0init_surf, 2)  ! Loop over all columns
+                if (j <= 10) then
+                    z0init_surf(i, j) = 6.8d-5
+                elseif (j >= 11 .and. j <= 13) then
+                    z0init_surf(i, j) = 6.8d-3
+                elseif (j >= 14) then
+                    z0init_surf(i, j) = 6.8d-5
+                end if
+            end do
         end do
     else
         ! Default initialization or handle error if needed

@@ -1,6 +1,6 @@
 &INPUT
-inputdir              = "/pool001/youngin/data/half_channel_concurrent/varyz0/run3"   ! Directory for any input files
-outputdir             = "/pool001/youngin/data/half_channel_concurrent/varyz0/run3"   ! Directory for all output files
+inputdir              = "/home/ctrsp-2024/youngin/PadeOps/data/half_channel_concurrent/run1"   ! Directory for any input files
+outputdir             = "/home/ctrsp-2024/youngin/PadeOps/data/half_channel_concurrent/run1"   ! Directory for all output files
 nx                    = 32         ! Number of points in X
 ny                    = 32         ! Number of points in Y
 nz                    = 32         ! Number of points in Z
@@ -24,7 +24,7 @@ t_DivergenceCheck     = 100         ! Check divergence every $ timesteps. Reproj
 /
 /
 &IO
-RunID                 = 1           ! Run Label (All output files will be tagged with this nubber)
+RunID                 = 3           ! Run Label (All output files will be tagged with this nubber)
 t_restartDump         = 1000        ! Restart File Dumping Frequency  (# of timesteps)
 t_dataDump            = 1000        ! Data dumping frequency (# of timesteps)
 ioType                = 0           ! 0: Fortran Binaries, 1: .vtk files

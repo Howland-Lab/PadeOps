@@ -7,7 +7,7 @@ end subroutine
 subroutine initWallModel(this, SurfaceFilterFact)
    class(sgs_igrid), intent(inout) :: this
    real(rkind), intent(in) :: SurfaceFilterFact
-   integer :: i   ! YIS: added for for loop 
+   integer :: i, j   ! YIS: added for for loop 
 
    this%useWallModel = .true.
    allocate(this%tauijWM(this%gpE%xsz(1),this%gpE%xsz(2),this%gpE%xsz(3),2))
@@ -38,16 +38,18 @@ subroutine initWallModel(this, SurfaceFilterFact)
 
       ! YIS start
       if (this%z0_field) then
-          allocate(this%z0_surf(this%gpC%zsz(1),this%gpC%zsz(2)))  
+          allocate(this%z0_surf(this%gpC%zsz(1),this%gpC%zsz(2)))
           ! Initialize z0init values
-          do i = 1, 10
-              this%z0_surf(i, :) = 6.8d-5
-          end do
-          do i = 11, 13
-              this%z0_surf(i, :) = 6.8d-3
-          end do
-          do i = 14, 32
-              this%z0_surf(i, :) = 6.8d-5
+          do i = 1, size(this%z0_surf, 1)  ! Loop over all rows
+              do j = 1, size(this%z0_surf, 2)  ! Loop over all columns
+                  if (j <= 10) then
+                      this%z0_surf(i, j) = 6.8d-5
+                  elseif (j >= 11 .and. j <= 13) then
+                      this%z0_surf(i, j) = 6.8d-3
+                  elseif (j >= 14) then
+                      this%z0_surf(i, j) = 6.8d-5
+                  end if
+              end do
           end do
       end if
       ! YIS end   
