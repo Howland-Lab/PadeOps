@@ -61,7 +61,7 @@ module sgsmod_igrid
         real(rkind), dimension(:,:,:,:), allocatable :: tauijWM
         complex(rkind),dimension(:,:,:,:), allocatable :: tauijWMhat_inZ, tauijWMhat_inY
         real(rkind), dimension(:,:,:), allocatable :: filteredSpeedSq
-        real(rkind), dimension(:,:), allocatable :: vsurf_filt, usurf_filt, Tmatch_filt, ustar_surf, PsiM_surf, Linv_surf, T_surf, wTheta_surf, z0_surf   ! YIS added z0_surf 
+        real(rkind), dimension(:,:), allocatable :: vsurf_filt, usurf_filt, Tmatch_filt, ustar_surf, PsiM_surf, Linv_surf, T_surf, wTheta_surf 
         complex(rkind), dimension(:,:,:), allocatable :: Tfilhat, Tfilhatz1, Tfilhatz2
         logical :: useWallModel = .false.
         integer :: botBC_temp = 1

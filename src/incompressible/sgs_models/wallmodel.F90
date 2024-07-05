@@ -7,7 +7,7 @@ end subroutine
 subroutine initWallModel(this, SurfaceFilterFact)
    class(sgs_igrid), intent(inout) :: this
    real(rkind), intent(in) :: SurfaceFilterFact
-   integer :: i, j   ! YIS: added for for loop 
+   integer :: i   ! YIS: added for for loop 
 
    this%useWallModel = .true.
    allocate(this%tauijWM(this%gpE%xsz(1),this%gpE%xsz(2),this%gpE%xsz(3),2))
@@ -21,6 +21,8 @@ subroutine initWallModel(this, SurfaceFilterFact)
 
    case (2) ! Bou-Zeid Wall model
       allocate(this%filteredSpeedSq(this%gpC%xsz(1),this%gpC%xsz(2),this%gpC%xsz(3)))
+      allocate(this%WallMFactors(this%gpC%xsz(1),this%gpC%xsz(2)))     ! YIS added 07032024 
+
    case default
       call gracefulExit("Invalid choice of Wallmodel.",324)
    end select
@@ -36,24 +38,25 @@ subroutine initWallModel(this, SurfaceFilterFact)
       allocate(this%T_surf(this%gpC%zsz(1),this%gpC%zsz(2)))
       allocate(this%filteredSpeedSq(this%gpC%xsz(1),this%gpC%xsz(2),this%gpC%xsz(3))) ! Howland: Added 1/25/21
 
+<<<<<<< HEAD
       ! YIS start
       if (this%z0_field) then
-          allocate(this%z0_surf(this%gpC%zsz(1),this%gpC%zsz(2)))
+          allocate(this%z0_surf(this%gpC%zsz(1),this%gpC%zsz(2)))  
           ! Initialize z0init values
-          do i = 1, size(this%z0_surf, 1)  ! Loop over all rows
-              do j = 1, size(this%z0_surf, 2)  ! Loop over all columns
-                  if (j <= 10) then
-                      this%z0_surf(i, j) = 6.8d-5
-                  elseif (j >= 11 .and. j <= 13) then
-                      this%z0_surf(i, j) = 6.8d-3
-                  elseif (j >= 14) then
-                      this%z0_surf(i, j) = 6.8d-5
-                  end if
-              end do
+          do i = 1, 10
+              this%z0_surf(i, :) = 6.8d-5
+          end do
+          do i = 11, 13
+              this%z0_surf(i, :) = 6.8d-3
+          end do
+          do i = 14, 32
+              this%z0_surf(i, :) = 6.8d-5
           end do
       end if
       ! YIS end   
 
+=======
+>>>>>>> eadd1dc (wall model modified to have roughness patch of different z0)
       call this%spectC%ResetSurfaceFilter(SurfaceFilterFact)
       call message(2,"Fully local wall model set up with a filter factor:", SurfaceFilterFact)
    end if 
@@ -68,13 +71,14 @@ subroutine initWallModel(this, SurfaceFilterFact)
 end subroutine
 
 
-subroutine computeWallStress(this, u, v, T, uhat, vhat, That)
+subroutine computeWallStress(this, u, v, T, uhat, vhat, That, xline)
    class(sgs_igrid), intent(inout) :: this
    complex(rkind), dimension(this%sp_gpC%ysz(1),this%sp_gpC%ysz(2),this%sp_gpC%ysz(3)), intent(in) :: uhat, vhat, That
    real(rkind), dimension(this%gpC%xsz(1),this%gpC%xsz(2),this%gpC%xsz(3)), intent(in) :: u, v, T
-    complex(rkind), dimension(:,:,:), pointer :: cbuffz, cbuffy
-  
-    
+   complex(rkind), dimension(:,:,:), pointer :: cbuffz, cbuffy
+   integer :: locator_min(1), locator_max(1), z02_start_idx, z02_end_idx, k  ! YIS: added for for loop
+   real(rkind), dimension(this%gpC%xsz(1)), intent(in) :: xline   ! YIS added to compare with nondimensional x values 07032024
+
    cbuffz => this%cbuffzC(:,:,:,1)
    cbuffy => this%cbuffyC(:,:,:,1)
    
@@ -105,22 +109,80 @@ subroutine computeWallStress(this, u, v, T, uhat, vhat, That)
            call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,2), this%tauijWM(:,:,:,2))
 
         case (2) ! Bou-zeid Wall model 
-           this%WallMFactor = -(kappa/(log(this%dz/(two*this%z0)) - this%PsiM))**2 
-           call this%getfilteredSpeedSqAtWall(uhat, vhat)
            
-           call this%spectC%fft(this%filteredSpeedSq, cbuffy)
-           call transpose_y_to_z(cbuffy, cbuffz, this%sp_gpC)
-           
-           ! tau_13
-           this%tauijWMhat_inZ(:,:,1,1) = (this%WallMFactor*this%umn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex) 
-           call transpose_z_to_y(this%tauijWMhat_inZ(:,:,:,1), this%tauijWMhat_inY(:,:,:,1), this%sp_gpE)
-           call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,1), this%tauijWM(:,:,:,1))
-           
-           ! tau_23
-           this%tauijWMhat_inZ(:,:,1,2) = (this%WallMFactor*this%vmn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex) 
-           call transpose_z_to_y(this%tauijWMhat_inZ(:,:,:,2), this%tauijWMhat_inY(:,:,:,2), this%sp_gpE)
-           call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,2), this%tauijWM(:,:,:,2))
-        end select
+           this%WallMFactor = -(kappa / (log(this%dz / (two * this%z0)) - this%PsiM)) ** 2
+
+           ! YIS: this is to run in concurrent mode; if no concurrent precursor, run will default to Primary Run=.true.
+           if (this%Primary_Run) then
+               if (this%z0_field) then
+                   ! Set default to z0 
+                   this%WallMFactors = -(kappa / (log(this%dz / (two * this%z0)) - this%PsiM))**2
+
+                   ! print *, 'WallMFactors before: ', this%WallMFactors
+ 
+                   locator_min = minloc(abs(xline - this%z02_startx))
+                   locator_max = minloc(abs(xline - this%z02_endx))
+                  
+                   ! Overwrite based on assigned geometry
+                   this%WallMFactors(locator_min(1):locator_max(1),:) = -(kappa / (log(this%dz / (two * this%z02)) - this%PsiM))**2               
+                   
+                   ! Generates array of filtered speed squared (3D array)
+                   call this%getfilteredSpeedSqAtWall(uhat, vhat)              
+
+                   do k = 1, this%gpC%xsz(3)
+                       this%filteredSpeedSq(:,:,k) = this%WallMFactors(:,:) * this%filteredSpeedSq(:,:,k)
+                   end do                    
+                     
+                   call this%spectC%fft(this%filteredSpeedSq, cbuffy)
+                   call transpose_y_to_z(cbuffy, cbuffz, this%sp_gpC)
+                  
+                   ! tau_13
+                   this%tauijWMhat_inZ(:,:,1,1) = (this%umn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex)
+                   call transpose_z_to_y(this%tauijWMhat_inZ(:,:,:,1), this%tauijWMhat_inY(:,:,:,1), this%sp_gpE)
+                   call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,1), this%tauijWM(:,:,:,1))
+                   ! tau_23
+                   this%tauijWMhat_inZ(:,:,1,2) = (this%vmn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex)
+                   call transpose_z_to_y(this%tauijWMhat_inZ(:,:,:,2), this%tauijWMhat_inY(:,:,:,2), this%sp_gpE)
+                   call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,2), this%tauijWM(:,:,:,2))
+      
+                else
+                    
+                   call this%getfilteredSpeedSqAtWall(uhat, vhat)
+                   call this%spectC%fft(this%filteredSpeedSq, cbuffy)
+                   call transpose_y_to_z(cbuffy, cbuffz, this%sp_gpC)
+
+                    ! tau_13
+                   this%tauijWMhat_inZ(:,:,1,1) = (this%WallMFactor*this%umn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex)
+                   call transpose_z_to_y(this%tauijWMhat_inZ(:,:,:,1), this%tauijWMhat_inY(:,:,:,1), this%sp_gpE)
+                   call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,1), this%tauijWM(:,:,:,1))
+
+                   ! tau_23
+                   this%tauijWMhat_inZ(:,:,1,2) = (this%WallMFactor*this%vmn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex)
+                   call transpose_z_to_y(this%tauijWMhat_inZ(:,:,:,2), this%tauijWMhat_inY(:,:,:,2), this%sp_gpE)
+                   call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,2), this%tauijWM(:,:,:,2))
+
+                   ! print *, 'this%tauijWMhat_inZ: ', this%tauijWMhat_inZ(:,:,1,1)
+                   ! print *, 'If this is printing, I guess you are using primary case without z0 field'
+                end if
+           else  
+                ! Now the precursor run
+                call this%getfilteredSpeedSqAtWall(uhat, vhat)
+                call this%spectC%fft(this%filteredSpeedSq, cbuffy)
+                call transpose_y_to_z(cbuffy, cbuffz, this%sp_gpC)
+            
+                ! tau_13
+                this%tauijWMhat_inZ(:,:,1,1) = (this%WallMFactor*this%umn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex)
+                call transpose_z_to_y(this%tauijWMhat_inZ(:,:,:,1), this%tauijWMhat_inY(:,:,:,1), this%sp_gpE)
+                call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,1), this%tauijWM(:,:,:,1))
+
+                ! tau_23
+                this%tauijWMhat_inZ(:,:,1,2) = (this%WallMFactor*this%vmn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex)
+                call transpose_z_to_y(this%tauijWMhat_inZ(:,:,:,2), this%tauijWMhat_inY(:,:,:,2), this%sp_gpE)
+                call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,2), this%tauijWM(:,:,:,2)) 
+           end if
+           ! YIS
+
+       end select
    end if 
 end subroutine
 
@@ -192,7 +254,7 @@ subroutine getfilteredSpeedSqAtWall(this, uhatC, vhatC)
     rbuffx1 => this%filteredSpeedSq; rbuffx2 => this%rbuffxC(:,:,:,1)
 
     call transpose_y_to_z(uhatC,tauWallH,this%sp_gpC)
-    call this%spectC%SurfaceFilter_ip(tauWallH(:,:,1))
+    call this%spectC%SurfaceFilter_ip(tauWallH(:,:,1))   ! 1 index should be variable WM_matchingindex (YIS)
     call transpose_z_to_y(tauWallH,cbuffy, this%sp_gpC)
     call this%spectC%ifft(cbuffy,rbuffx1)
 
@@ -259,14 +321,9 @@ subroutine compute_surface_stress(this)
     ! Compute local wall-quantities at each wall node
     do j = 1,this%gpC%zsz(2)
         do i = 1,this%gpC%zsz(1)
-            if (this%z0_field) then
-                call this%compute_local_wallmodel(this%usurf_filt(i,j), this%vsurf_filt(i,j), this%Tmatch_filt(i,j), & 
-                    this%wTheta_surf(i,j), this%ustar_surf(i,j), this%Linv_surf(i,j), this%PsiM_surf(i,j), this%T_surf(i,j), this%z0_surf(i,j))
-            else
-                call this%compute_local_wallmodel(this%usurf_filt(i,j), this%vsurf_filt(i,j), this%Tmatch_filt(i,j), &
-                    this%wTheta_surf(i,j), this%ustar_surf(i,j), this%Linv_surf(i,j), this%PsiM_surf(i,j), this%T_surf(i,j), this%z0)
-            end if 
-        end do 
+            call this%compute_local_wallmodel(this%usurf_filt(i,j), this%vsurf_filt(i,j), this%Tmatch_filt(i,j), &
+              this%wTheta_surf(i,j), this%ustar_surf(i,j), this%Linv_surf(i,j), this%PsiM_surf(i,j), this%T_surf(i,j), this%z0)
+        end do
     end do 
 
     ! Compute stress and heat flux 
@@ -287,9 +344,9 @@ subroutine compute_surface_stress(this)
     this%InvObLength = p_sum(sum(this%Linv_surf))/real(this%gpC%xsz(1)*this%gpC%ysz(2),rkind)
 end subroutine 
 
-subroutine compute_local_wallmodel(this, ux, uy, Tmn, wTh_surf, ustar, Linv, PsiM, T_surf, z0)   ! YIS: z0 added
+subroutine compute_local_wallmodel(this, ux, uy, Tmn, wTh_surf, ustar, Linv, PsiM, T_surf)
     class(sgs_igrid), intent(inout) :: this
-    real(rkind), intent(in) :: ux, uy, Tmn, z0     ! YIS: z0 added
+    real(rkind), intent(in) :: ux, uy, Tmn
     real(rkind), intent(out) :: wTh_surf, ustar, Linv, PsiM, T_surf
 
     real(rkind) :: ustarNew, ustarDiff, dTheta, at
@@ -366,7 +423,7 @@ subroutine compute_local_wallmodel(this, ux, uy, Tmn, wTh_surf, ustar, Linv, Psi
           T_surf = Tmn + wTh*(at-PsiH)/(ustar*kappa)
       end select
    else
-          ustar = sqrt(ux*ux + uy*uy)*kappa/(log(hwm/z0))
+          ustar = sqrt(ux*ux + uy*uy)*kappa/(log(hwm/this%z0))
           Linv = zero
           wTh_surf = zero
           PsiM = zero
@@ -463,8 +520,6 @@ subroutine getSurfaceQuantities(this)
           this%PsiM = PsiM
       end select
    else
-          ! This will also need a definition of z0 that is either local or
-          ! not????? but not implemented here yet YIS
           this%ustar = this%Uspmn*kappa/(log(hwm/this%z0))
           this%invObLength = zero
           this%wTh_surf = zero
