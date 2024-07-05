@@ -31,8 +31,10 @@ subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
     real(rkind)  :: Lx = one, Ly = one, Lz = one
     logical :: initPurturbations = .false. 
     real(rkind) :: z0init
-    logical :: z0_field   ! YIS
-    namelist /PBLINPUT/ Lx, Ly, Lz, z0_field, z0init, initPurturbations   ! YIS    
+    logical :: z0init_field   ! YIS
+    real(rkind) :: z02init, z02init_startx, z02init_endx   ! YIS
+    namelist /PBLINPUT/ Lx, Ly, Lz, z0init_field, z0init, z02init, z02init_startx, z02init_endx, initPurturbations   ! YIS  
+
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -88,18 +90,17 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     real(rkind), dimension(:,:,:,:), intent(inout), target :: fieldsC
     real(rkind), dimension(:,:,:,:), intent(inout), target :: fieldsE
     integer :: ioUnit
-    integer :: i, j, nx, ny        ! YIS
     real(rkind), dimension(:,:,:), pointer :: u, v, w, wC, x, y, z
-    real(rkind), dimension(:,:), allocatable :: z0init_surf    ! YIS
     real(rkind) :: z0init, epsnd = 0.02 
     real(rkind), dimension(:,:,:), allocatable :: randArr, ybuffC, ybuffE, zbuffC, zbuffE
     integer :: nz, nzE
     real(rkind) :: Xperiods = 3.d0, Yperiods = 3.d0!, Zperiods = 1.d0
     real(rkind) :: zpeak = 0.2d0, noiseAmp = 1.d-2
     real(rkind)  :: Lx = one, Ly = one, Lz = one
-    logical :: initPurturbations = .true. 
-    logical :: z0_field   ! YIS
-    namelist /PBLINPUT/ Lx, Ly, Lz, z0_field, z0init, initPurturbations         ! YIS
+    logical :: initPurturbations = .false. 
+    logical :: z0init_field   ! YIS
+    real(rkind) :: z02init, z02init_startx, z02init_endx   ! YIS
+    namelist /PBLINPUT/ Lx, Ly, Lz, z0init_field, z0init, z02init, z02init_startx, z02init_endx, initPurturbations         ! YIS
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -117,49 +118,15 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
  
     epsnd = 5.d0
 
-    
-    ! YIS start
-    ! This is currently a specific z0 field; will need to write code that allows
-    ! more variations
-    allocate(z0init_surf(size(wC,1),size(wC,2)))
-    ! Initialize z0init matrix if the flag is set
-    if (z0_field) then
-        ! Initialize z0init values
-        do i = 1, 10
-            z0init_surf(i, :) = 6.8d-5
-        end do
-        do i = 11, 13
-            z0init_surf(i, :) = 6.8d-3
-        end do
-        do i = 14, 32
-            z0init_surf(i, :) = 6.8d-5
-        end do
-    else
-        ! Default initialization or handle error if needed
-        ! For simplicity, initializing to zero in this example
-        z0init_surf = 0.0_rkind
-    end if
-    ! YIS end    
-
     if (initPurturbations) then
       u = (one/kappa)*log(z/z0init) + epsnd*cos(Yperiods*two*pi*y/Ly)*exp(-half*(z/zpeak/Lz)**2)
       v = epsnd*(z/Lz)*cos(Xperiods*two*pi*x/Lx)*exp(-half*(z/zpeak/Lz)**2)
     else
-      if (z0_field) then
-          do j=1,size(mesh,2)
-              do i=1,size(mesh,1)
-                  u(i,j,:) = (one/kappa)*log(z(i,j,:)/z0init_surf(i,j))
-              end do
-          end do
-      else
-          u = (one/kappa)*log(z/z0init)
-      end if
+      u = (one/kappa)*log(z/z0init)
       v = zero
     end if
     wC= zero
 
-    deallocate(z0init_surf)
- 
     allocate(randArr(size(wC,1),size(wC,2),size(wC,3)))
     
     call gaussian_random(randArr,zero,one,seedu + 100*nrank)
@@ -253,8 +220,9 @@ subroutine setDirichletBC_Temp(inputfile, Tsurf, dTsurf_dt)
     integer :: iounit
     logical :: initPurturbations = .false. 
     real(rkind) :: z0init
-    logical :: z0_field   ! YIS
-    namelist /PBLINPUT/ Lx, Ly, Lz, z0_field, z0init, initPurturbations   ! YIS
+    logical :: z0init_field   ! YIS
+    real(rkind) :: z02init, z02init_startx, z02init_endx   ! YIS
+    namelist /PBLINPUT/ Lx, Ly, Lz, z0init_field, z0init, z02init, z02init_startx, z02init_endx, initPurturbations   ! YIS
     
     Tsurf = zero; dTsurf_dt = zero; ThetaRef = one
     
@@ -277,8 +245,9 @@ subroutine set_Reference_Temperature(inputfile, Tref)
     integer :: iounit
     logical :: initPurturbations = .false.
     real(rkind) :: z0init
-    logical :: z0_field   ! YIS
-    namelist /PBLINPUT/ Lx, Ly, Lz, z0_field, z0init, initPurturbations   ! YIS 
+    logical :: z0init_field   ! YIS
+    real(rkind) :: z02init, z02init_startx, z02init_endx   ! YIS
+    namelist /PBLINPUT/ Lx, Ly, Lz, z0init_field, z0init, z02init, z02init_startx, z02init_endx, initPurturbations   ! YIS
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')

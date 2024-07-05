@@ -1,9 +1,9 @@
 &INPUT
-inputdir              = "/pool001/youngin/data/halfchannel_varyz0/run2"   ! Directory for any input files
-outputdir             = "/pool001/youngin/data/halfchannel_varyz0/run2"   ! Directory for all output files
-nx                    = 32         ! Number of points in X
-ny                    = 32         ! Number of points in Y
-nz                    = 32         ! Number of points in Z
+inputdir              = "/pool001/youngin/data/halfchannel_varyz0/S25R75_bouzeid"   ! Directory for any input files
+outputdir             = "/pool001/youngin/data/halfchannel_varyz0/S25R75_bouzeid"   ! Directory for all output files
+nx                    = 60         ! Number of points in X
+ny                    = 60         ! Number of points in Y
+nz                    = 60        ! Number of points in Z
 tstop                 = 300.D0     ! Physical time to stop the simulation
 dt                    = -0.0001D0   ! Fixed time step value (only used if CFL is set to negative)
 CFL                   = 0.8D0       ! CFL criterion for calculating the time step (Set to negative to disable)
@@ -12,10 +12,11 @@ pcol                  = 0           ! Number of rows in 2D processor decompositi
 useRestartFile        = .FALSE.     ! Set to false if it's a fresh simulation 
 restartFile_TID       = 194069      ! TimeID of the restart file being used
 restartFile_RID       = 10          ! RunID of the restart file being used
+Primary_Run           = .TRUE.
 /
 /
 &NUMERICS
-TimeSteppingScheme    = 1           ! 0: Adams-Bashforth, 1: TVD-RK3 (use this)
+TimeSteppingScheme    = 2           ! 0: Adams-Bashforth, 1: TVD-RK3 (use this)
 AdvectionTerm         = 1           ! 0: Rotational Form, 1: Skew-Symmetric Form (use this for Compact Scheme)
 NumericalSchemeVert   = 1           ! 0: Second order FD, 1: Sixth order Compact Difference (CD06)
 ComputeStokesPressure = .TRUE.     ! Set this to FALSE if using Compact Scheme / High Reynolds numbers
@@ -24,9 +25,9 @@ t_DivergenceCheck     = 100         ! Check divergence every $ timesteps. Reproj
 /
 /
 &IO
-RunID                 = 2           ! Run Label (All output files will be tagged with this nubber)
-t_restartDump         = 1000        ! Restart File Dumping Frequency  (# of timesteps)
-t_dataDump            = 1000        ! Data dumping frequency (# of timesteps)
+RunID                 = 1           ! Run Label (All output files will be tagged with this nubber)
+t_restartDump         = 10000        ! Restart File Dumping Frequency  (# of timesteps)
+t_dataDump            = 2000        ! Data dumping frequency (# of timesteps)
 ioType                = 0           ! 0: Fortran Binaries, 1: .vtk files
 dumpPlanes            = .FALSE.     ! Dump plane visualations. Select planes in initialize.F90
 t_planeDump           = 12500         ! Plane dumping frequency (# of timesteps)
@@ -87,18 +88,16 @@ useFringe             = .false.     ! This is false if simulation is periodic.
 &SGS_MODEL
 DynamicProcedureType  = 0           ! 0: No dynamic procedure, 1: Planar Avg. Dynamic Proc., 2: Global Dynamic Proc.
 SGSModelID            = 1           ! 0: smagorinsky, 1: sigma, 2: Shear Improved Smagorinsky
-z0                    = 6.8d-5      ! Roughness length (case for when not varied z0 field)
-z0_field              = .TRUE.      ! To initiate a varied z0 field (use only when useFullyLocalWM is true)
-useWallDamping        = .FALSE.     ! Use the Wall Damping Function 
-ncWall                = 3.d0        ! Wall Damping Function Exponent
-Csgs                  = 0.7d0       ! Asymptotic model constant (wall damping function)
-wallModelType         = 1           ! 1: Moeng's original model, 2: Bou-Zeid's fully local model
-explicitCalcEdgeEddyViscosity = .true.     ! Explicitely compute eddy viscosity at edges? or interpolate? 
-DynProcFreq           = 5           ! Dynamic procedure used every DYNPROCFREQ timesteps. 
-useSGSDynamicRestart  = .FALSE.     ! Clip the constant values when they are negative
+useWallDamping        = .FALSE.      ! Use the Wall Damping Function
+ncWall                = 3.d0      ! Wall Damping Function Exponent
+Csgs                  = 0.7d0      ! Asymptotic model constant (wall damping function)
+wallModelType         = 2           ! 1: Moeng's original model, 2: Bou-Zeid's fully local model
+explicitCalcEdgeEddyViscosity = .true.     ! Explicitely compute eddy viscosity at edges? or interpolate?
+DynProcFreq           = 5           ! Dynamic procedure used every DYNPROCFREQ timesteps.
+useSGSDynamicRestart  = .FALSE.      ! Clip the constant values when they are negative
 useVerticalTfilter    = .FALSE.     ! Test filter in the vertical direction? Used for Dynamic Procedure
 SGSDynamicRestartFile = "null"      ! Clip the constant values when they are negative
-useFullyLocalWM       = .TRUE.
+useFullyLocalWM       = .FALSE.
 /
 /
 &WINDTURBINES
@@ -113,7 +112,7 @@ yawUpdateInterval     = 1000
 /
 /
 &FRINGE
-apply_x_fringe        = .TRUE.
+apply_x_fringe        = .FALSE.
 apply_y_fringe        = .FALSE.
 Fringe_xst            = 0.75d0         
 Fringe_xen            = 1.00d0
@@ -134,11 +133,14 @@ t_dumpKSprep          = 10             ! Dumping Frequency for KS files
 /
 /
 &PBLINPUT
-Lx                    = 6.283185307179586d0 ! Domain Length (appropriate dimesnions/non-dimensionalized)
-Ly                    = 6.283185307179586d0 ! Domain Length (appropriate dimesnions/non-dimensionalized)
+Lx                    = 6.280d0 ! Domain Length (appropriate dimesnions/non-dimensionalized)
+Ly                    = 6.280d0 ! Domain Length (appropriate dimesnions/non-dimensionalized)
 Lz                    = 1.0d0               ! Domain Height (appropriate dimesnions/non-dimensionalized)
-z0_field              = .TRUE.              ! To initiate a varied z0 field (use only when useFullyLocalWM is true) 
-z0init                = 6.8d-5              ! Roughness length (case for when not varied z0 field)
+z0init                = 1.0d-5              ! Roughness scale used to initialize the profile
+z0init_field          = .TRUE.              ! To initiate a varied z0 field
+z02init               = 1.0d-4              ! Roughness length in patch
+z02init_startx        = 1.57d0             ! Nondimensionalized x position of patch start
+z02init_endx          = 6.280d0 ! Nondimensionalized x position  of patch end
 /
 /
 &BUDGET_TIME_AVG

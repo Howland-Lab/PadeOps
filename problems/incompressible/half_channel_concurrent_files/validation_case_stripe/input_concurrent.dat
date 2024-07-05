@@ -1,0 +1,5 @@
+&concurrent
+primary_InputFile             = "/nobackup1/youngin/PadeOps/problems/incompressible/half_channel_concurrent_files/validation_case_stripe/primary.dat"
+precursor_InputFile           = "/nobackup1/youngin/PadeOps/problems/incompressible/half_channel_concurrent_files/validation_case_stripe/precursor.dat"
+synchronize_RK_fringe         = .true.
+/
