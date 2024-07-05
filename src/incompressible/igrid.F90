@@ -137,6 +137,12 @@ module IncompressibleGrid
         logical :: assume_fplane = .true.
         real(rkind) :: coriolis_omegaY, coriolis_omegaZ, coriolis_omegaX 
         integer :: nxZ, nyZ
+
+        ! YIS
+        real(rkind)  :: Lx = one, Ly = one, Lz = one
+        logical :: initPurturbations = .true.
+        logical :: z0_field = .false.
+        real(rkind) :: z0, z02, z02_startx, z02_endx   ! YIS 
    
         character(len=clen) :: dtlimit
         integer :: BuoyancyTermType = 0 
@@ -298,6 +304,8 @@ module IncompressibleGrid
 
         integer :: buoyancyDirection 
 
+
+
         contains
             procedure          :: init
             procedure          :: destroy
@@ -433,9 +441,16 @@ contains
         logical :: WriteTurbineForce = .false., useforcedStratification = .false., useDynamicYaw = .FALSE. 
         integer :: buoyancyDirection = 3, yawUpdateInterval = 100000, dealiasType = 0
 
+        ! YIS
+        real(rkind)  :: Lx = one, Ly = one
+        logical :: initPurturbations = .true.
+        logical :: z0init_field, Primary_Run = .true.   ! YIS
+        real(rkind) :: z0init, z02init, z02init_startx, z02init_endx   ! YIS 
+        ! YIS
+
         real(rkind), dimension(:,:,:), allocatable, target :: tmpzE, tmpzC, tmpyE, tmpyC
         namelist /INPUT/ nx, ny, nz, tstop, dt, CFL, nsteps, inputdir, outputdir, prow, pcol, &
-                        useRestartFile, restartFile_TID, restartFile_RID, CviscDT
+                        useRestartFile, restartFile_TID, restartFile_RID, CviscDT, Primary_Run
         namelist /IO/ vizDump_Schedule, deltaT_dump, t_restartDump, t_dataDump, ioType, dumpPlanes, runID, useProbes, &
                     & dump_NU_SGS, dump_KAPPA_SGS, t_planeDump, t_stop_planeDump, t_start_planeDump, t_start_pointProbe,&
                     & t_stop_pointProbe, t_pointProbe
@@ -455,6 +470,7 @@ contains
         namelist /SCALARS/ num_scalars, scalar_info_dir
         namelist /TURB_PRESSURE/ MeanTIDX, MeanRID, MeanFilesDir
         namelist /MOISTURE/ moistureFactor, moisture_info_dir
+        namelist /PBLINPUT/ Lx, Ly, Lz, z0init_field, z0init, z02init, z02init_startx, z02init_endx, initPurturbations         ! YIS
 
         ! STEP 1: READ INPUT 
         ioUnit = 11
@@ -469,6 +485,7 @@ contains
         read(unit=ioUnit, NML=BCs)
         read(unit=ioUnit, NML=WINDTURBINES)
         read(unit=ioUnit, NML=KSPREPROCESS)
+        read(unit=ioUnit, NML=PBLINPUT)   ! YIS
         this%useMoisture = useMoisture
         if (this%useMoisture) then
          read(unit=ioUnit, NML=MOISTURE)
@@ -496,6 +513,7 @@ contains
         this%dump_NU_SGS = dump_NU_SGS; this%dump_KAPPA_SGS = dump_KAPPA_SGS; this%n_scalars = num_scalars
         this%donot_dealias = donot_dealias; this%ioType = ioType; this%HITForceTimeScale = HITForceTimeScale
         this%moistureFactor = moistureFactor; this%useHITRealSpaceLinearForcing = useHITRealSpaceLinearForcing
+        this%z0 = z0init; this%z0_field = z0init_field; this%z02=z02init; this%z02_startx = z02init_startx; this%z02_endx = z02init_endx    ! YIS
 
         if (this%CFL > zero) this%useCFL = .true. 
         if ((this%CFL < zero) .and. (this%dt < zero)) then
@@ -851,13 +869,16 @@ contains
                sgsmod_stratified = .true. 
             else
                sgsmod_stratified = .false. 
-            end if 
+            end if
+
             call this%sgsModel%init(this%gpC, this%gpE, this%spectC, this%spectE, this%dx, this%dy, this%dz, inputfile, &
                                     this%rbuffxE(1,1,:,1), this%mesh(1,1,:,3), this%fBody_x, this%fBody_y, this%fBody_z, &
                                     this%storeFbody,this%Pade6opZ, this%cbuffyC, this%cbuffzC, this%cbuffyE, this%cbuffzE, &
                                     this%rbuffxC, this%rbuffyC, this%rbuffzC, this%rbuffyE, this%rbuffzE, this%Tsurf, &
                                     this%ThetaRef, this%wTh_surf, this%Fr, this%Re, this%isInviscid, sgsmod_stratified, &
-                                    this%botBC_Temp, this%initSpinUp)
+                                    this%botBC_Temp, this%initSpinUp, this%z0, this%z0_field, this%z02, this%z02_startx, &
+                                    this%z02_endx, Primary_Run)   ! YIS added z0 things
+
             call this%sgsModel%link_pointers(this%nu_SGS, this%tauSGS_ij, this%tau13, this%tau23, this%q1, this%q2, this%q3, this%kappaSGS)
             call message(0,"SGS model initialized successfully")
         end if 
@@ -1648,3 +1669,4 @@ contains
    end subroutine 
 
 end module 
+

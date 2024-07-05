@@ -68,22 +68,14 @@ subroutine init(this, gpC, gpE, spectC, spectE, dx, dy, dz, inputfile, zMeshE, z
   ! Input file variables
   logical :: DomainAveraged_DynProc = .false., useWallDamping = .false., useSGSDynamicRestart = .false., useVerticalTfilter = .false.
   integer :: DynamicProcedureType = 0, SGSmodelID = 0, WallModelType = 0, DynProcFreq = 1
-<<<<<<< HEAD
-  real(rkind) :: ncWall = 1.d0, Csgs = 0.17d0, z0 = 0.01d0, deltaRatio = 2.d0, turbPrandtl = 0.4d0, Cy = 100.d0
-=======
   real(rkind) :: ncWall = 1.d0, Csgs = 0.17d0, deltaRatio = 2.d0, turbPrandtl = 0.4d0, Cy = 100.d0
->>>>>>> eadd1dc (wall model modified to have roughness patch of different z0)
   real(rkind) :: z0t = 0.001d0
   character(len=clen) :: SGSDynamicRestartFile
   logical :: explicitCalcEdgeEddyViscosity = .false., UseDynamicProcedureScalar = .false., useScalarBounding = .false.
   logical :: usePrSGS = .false., useFullyLocalWM = .false.
   integer :: ierr, WM_matchingIndex = 1, WallFunctionType = 1
   real(rkind) :: lowbound = 0.d0 , highbound = 1.d0 , SurfaceFilterFact = 1.2d0
-<<<<<<< HEAD
-  logical :: z0_field    ! YIS
-=======
   
->>>>>>> eadd1dc (wall model modified to have roughness patch of different z0)
 
   namelist /SGS_MODEL/ DynamicProcedureType, SGSmodelID, z0t, &
                  useWallDamping, ncWall, Csgs, WallModelType, usePrSGS, &
@@ -174,11 +166,8 @@ subroutine init(this, gpC, gpE, spectC, spectE, dx, dy, dz, inputfile, zMeshE, z
   this%UseDynamicProcedureScalar = UseDynamicProcedureScalar
   this%explicitCalcEdgeEddyViscosity = explicitCalcEdgeEddyViscosity
   this%mid = SGSmodelID
-<<<<<<< HEAD
-=======
 
   ! YIS 
->>>>>>> eadd1dc (wall model modified to have roughness patch of different z0)
   this%z0_field = z0_field   ! YIS added toggle for initiating z0 field
   this%z0  = z0
   this%z0t = z0t
@@ -322,3 +311,5 @@ subroutine dumpSGSDynamicRestart(this, SGSDynamicRestartFile)
   close(123)
 
 end subroutine
+
+

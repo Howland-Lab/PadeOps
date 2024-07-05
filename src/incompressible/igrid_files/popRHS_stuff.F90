@@ -58,7 +58,7 @@
            call this%sgsmodel%getRHS_SGS(this%u_rhs, this%v_rhs, this%w_rhs,      this%duidxjC, this%duidxjE, &
                                          this%uhat,  this%vhat,  this%whatC,      this%That,    this%u,       &
                                          this%v,     this%wC,    this%T,          this%newTimeStep,this%dTdxC,   this%dTdyC,   & 
-                                         this%dTdzC, this%dTdxE, this%dTdyE, this%dTdzE)
+                                         this%dTdzC, this%dTdxE, this%dTdyE, this%dTdzE, this%mesh(:,1,1,1))   ! YIS
 
            if (this%isStratified .or. this%initspinup) then
               call this%sgsmodel%getRHS_SGS_Scalar(this%T_rhs, this%dTdxC, this%dTdyC, this%dTdzC, this%dTdzE, &
@@ -157,12 +157,12 @@
            call this%sgsmodel%getRHS_SGS(this%usgs, this%vsgs, this%wsgs,      this%duidxjC, this%duidxjE,    &
                                          this%uhat,  this%vhat,  this%whatC,   this%That,    this%u,       &
                                          this%v,     this%wC,    this%T,       this%newTimeStep,this%dTdxC,   this%dTdyC,   & 
-                                         this%dTdzC, this%dTdxE, this%dTdyE, this%dTdzE)
+                                         this%dTdzC, this%dTdxE, this%dTdyE, this%dTdzE, this%mesh(:,1,1,1))
          else
            call this%sgsmodel%getRHS_SGS(this%u_rhs, this%v_rhs, this%w_rhs,      this%duidxjC, this%duidxjE, &
                                          this%uhat,  this%vhat,  this%whatC,      this%That,    this%u,       &
                                          this%v,     this%wC,    this%T,       this%newTimeStep,this%dTdxC,   this%dTdyC,   & 
-                                         this%dTdzC, this%dTdxE, this%dTdyE, this%dTdzE)
+                                         this%dTdzC, this%dTdxE, this%dTdyE, this%dTdzE, this%mesh(:,1,1,1))
          end if
 
            if (this%isStratified .or. this%initspinup) then
@@ -299,3 +299,4 @@
        end if 
 
    end subroutine 
+
