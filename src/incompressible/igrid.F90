@@ -142,7 +142,7 @@ module IncompressibleGrid
         real(rkind)  :: Lx = one, Ly = one, Lz = one
         logical :: initPurturbations = .true.
         logical :: z0_field = .false.
-        real(rkind) :: z0, z02, z02_startx, z02_endx   ! YIS 
+        real(rkind) :: z0, z02, z02_startx, z02_endx, zd   ! YIS 
    
         character(len=clen) :: dtlimit
         integer :: BuoyancyTermType = 0 
@@ -445,7 +445,7 @@ contains
         real(rkind)  :: Lx = one, Ly = one
         logical :: initPurturbations = .true.
         logical :: z0init_field, Primary_Run = .true.   ! YIS
-        real(rkind) :: z0init, z02init, z02init_startx, z02init_endx   ! YIS 
+        real(rkind) :: z0init, z02init, z02init_startx, z02init_endx, zd   ! YIS 
         ! YIS
 
         real(rkind), dimension(:,:,:), allocatable, target :: tmpzE, tmpzC, tmpyE, tmpyC
@@ -470,7 +470,7 @@ contains
         namelist /SCALARS/ num_scalars, scalar_info_dir
         namelist /TURB_PRESSURE/ MeanTIDX, MeanRID, MeanFilesDir
         namelist /MOISTURE/ moistureFactor, moisture_info_dir
-        namelist /PBLINPUT/ Lx, Ly, Lz, z0init_field, z0init, z02init, z02init_startx, z02init_endx, initPurturbations         ! YIS
+        namelist /PBLINPUT/ Lx, Ly, Lz, z0init_field, z0init, z02init, z02init_startx, z02init_endx, initPurturbations, zd         ! YIS
 
         ! STEP 1: READ INPUT 
         ioUnit = 11
@@ -513,7 +513,7 @@ contains
         this%dump_NU_SGS = dump_NU_SGS; this%dump_KAPPA_SGS = dump_KAPPA_SGS; this%n_scalars = num_scalars
         this%donot_dealias = donot_dealias; this%ioType = ioType; this%HITForceTimeScale = HITForceTimeScale
         this%moistureFactor = moistureFactor; this%useHITRealSpaceLinearForcing = useHITRealSpaceLinearForcing
-        this%z0 = z0init; this%z0_field = z0init_field; this%z02=z02init; this%z02_startx = z02init_startx; this%z02_endx = z02init_endx    ! YIS
+        this%z0 = z0init; this%z0_field = z0init_field; this%z02=z02init; this%z02_startx = z02init_startx; this%z02_endx = z02init_endx; this%zd = zd    ! YIS
 
         if (this%CFL > zero) this%useCFL = .true. 
         if ((this%CFL < zero) .and. (this%dt < zero)) then
@@ -877,7 +877,7 @@ contains
                                     this%rbuffxC, this%rbuffyC, this%rbuffzC, this%rbuffyE, this%rbuffzE, this%Tsurf, &
                                     this%ThetaRef, this%wTh_surf, this%Fr, this%Re, this%isInviscid, sgsmod_stratified, &
                                     this%botBC_Temp, this%initSpinUp, this%z0, this%z0_field, this%z02, this%z02_startx, &
-                                    this%z02_endx, Primary_Run)   ! YIS added z0 things
+                                    this%z02_endx, Primary_Run, this%zd)   ! YIS added z0 things
 
             call this%sgsModel%link_pointers(this%nu_SGS, this%tauSGS_ij, this%tau13, this%tau23, this%q1, this%q2, this%q3, this%kappaSGS)
             call message(0,"SGS model initialized successfully")

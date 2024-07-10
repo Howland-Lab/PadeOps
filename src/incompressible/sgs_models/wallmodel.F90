@@ -104,7 +104,7 @@ subroutine computeWallStress(this, u, v, T, uhat, vhat, That, xline)
                    locator_max = minloc(abs(xline - this%z02_endx))
                   
                    ! Overwrite based on assigned geometry
-                   this%WallMFactors(locator_min(1):locator_max(1),:) = -(kappa / (log(this%dz / (two * this%z02)) - this%PsiM))**2               
+                   this%WallMFactors(locator_min(1):locator_max(1),:) = -(kappa / (log(((this%dz / two) - this%zd) / this%z02) - this%PsiM))**2               
                    
                    ! Generates array of filtered speed squared (3D array)
                    call this%getfilteredSpeedSqAtWall(uhat, vhat)              

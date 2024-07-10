@@ -76,7 +76,7 @@ module sgsmod_igrid
         logical :: z0_field, Primary_Run ! YIS added 
         real(rkind) :: z02, z02_startx, z02_endx    ! YIS added 
         integer :: z02_start_idx, z02_end_idx  ! YIS added
-      
+        integer :: zd ! YIS (displacement length) 
 
         ! for dynamic procedures - all are at edges
         type(gaussian) :: gaussianTestFilterZ
