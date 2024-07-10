@@ -32,8 +32,8 @@ subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
     logical :: initPurturbations = .false. 
     real(rkind) :: z0init
     logical :: z0init_field   ! YIS
-    real(rkind) :: z02init, z02init_startx, z02init_endx   ! YIS
-    namelist /PBLINPUT/ Lx, Ly, Lz, z0init_field, z0init, z02init, z02init_startx, z02init_endx, initPurturbations   ! YIS  
+    real(rkind) :: z02init, z02init_startx, z02init_endx, zd   ! YIS
+    namelist /PBLINPUT/ Lx, Ly, Lz, z0init_field, z0init, z02init, z02init_startx, z02init_endx, initPurturbations, zd   ! YIS  
 
 
     ioUnit = 11
@@ -99,8 +99,8 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     real(rkind)  :: Lx = one, Ly = one, Lz = one
     logical :: initPurturbations = .false. 
     logical :: z0init_field   ! YIS
-    real(rkind) :: z02init, z02init_startx, z02init_endx   ! YIS
-    namelist /PBLINPUT/ Lx, Ly, Lz, z0init_field, z0init, z02init, z02init_startx, z02init_endx, initPurturbations         ! YIS
+    real(rkind) :: z02init, z02init_startx, z02init_endx, zd   ! YIS
+    namelist /PBLINPUT/ Lx, Ly, Lz, z0init_field, z0init, z02init, z02init_startx, z02init_endx, initPurturbations, zd         ! YIS
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -221,8 +221,8 @@ subroutine setDirichletBC_Temp(inputfile, Tsurf, dTsurf_dt)
     logical :: initPurturbations = .false. 
     real(rkind) :: z0init
     logical :: z0init_field   ! YIS
-    real(rkind) :: z02init, z02init_startx, z02init_endx   ! YIS
-    namelist /PBLINPUT/ Lx, Ly, Lz, z0init_field, z0init, z02init, z02init_startx, z02init_endx, initPurturbations   ! YIS
+    real(rkind) :: z02init, z02init_startx, z02init_endx, zd   ! YIS
+    namelist /PBLINPUT/ Lx, Ly, Lz, z0init_field, z0init, z02init, z02init_startx, z02init_endx, initPurturbations, zd   ! YIS
     
     Tsurf = zero; dTsurf_dt = zero; ThetaRef = one
     
@@ -246,8 +246,8 @@ subroutine set_Reference_Temperature(inputfile, Tref)
     logical :: initPurturbations = .false.
     real(rkind) :: z0init
     logical :: z0init_field   ! YIS
-    real(rkind) :: z02init, z02init_startx, z02init_endx   ! YIS
-    namelist /PBLINPUT/ Lx, Ly, Lz, z0init_field, z0init, z02init, z02init_startx, z02init_endx, initPurturbations   ! YIS
+    real(rkind) :: z02init, z02init_startx, z02init_endx, zd   ! YIS
+    namelist /PBLINPUT/ Lx, Ly, Lz, z0init_field, z0init, z02init, z02init_startx, z02init_endx, initPurturbations, zd   ! YIS
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
