@@ -296,6 +296,10 @@ contains
             this%forceDump = forceDump
         endif
 
+        if(this%igrid_sim%tsim > this%igrid_sim%tstop) then
+            this%forceDump = .TRUE.
+       endif
+
         if (this%do_budgets)  then
             if( ( (this%tidx_budget_start>0) .and. (this%igrid_sim%step>this%tidx_budget_start) ) .or. &
                 ( (this%time_budget_start>0) .and. (this%igrid_sim%tsim>this%time_budget_start) ) ) then
