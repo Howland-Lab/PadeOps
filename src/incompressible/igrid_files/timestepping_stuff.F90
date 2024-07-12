@@ -506,11 +506,20 @@
               !call this%dump_stats()
           end if
       end if 
+    
+      if (this%vizDump_Schedule == 1) then
+           if (this%DumpRestartThisStep) then
+              call message(2,"Performing a fixed timed Restart dump at time:", this%tsim)
+              call message(2,"This time step used a deltaT:",this%dt)
+              call this%dumpRestartfile()
+           end if 
+      else
+        if ( restartWrite .or. (mod(this%step,this%t_restartDump) == 0) ) then
+            call this%dumpRestartfile()
+            call message(0,"Scheduled restart file dumped.")
+        end if
+      end if 
 
-      if ( restartWrite .or. (mod(this%step,this%t_restartDump) == 0) ) then
-          call this%dumpRestartfile()
-          call message(0,"Scheduled restart file dumped.")
-      end if
       
       if ( (forceWrite .or. ((mod(this%step,this%t_planeDump) == 0) .and. &
                (this%step .ge. this%t_start_planeDump) .and. (this%step .le. this%t_stop_planeDump))) .and. (this%dumpPlanes)) then
@@ -691,12 +700,20 @@
        end if 
 
        if (this%vizDump_Schedule == 1) then
-           this%DumpThisStep = .false. 
+           this%DumpThisStep = .false.
+           this%DumpRestartThisStep = .false. 
            Tsim_next = this%tsim + this%dt
            if (Tsim_next > this%t_NextDump) then
                this%dt = this%t_nextDump - this%tsim
                this%t_NextDump = this%t_NextDump + this%deltaT_dump 
+               this%t_NextDump = this%t_NextDump + this%deltaT_dump 
                this%DumpThisStep = .true.
+           end if
+           if (Tsim_next > this%t_NextRestartDump) then
+               this%dt = this%t_nextRestartDump - this%tsim
+               this%t_NextRestartDump = this%t_NextRestartDump + this%deltaT_restartdump 
+               this%t_NextRestartDump = this%t_NextRestartDump + this%deltaT_restartdump 
+               this%DumpRestartThisStep = .true.
            end if
        end if 
 
