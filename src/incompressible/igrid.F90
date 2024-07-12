@@ -284,7 +284,9 @@ module IncompressibleGrid
         ! Dump schedule
         integer :: vizDump_Schedule = 0
         real(rkind) :: deltaT_dump, t_NextDump
+        real(rkind) :: deltaT_restartdump, t_NextRestartDump
         logical :: DumpThisStep = .false.
+        logical :: DumpRestartThisStep = .false.
 
         ! HDF5 IO
         integer :: ioType = 0
@@ -402,7 +404,7 @@ contains
         integer :: t_pointProbe = 10000, t_start_pointProbe = 10000, t_stop_pointProbe = 1
         integer :: runID = 0,  t_dataDump = 99999, t_restartDump = 99999,t_stop_planeDump = 1,t_dumpKSprep = 10 
         integer :: restartFile_TID = 1, ioType = 0, restartFile_RID =1, t_start_planeDump = 1
-        real(rkind) :: dt=-one,tstop=one,CFL =-one,tSimStartStats=100.d0,dpfdy=zero,dPfdz=zero,CviscDT=1.d0,deltaT_dump=1.d0
+        real(rkind) :: dt=-one,tstop=one,CFL =-one,tSimStartStats=100.d0,dpfdy=zero,dPfdz=zero,CviscDT=1.d0,deltaT_dump=1.d0, deltaT_restartdump=1.d0
         real(rkind) :: Pr = 0.7_rkind, Re = 8000._rkind, Ro = 1000._rkind,dpFdx = zero, G_alpha = 0.d0, PrandtlFluid = 1.d0, moistureFactor = 0.61_rkind
         real(rkind) :: SpongeTscale = 50._rkind, zstSponge = 0.8_rkind, Fr = 1000.d0, G_geostrophic = 1.d0
         logical ::useRestartFile=.false.,isInviscid=.false.,useCoriolis = .true., PreProcessForKS = .false.  
@@ -438,7 +440,7 @@ contains
                         useRestartFile, restartFile_TID, restartFile_RID, CviscDT
         namelist /IO/ vizDump_Schedule, deltaT_dump, t_restartDump, t_dataDump, ioType, dumpPlanes, runID, useProbes, &
                     & dump_NU_SGS, dump_KAPPA_SGS, t_planeDump, t_stop_planeDump, t_start_planeDump, t_start_pointProbe,&
-                    & t_stop_pointProbe, t_pointProbe
+                    & t_stop_pointProbe, t_pointProbe, deltaT_restartdump
         namelist /STATS/tid_StatsDump,tid_compStats,tSimStartStats,normStatsByUstar,computeSpectra,timeAvgFullFields, computeVorticity
         namelist /PHYSICS/isInviscid,useCoriolis,useExtraForcing,isStratified,useMoisture,Re,Ro,Pr,Fr, Ra, useSGS, PrandtlFluid, BulkRichardson, BuoyancyTermType,useforcedStratification,&
                           useGeostrophicForcing, G_geostrophic, G_alpha, dpFdx,dpFdy,dpFdz,assume_fplane,latitude,useHITForcing, useScalars, frameAngle, buoyancyDirection, useHITRealSpaceLinearForcing, HITForceTimeScale
@@ -1263,13 +1265,17 @@ contains
 
        ! STEP 25: Schedule time dumps
        this%vizDump_Schedule = vizDump_Schedule
-       this%DumpThisStep = .false. 
+       this%DumpThisStep = .false.
+       this%DumpRestartThisStep = .false. 
        if (this%vizDump_Schedule == 1) then
            this%deltaT_dump = deltaT_dump
+           this%deltaT_restartdump = deltaT_restartdump
            if (useRestartFile) then
                this%t_NextDump = this%tsim - mod(this%tsim,deltaT_dump) + deltaT_dump
+               this%t_NextRestartDump = this%tsim - mod(this%tsim,deltaT_restartdump) + deltaT_restartdump
            else
                this%t_NextDump = this%tsim + deltaT_dump
+               this%t_NextRestartDump = this%tsim + deltaT_restartdump
            end if 
        end if 
 
