@@ -125,15 +125,9 @@ module budgets_time_avg_deficit_mod
     ! 6. SGS + viscous dissipation   (H+I)
     ! 7. Actuator disk/Turbine sink  (J)
     ! 8. Buoyancy
-<<<<<<< HEAD
-    ! 9:  TKE production - <delta ui' delta uj'>
-    ! 10: TKE production - <delta ui' base uj'>
-    ! 11: TKE production - <base ui' delta uj'>
-=======
     ! 9:  TKE production - <delta ui' delta uj'> d delta ui / dxj
     ! 10: TKE production - <delta ui' base uj'> d delta ui / dxj
     ! 11: TKE production - <delta ui' delta uj'> d base ui / dxj
->>>>>>> origin/main
     ! 12: Turbulent transport  - <delta ui' delta uj'>
     ! 13: Turbulent transport  - <delta ui' base uj'>
     ! 14: Turbulent transport  - <base ui' delta uj'>
@@ -143,11 +137,8 @@ module budgets_time_avg_deficit_mod
     ! 18: Base advection by deficit flow - x
     ! 19: Base advection by deficit flow - y
     ! 20: Base advection by deficit flow - z
-<<<<<<< HEAD
-=======
     ! 21: Turbulent transport  - d/dxj <base ui' base ui' delta uj'>
     ! 22: Turbulent transport  - d/dxj <base ui' delta ui' delta uj'> + d/dxj <base ui' delta ui' base uj'>
->>>>>>> origin/main
 
     ! BUDGET_4_ij term indices: 
     ! 1. <u'u'> : Shear Production           - N/A,      dump
@@ -207,11 +198,7 @@ module budgets_time_avg_deficit_mod
  
     type :: budgets_time_avg_deficit
          private
-<<<<<<< HEAD
          integer :: budgetType = 1, run_id, nx, ny, nz
-=======
-         integer :: budgetType = 1, run_id, nz
->>>>>>> origin/main
  
          type(budgets_time_avg), pointer :: pre_budget, prim_budget
          
@@ -225,10 +212,7 @@ module budgets_time_avg_deficit_mod
          integer :: tidx_dump 
          integer :: tidx_compute
          integer :: tidx_budget_start 
-<<<<<<< HEAD
-=======
          integer :: dump_only
->>>>>>> origin/main
          real(rkind) :: time_budget_start 
          logical :: do_budgets
          logical :: forceDump
@@ -281,17 +265,10 @@ module budgets_time_avg_deficit_mod
          character(len=clen) :: restart_dir = "NULL"
          integer :: ioUnit, ierr,  budgetType = 1, restart_tid = 0, restart_rid = 0, restart_counter = 0
          logical :: restart_budgets = .false. 
-<<<<<<< HEAD
-         integer :: tidx_compute = 1000000, tidx_dump = 1000000, tidx_budget_start = -100
-         real(rkind) :: time_budget_start = -1.0d0
-         logical :: do_budgets = .false. 
-         namelist /BUDGET_TIME_AVG_DEFICIT/ budgetType, budgets_dir, restart_budgets, restart_dir, restart_rid, restart_tid, restart_counter, tidx_dump, tidx_compute, do_budgets, tidx_budget_start, time_budget_start
-=======
          integer :: tidx_compute = 1000000, tidx_dump = 1000000, tidx_budget_start = -100, dump_only=-1
          real(rkind) :: time_budget_start = -1.0d0
          logical :: do_budgets = .false. 
          namelist /BUDGET_TIME_AVG_DEFICIT/ budgetType, budgets_dir, restart_budgets, restart_dir, restart_rid, restart_tid, restart_counter, tidx_dump, tidx_compute, dump_only, do_budgets, tidx_budget_start, time_budget_start
->>>>>>> origin/main
          
          restart_dir = "NULL"
 
@@ -304,22 +281,15 @@ module budgets_time_avg_deficit_mod
          this%pre_budget => pre_budget 
          this%prim_budget => prim_budget
          this%run_id = this%prim_budget%igrid_sim%runid
-<<<<<<< HEAD
          this%nx = this%prim_budget%igrid_sim%gpC%xsz(1)
          this%ny = this%prim_budget%igrid_sim%gpC%xsz(2)
          this%nz = this%prim_budget%igrid_sim%gpC%xsz(3)  ! centered grid x, y, z
-=======
-         this%nz = this%prim_budget%igrid_sim%nz
->>>>>>> origin/main
          this%do_budgets = do_budgets
          this%tidx_dump = tidx_dump
          this%tidx_compute = tidx_compute
          this%tidx_budget_start = tidx_budget_start  
          this%time_budget_start = time_budget_start  
-<<<<<<< HEAD
-=======
          this%dump_only = dump_only
->>>>>>> origin/main
          this%useWindTurbines = this%prim_budget%igrid_sim%useWindTurbines
          this%isStratified    = this%prim_budget%igrid_sim%isStratified
          this%useCoriolis    = this%prim_budget%igrid_sim%useCoriolis
@@ -341,7 +311,6 @@ module budgets_time_avg_deficit_mod
              ! Always assume that you are stratified
  
                  if (this%HaveScalars) then
-<<<<<<< HEAD
                      allocate(this%budget_0(this%nx,this%ny,this%nz,30+2*this%prim_budget%igrid_sim%n_scalars))
                  else
                      allocate(this%budget_0(this%nx,this%ny,this%nz,30))
@@ -353,31 +322,12 @@ module budgets_time_avg_deficit_mod
              !    allocate(this%budget_2(this%nx,this%ny,this%nz,07))
              !    allocate(this%budget_1(this%nx,this%ny,this%nz,10))
              !end if
-             allocate(this%budget_3(this%nx,this%ny,this%nz,20))
+             allocate(this%budget_3(this%nx,this%ny,this%nz,22))
              allocate(this%budget_4_11(this%nx,this%ny,this%nz,10))
              allocate(this%budget_4_22(this%nx,this%ny,this%nz,10))
              allocate(this%budget_4_13(this%nx,this%ny,this%nz,10))
              allocate(this%budget_4_23(this%nx,this%ny,this%nz,10))
              allocate(this%budget_4_33(this%nx,this%ny,this%nz,10))
-=======
-                     allocate(this%budget_0(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3),30+2*this%prim_budget%igrid_sim%n_scalars))
-                 else
-                     allocate(this%budget_0(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3),30))
-                 end if
-                 allocate(this%budget_2(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3),19))
-                 allocate(this%budget_1(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3),34))
-             !else
-             !    allocate(this%budget_0(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3),25))
-             !    allocate(this%budget_2(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3),07))
-             !    allocate(this%budget_1(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3),10))
-             !end if
-             allocate(this%budget_3(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3),22))
-             allocate(this%budget_4_11(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3),10))
-             allocate(this%budget_4_22(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3),10))
-             allocate(this%budget_4_13(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3),10))
-             allocate(this%budget_4_23(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3),10))
-             allocate(this%budget_4_33(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3),10))
->>>>>>> origin/main
  
              if ((trim(budgets_dir) .eq. "null") .or.(trim(budgets_dir) .eq. "NULL")) then 
                 this%budgets_dir = this%prim_budget%igrid_sim%outputDir
@@ -390,11 +340,7 @@ module budgets_time_avg_deficit_mod
 
  
              if (restart_budgets) then
-<<<<<<< HEAD
                  call message(0,"Budget deficit restart")
-=======
-                 call message(0,"Budget deficit  restart")
->>>>>>> origin/main
                  call this%RestartBudget(restart_dir, restart_rid, restart_tid, restart_counter)
              else
                  call this%resetBudget()
@@ -423,13 +369,10 @@ module budgets_time_avg_deficit_mod
          if(present(forceDump)) then
              this%forceDump = forceDump
          endif
-<<<<<<< HEAD
-=======
 
         if(this%prim_budget%igrid_sim%tsim > this%prim_budget%igrid_sim%tstop) then
             this%forceDump = .TRUE.
         endif
->>>>>>> origin/main
  
          if (this%do_budgets)  then
              if( ( (this%tidx_budget_start>0) .and. (this%prim_budget%igrid_sim%step>this%tidx_budget_start) ) .or. &
@@ -479,26 +422,6 @@ module budgets_time_avg_deficit_mod
      subroutine DumpBudget(this)
          class(budgets_time_avg_deficit), intent(inout) :: this
          
-<<<<<<< HEAD
-         ! MKE budget is only assembled before dumping
-        if (this%budgetType>1) call this%AssembleBudget2() 
-        
-         ! Budget 0: 
-         call this%dumpbudget0()
- 
-         ! Budget 1: 
-         if (this%budgetType>0) then
-             call this%dumpbudget1()
-         end if
- 
-         if (this%budgetType>1) then
-             call this%dumpbudget2()
-         end if 
-
-         if (this%budgetType>2) then
-            call this%dumpbudget3()
-        end if 
-=======
         ! MKE budget is only assembled before dumping
         if (this%budgetType>1) call this%AssembleBudget2() 
         
@@ -540,7 +463,6 @@ module budgets_time_avg_deficit_mod
                 call this%dumpbudget3()
             end if 
         end if
->>>>>>> origin/main
  
      end subroutine 
  
@@ -674,11 +596,7 @@ module budgets_time_avg_deficit_mod
      ! ---------------------- Budget 1 ------------------------
      subroutine AssembleBudget1(this)
          class(budgets_time_avg_deficit), intent(inout) :: this
-<<<<<<< HEAD
          real(rkind), dimension(this%nx, this%ny, this%nz) :: tmp1, tmp2, tmp3, tmp4
-=======
-         real(rkind) :: tmp1, tmp2, tmp3, tmp4
->>>>>>> origin/main
  
          ! STEP 1: Get terms from u-equation
          ! Total advection in deficit equation
@@ -1383,80 +1301,6 @@ module budgets_time_avg_deficit_mod
         this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
                                 *(this%pre_budget%igrid_sim%wC)*(this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)
 
-<<<<<<< HEAD
-
-        ! < delta ui' delta uj' d base ui'/dxj >
-        call this%ddx_R2R(this%pre_budget%igrid_sim%u, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
-        this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
-                                *(this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u)*(this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u)
-
-        ! base advection term in x
-        this%budget_3(:,:,:,18) = this%budget_3(:,:,:,18) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
-                                *(this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u) 
-
-        call this%ddy_R2R(this%pre_budget%igrid_sim%u, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
-        this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
-                                *(this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v)*(this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u)
-
-        ! base advection term in y
-        this%budget_3(:,:,:,19) = this%budget_3(:,:,:,19) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
-                                *(this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u)
-
-        call this%ddz_R2R(this%pre_budget%igrid_sim%u, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
-        this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
-                                *(this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)*(this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u)
-                      
-        ! base advection term in z
-        this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
-                                *(this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u)
-
-        call this%ddx_R2R(this%pre_budget%igrid_sim%v, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
-        this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
-                                *(this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u)*(this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v)
-
-        ! base advection term in x
-        this%budget_3(:,:,:,18) = this%budget_3(:,:,:,18) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
-                                *(this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v)
-
-        call this%ddy_R2R(this%pre_budget%igrid_sim%v, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
-        this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
-                                *(this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v)*(this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v)
-
-        ! base advection term in y
-        this%budget_3(:,:,:,19) = this%budget_3(:,:,:,19) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
-                                *(this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v)
-
-        call this%ddz_R2R(this%pre_budget%igrid_sim%v, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
-        this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
-                                *(this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)*(this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v)
-
-        ! base advection term in z
-        this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
-                                *(this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v)
-
-        call this%ddx_R2R(this%pre_budget%igrid_sim%wC, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
-        this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
-                                *(this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u)*(this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)
-
-        ! base advection term in x
-        this%budget_3(:,:,:,18) = this%budget_3(:,:,:,18) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
-                                *(this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)
-
-        call this%ddy_R2R(this%pre_budget%igrid_sim%wC, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
-        this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
-                                *(this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v)*(this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)
-
-        ! base advection term in y
-        this%budget_3(:,:,:,19) = this%budget_3(:,:,:,19) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
-                                *(this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)
-
-        call this%ddz_R2R(this%pre_budget%igrid_sim%wC, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
-        this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
-                                *(this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)*(this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)
-                
-        ! base advection term in z
-        this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) - this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) &
-=======
         ! Additional transport terms for wake TKE
         ! < base ui' delta uj' d base ui'/dxj >
         call this%ddx_R2R(this%pre_budget%igrid_sim%u, this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)); 
@@ -1605,7 +1449,6 @@ module budgets_time_avg_deficit_mod
                 
         ! base advection term in z
         this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) - this%pre_budget%igrid_sim%rbuffxC(:,:,:,1) &
->>>>>>> origin/main
                                 *(this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)
 
         ! 4. Pressure transport      
@@ -1692,30 +1535,17 @@ module budgets_time_avg_deficit_mod
         this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + (this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) - this%pre_budget%igrid_sim%rbuffxC(:,:,:,1)) &
                                     * (this%prim_budget%igrid_sim%tauSGS_ij(:,:,:,6) - this%pre_budget%igrid_sim%tauSGS_ij(:,:,:,6))
 
-<<<<<<< HEAD
-
-        ! 7. Actuator disk/Turbine sink  (J)
-        call this%pre_budget%igrid_sim%spectC%ifft(this%pre_budget%uturb,this%pre_budget%igrid_sim%rbuffxC(:,:,:,1))
-        call this%prim_budget%igrid_sim%spectC%ifft(this%prim_budget%uturb,this%prim_budget%igrid_sim%rbuffxC(:,:,:,1))
-        this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + (this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u) & 
-                                    * (this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) - this%pre_budget%igrid_sim%rbuffxC(:,:,:,1))
-
-=======
->>>>>>> origin/main
         ! 7. Actuator disk/Turbine sink  (J)
         call this%pre_budget%igrid_sim%spectC%ifft(this%pre_budget%vturb,this%pre_budget%igrid_sim%rbuffxC(:,:,:,1))
         call this%prim_budget%igrid_sim%spectC%ifft(this%prim_budget%vturb,this%prim_budget%igrid_sim%rbuffxC(:,:,:,1))
         this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + (this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v) & 
                                     * (this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) - this%pre_budget%igrid_sim%rbuffxC(:,:,:,1))
-<<<<<<< HEAD
-=======
 
         call this%pre_budget%igrid_sim%spectC%ifft(this%pre_budget%uturb,this%pre_budget%igrid_sim%rbuffxC(:,:,:,1))
         call this%prim_budget%igrid_sim%spectC%ifft(this%prim_budget%uturb,this%prim_budget%igrid_sim%rbuffxC(:,:,:,1))
         this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + (this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u) & 
                                     * (this%prim_budget%igrid_sim%rbuffxC(:,:,:,1) - this%pre_budget%igrid_sim%rbuffxC(:,:,:,1))
 
->>>>>>> origin/main
  
         ! 8. Buoyancy transfer: 
         call this%pre_budget%igrid_sim%spectE%ifft(this%pre_budget%wb,this%pre_budget%igrid_sim%rbuffxE(:,:,:,1))
@@ -1732,11 +1562,7 @@ module budgets_time_avg_deficit_mod
         integer :: idx
         real(rkind), dimension(:,:,:), pointer :: delta_Umn, delta_Vmn, delta_Wmn, base_Umn, base_Vmn, base_Wmn 
         real(rkind), dimension(:,:,:), pointer :: delta_R11, delta_R12, delta_R13, delta_R22, delta_R23, delta_R33
-<<<<<<< HEAD
-        real(rkind), dimension(:,:,:), pointer :: buff, buff2
-=======
         real(rkind), dimension(:,:,:), pointer :: buff, buff2, buff3
->>>>>>> origin/main
 
         ! Calculate terms
         ! Get the average from sum
@@ -1762,21 +1588,6 @@ module budgets_time_avg_deficit_mod
         delta_R11 => this%budget_0(:,:,:,5);    delta_R12 => this%budget_0(:,:,:,6);      delta_R13 => this%budget_0(:,:,:,7)
         delta_R22 => this%budget_0(:,:,:,8);    delta_R23 => this%budget_0(:,:,:,9);      delta_R33 => this%budget_0(:,:,:,10);
         buff => this%prim_budget%igrid_sim%rbuffxC(:,:,:,1); buff2 => this%prim_budget%igrid_sim%rbuffxC(:,:,:,2)
-<<<<<<< HEAD
-
-        !!! 1. TKE production   
-        ! Total TKE production           
-        this%budget_3(:,:,:,1) = - this%budget_2(:,:,:,1)
-
-        ! TKE production - <delta ui' delta uj'>
-        this%budget_3(:,:,:,9) = - this%budget_2(:,:,:,11)
-   
-        ! TKE production - <delta ui' base uj'>
-        this%budget_3(:,:,:,10) = - this%budget_2(:,:,:,12)
-
-        ! TKE production - <delta uj' base ui'>
-        this%budget_3(:,:,:,11) = - this%budget_2(:,:,:,13)
-=======
         buff3 => this%pre_budget%igrid_sim%rbuffxC(:,:,:,1)
 
         !!! 1. TKE production   
@@ -1789,7 +1600,6 @@ module budgets_time_avg_deficit_mod
         ! Total TKE production           
         ! this does not include production from interaction of base flow gradient with the deficit stresses
         this%budget_3(:,:,:,1) = this%budget_3(:,:,:,9) + this%budget_3(:,:,:,10)
->>>>>>> origin/main
 
         ! 2. advective transport     
         buff2 = half*(delta_R11 + delta_R22 + delta_R33)
@@ -1808,13 +1618,6 @@ module budgets_time_avg_deficit_mod
         call this%ddx_R2R(buff2,buff)
         this%budget_3(:,:,:,18) = this%budget_3(:,:,:,18) + buff*delta_Umn
 
-<<<<<<< HEAD
-        call this%ddy_R2R(buff2,buff);
-        this%budget_3(:,:,:,19) = this%budget_3(:,:,:,19) + buff*delta_Umn
-
-        call this%ddz_R2R(buff2,buff);
-        this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) +buff*delta_Umn
-=======
         ! 11. TKE production - <delta uj' delta ui'> d base ui / dxj
         this%budget_3(:,:,:,11) = - buff*delta_R11
 
@@ -1825,19 +1628,10 @@ module budgets_time_avg_deficit_mod
         call this%ddz_R2R(buff2,buff);
         this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) +buff*delta_Umn
         this%budget_3(:,:,:,11) = this%budget_3(:,:,:,11) - buff*delta_R13
->>>>>>> origin/main
 
         buff2 = base_Vmn
         call this%ddx_R2R(buff2,buff)
         this%budget_3(:,:,:,18) = this%budget_3(:,:,:,18) + buff*delta_Vmn
-<<<<<<< HEAD
-
-        call this%ddy_R2R(buff2,buff);
-        this%budget_3(:,:,:,19) = this%budget_3(:,:,:,19) + buff*delta_Vmn
-
-        call this%ddz_R2R(buff2,buff);
-        this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) + buff*delta_Vmn
-=======
         this%budget_3(:,:,:,11) = this%budget_3(:,:,:,11) - buff*delta_R12
 
         call this%ddy_R2R(buff2,buff);
@@ -1847,19 +1641,10 @@ module budgets_time_avg_deficit_mod
         call this%ddz_R2R(buff2,buff);
         this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) + buff*delta_Vmn
         this%budget_3(:,:,:,11) = this%budget_3(:,:,:,11) - buff*delta_R23
->>>>>>> origin/main
 
         buff2 = base_Wmn
         call this%ddx_R2R(buff2,buff)
         this%budget_3(:,:,:,18) = this%budget_3(:,:,:,18) + buff*delta_Wmn
-<<<<<<< HEAD
-
-        call this%ddy_R2R(buff2,buff);
-        this%budget_3(:,:,:,19) = this%budget_3(:,:,:,19) + buff*delta_Wmn
-
-        call this%ddz_R2R(buff2,buff);
-        this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) + buff*delta_Wmn
-=======
         this%budget_3(:,:,:,11) = this%budget_3(:,:,:,11) - buff*delta_R13
 
         call this%ddy_R2R(buff2,buff);
@@ -1869,24 +1654,11 @@ module budgets_time_avg_deficit_mod
         call this%ddz_R2R(buff2,buff);
         this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) + buff*delta_Wmn
         this%budget_3(:,:,:,11) = this%budget_3(:,:,:,11) - buff*delta_R33
->>>>>>> origin/main
 
         this%budget_3(:,:,:,17) = delta_Umn*this%budget_3(:,:,:,18) + delta_Vmn*this%budget_3(:,:,:,19) + delta_Wmn*this%budget_3(:,:,:,20)
                                     
         !!! 3. turbulent transport 
         ! < delta ui' delta uj' d delta ui'/dxj >        
-<<<<<<< HEAD
-        this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) - this%budget_3(:,:,:,16) - this%budget_2(:,:,:,11) - this%budget_2(:,:,:,14)
-
-        ! < delta ui' base uj' d delta ui'/dxj >        
-        this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) - this%budget_3(:,:,:,15) - this%budget_2(:,:,:,12) - this%budget_2(:,:,:,15)
-
-        ! < delta ui' delta uj' d base ui'/dxj >        
-        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) - this%budget_3(:,:,:,17) - this%budget_2(:,:,:,13) - this%budget_2(:,:,:,16)
-
-        ! total (choosing to only include true transport terms for now)
-        this%budget_3(:,:,:,3) = this%budget_3(:,:,:,12) + this%budget_3(:,:,:,13)
-=======
         this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) - this%budget_3(:,:,:,16) - this%budget_2(:,:,:,18) - this%budget_2(:,:,:,14)
 
         ! < delta ui' base uj' d delta ui'/dxj >        
@@ -1985,7 +1757,6 @@ module budgets_time_avg_deficit_mod
         this%budget_3(:,:,:,21) = this%budget_3(:,:,:,21) + buff3
 
         this%budget_3(:,:,:,22) = (this%prim_budget%budget_3(:,:,:,3) - this%pre_budget%budget_3(:,:,:,3))/(real(this%counter,rkind) + 1.d-18) - this%budget_3(:,:,:,3) - this%budget_3(:,:,:,21)
->>>>>>> origin/main
 
         ! 4. Pressure transport         
         this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) - this%budget_2(:,:,:,4)
@@ -1999,11 +1770,7 @@ module budgets_time_avg_deficit_mod
         this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) - this%budget_2(:,:,:,6)
         
         ! 7. Actuator disk/Turbine sink 
-<<<<<<< HEAD
-        this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) - delta_Umn*this%budget_1(:,:,:,4)
-=======
         this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) - delta_Umn*this%budget_1(:,:,:,10) - delta_Vmn*this%budget_1(:,:,:,20)
->>>>>>> origin/main
 
         ! 8. Buoyancy
         this%budget_3(:,:,:,8) = this%budget_3(:,:,:,8) - delta_Wmn*this%budget_1(:,:,:,30)
@@ -2014,12 +1781,6 @@ module budgets_time_avg_deficit_mod
         end do 
 
         ! Revert arrays to the correct state for Assemble (Order is very
-<<<<<<< HEAD
-        ! important throughout this subroutine, particularly indices 5 and 6)       
-        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) + this%budget_3(:,:,:,17) + this%budget_2(:,:,:,13) + this%budget_2(:,:,:,16)
-        this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) + this%budget_3(:,:,:,15) + this%budget_2(:,:,:,12) + this%budget_2(:,:,:,15)
-        this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) + this%budget_3(:,:,:,16) + this%budget_2(:,:,:,11) + this%budget_2(:,:,:,14)
-=======
         ! important throughout this subroutine, particularly indices 5 and 6) 
                 ! Additional terms for wake TKE turbulent transport
         buff2 = half*(this%pre_budget%budget_0(:,:,:,1)*this%pre_budget%budget_0(:,:,:,1) + this%pre_budget%budget_0(:,:,:,2)*this%pre_budget%budget_0(:,:,:,2) &
@@ -2071,7 +1832,6 @@ module budgets_time_avg_deficit_mod
              + this%budget_2(:,:,:,13) + this%budget_3(:,:,:,11)
         this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) + this%budget_3(:,:,:,15) + this%budget_2(:,:,:,17) + this%budget_2(:,:,:,15)
         this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) + this%budget_3(:,:,:,16) + this%budget_2(:,:,:,18) + this%budget_2(:,:,:,14)
->>>>>>> origin/main
         
         buff2 = base_Umn
         call this%ddx_R2R(buff2,buff)
@@ -2104,19 +1864,10 @@ module budgets_time_avg_deficit_mod
         this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) - buff*delta_Wmn
 
         this%budget_3(:,:,:,8) = this%budget_3(:,:,:,8) + delta_Wmn*this%budget_1(:,:,:,30)
-<<<<<<< HEAD
-        this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + delta_Umn*this%budget_1(:,:,:,4)
-        this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + this%budget_2(:,:,:,6)
-        this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) + this%budget_3(:,:,:,6) + this%budget_2(:,:,:,5) !+ this%budget_2(:,:,:,6) kktodo
-        this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + this%budget_2(:,:,:,4)
-        this%budget_3(:,:,:,3) = this%budget_3(:,:,:,3) + this%budget_3(:,:,:,2) + this%budget_2(:,:,:,2) + this%budget_2(:,:,:,3)
-        
-=======
         this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + delta_Umn*this%budget_1(:,:,:,10) + delta_Vmn*this%budget_1(:,:,:,20)
         this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + this%budget_2(:,:,:,6)
         this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) + this%budget_3(:,:,:,6) + this%budget_2(:,:,:,5) !+ this%budget_2(:,:,:,6) kktodo
         this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + this%budget_2(:,:,:,4)
->>>>>>> origin/main
 
         nullify(delta_Umn,delta_Vmn,delta_Wmn,base_Umn,base_Vmn,base_Wmn, &
         delta_R11,delta_R12,delta_R13, &
@@ -2144,11 +1895,7 @@ module budgets_time_avg_deficit_mod
      subroutine dump_budget_field(this, field, fieldID, BudgetID)
          use decomp_2d_io
          class(budgets_time_avg_deficit), intent(inout) :: this
-<<<<<<< HEAD
          real(rkind), dimension(this%nx,this%ny,this%nz), intent(in) :: field
-=======
-         real(rkind), dimension(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3)), intent(in) :: field
->>>>>>> origin/main
          integer, intent(in) :: fieldID, BudgetID
          character(len=clen) :: fname, tempname 
  
@@ -2257,16 +2004,10 @@ module budgets_time_avg_deficit_mod
 
             !  Revert arrays to the correct state for Assemble (Order is very
             ! important throughout this subroutine, particularly indices 5 and 6)       
-<<<<<<< HEAD
-            this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) + this%budget_3(:,:,:,17) + this%budget_2(:,:,:,13) + this%budget_2(:,:,:,16)
-            this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) + this%budget_3(:,:,:,15) + this%budget_2(:,:,:,12) + this%budget_2(:,:,:,15)
-            this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) + this%budget_3(:,:,:,16) + this%budget_2(:,:,:,11) + this%budget_2(:,:,:,14)
-=======
             this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) + this%budget_3(:,:,:,17) + this%budget_2(:,:,:,19) + this%budget_2(:,:,:,16) &
                  + this%budget_2(:,:,:,13) + this%budget_3(:,:,:,11)
             this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) + this%budget_3(:,:,:,15) + this%budget_2(:,:,:,17) + this%budget_2(:,:,:,15)
             this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) + this%budget_3(:,:,:,16) + this%budget_2(:,:,:,18) + this%budget_2(:,:,:,14)
->>>>>>> origin/main
             
             buff2 = this%pre_budget%budget_0(:,:,:,1)
             call this%ddx_R2R(buff2,buff)
@@ -2298,20 +2039,11 @@ module budgets_time_avg_deficit_mod
             call this%ddz_R2R(buff2,buff)
             this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) - buff*this%budget_0(:,:,:,3)
     
-<<<<<<< HEAD
-            this%budget_3(:,:,:,8) = this%budget_3(:,:,:,8) + this%pre_budget%budget_0(:,:,:,3)*this%budget_1(:,:,:,30)
-            this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + this%pre_budget%budget_0(:,:,:,1)*this%budget_1(:,:,:,4)
-            this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + this%budget_2(:,:,:,6)
-            this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) + this%budget_3(:,:,:,6) + this%budget_2(:,:,:,5) !+ this%budget_2(:,:,:,6) kktodo
-            this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + this%budget_2(:,:,:,4)
-            this%budget_3(:,:,:,3) = this%budget_3(:,:,:,3) + this%budget_3(:,:,:,2) + this%budget_2(:,:,:,2) + this%budget_2(:,:,:,3)
-=======
             this%budget_3(:,:,:,8) = this%budget_3(:,:,:,8) + this%budget_0(:,:,:,3)*this%budget_1(:,:,:,30)
             this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + this%budget_0(:,:,:,1)*this%budget_1(:,:,:,10) + this%budget_0(:,:,:,2)*this%budget_1(:,:,:,20)
             this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + this%budget_2(:,:,:,6)
             this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) + this%budget_3(:,:,:,6) + this%budget_2(:,:,:,5)
             this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + this%budget_2(:,:,:,4)
->>>>>>> origin/main
             
             ! Budget 1 stress divergence terms
             this%budget_0 = this%budget_0*(real(this%counter,rkind) + 1.d-18)
@@ -2327,11 +2059,7 @@ module budgets_time_avg_deficit_mod
      subroutine restart_budget_field(this, field, dir, runID, timeID, counterID, budgetID, fieldID)
          use decomp_2d_io
          class(budgets_time_avg_deficit), intent(inout) :: this
-<<<<<<< HEAD
          real(rkind), dimension(this%nx,this%ny,this%nz), intent(out) :: field
-=======
-         real(rkind), dimension(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3)), intent(out) :: field
->>>>>>> origin/main
          integer, intent(in) :: runID, counterID, timeID, budgetID, fieldID
          character(len=clen) :: fname, tempname
          character(len=clen), intent(in) :: dir
@@ -2376,13 +2104,8 @@ module budgets_time_avg_deficit_mod
      ! ----------------------private derivative operators ------------------------
      subroutine ddx_R2R(this, f, dfdx)
          class(budgets_time_avg_deficit), intent(inout) :: this
-<<<<<<< HEAD
          real(rkind), dimension(this%nx,this%ny,this%nz), intent(in) :: f
          real(rkind), dimension(this%nx,this%ny,this%nz), intent(out) :: dfdx
-=======
-         real(rkind), dimension(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3)), intent(in) :: f
-         real(rkind), dimension(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3)), intent(out) :: dfdx
->>>>>>> origin/main
          
          call this%prim_budget%igrid_sim%spectC%fft(f,this%prim_budget%igrid_sim%cbuffyC(:,:,:,1))
          call this%prim_budget%igrid_sim%spectC%mtimes_ik1_ip(this%prim_budget%igrid_sim%cbuffyC(:,:,:,1))
@@ -2393,11 +2116,7 @@ module budgets_time_avg_deficit_mod
      subroutine ddx_C2R(this, fhat, dfdx)
          class(budgets_time_avg_deficit), intent(inout) :: this
          complex(rkind), dimension(this%prim_budget%igrid_sim%spectC%spectdecomp%ysz(1),this%prim_budget%igrid_sim%spectC%spectdecomp%ysz(2),this%prim_budget%igrid_sim%spectC%spectdecomp%ysz(3)), intent(in) :: fhat
-<<<<<<< HEAD
          real(rkind), dimension(this%nx,this%ny,this%nz), intent(out) :: dfdx
-=======
-         real(rkind), dimension(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3)), intent(out) :: dfdx
->>>>>>> origin/main
          
          call this%prim_budget%igrid_sim%spectC%mtimes_ik1_oop(fhat,this%prim_budget%igrid_sim%cbuffyC(:,:,:,1))
          call this%prim_budget%igrid_sim%spectC%dealias(this%prim_budget%igrid_sim%cbuffyC(:,:,:,1))
@@ -2406,13 +2125,8 @@ module budgets_time_avg_deficit_mod
      
      subroutine ddy_R2R(this, f, dfdy)
          class(budgets_time_avg_deficit), intent(inout) :: this
-<<<<<<< HEAD
          real(rkind), dimension(this%nx,this%ny,this%nz), intent(in) :: f
          real(rkind), dimension(this%nx,this%ny,this%nz), intent(out) :: dfdy
-=======
-         real(rkind), dimension(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3)), intent(in) :: f
-         real(rkind), dimension(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3)), intent(out) :: dfdy
->>>>>>> origin/main
          
          call this%prim_budget%igrid_sim%spectC%fft(f,this%prim_budget%igrid_sim%cbuffyC(:,:,:,1))
          call this%prim_budget%igrid_sim%spectC%mtimes_ik2_ip(this%prim_budget%igrid_sim%cbuffyC(:,:,:,1))
@@ -2423,11 +2137,7 @@ module budgets_time_avg_deficit_mod
      subroutine ddy_C2R(this, fhat, dfdy)
          class(budgets_time_avg_deficit), intent(inout) :: this
          complex(rkind), dimension(this%prim_budget%igrid_sim%spectC%spectdecomp%ysz(1),this%prim_budget%igrid_sim%spectC%spectdecomp%ysz(2),this%prim_budget%igrid_sim%spectC%spectdecomp%ysz(3)), intent(in) :: fhat
-<<<<<<< HEAD
          real(rkind), dimension(this%nx,this%ny,this%nz), intent(out) :: dfdy
-=======
-         real(rkind), dimension(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3)), intent(out) :: dfdy
->>>>>>> origin/main
          
          call this%prim_budget%igrid_sim%spectC%mtimes_ik2_oop(fhat,this%prim_budget%igrid_sim%cbuffyC(:,:,:,1))
          call this%prim_budget%igrid_sim%spectC%dealias(this%prim_budget%igrid_sim%cbuffyC(:,:,:,1))
@@ -2436,13 +2146,8 @@ module budgets_time_avg_deficit_mod
      
      subroutine ddz_R2R(this, f, dfdz)
          class(budgets_time_avg_deficit), intent(inout) :: this
-<<<<<<< HEAD
          real(rkind), dimension(this%nx,this%ny,this%nz), intent(in) :: f
          real(rkind), dimension(this%nx,this%ny,this%nz), intent(out) :: dfdz
-=======
-         real(rkind), dimension(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3)), intent(in) :: f
-         real(rkind), dimension(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3)), intent(out) :: dfdz
->>>>>>> origin/main
          
          !call transpose_x_to_y(f,this%prim_budget%igrid_sim%rbuffyC(:,:,:,1),this%prim_budget%igrid_sim%gpC)
          !call transpose_y_to_z(this%prim_budget%igrid_sim%rbuffyC(:,:,:,1),this%prim_budget%igrid_sim%rbuffzC(:,:,:,1),this%prim_budget%igrid_sim%gpC)
@@ -2458,11 +2163,7 @@ module budgets_time_avg_deficit_mod
      subroutine ddz_C2R(this, fhat, dfdz)
          class(budgets_time_avg_deficit), intent(inout) :: this
          complex(rkind), dimension(this%prim_budget%igrid_sim%spectC%spectdecomp%ysz(1),this%prim_budget%igrid_sim%spectC%spectdecomp%ysz(2),this%prim_budget%igrid_sim%spectC%spectdecomp%ysz(3)), intent(in) :: fhat
-<<<<<<< HEAD
          real(rkind), dimension(this%nx,this%ny,this%nz), intent(out) :: dfdz
-=======
-         real(rkind), dimension(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3)), intent(out) :: dfdz
->>>>>>> origin/main
          
          call transpose_y_to_z(fhat,this%prim_budget%igrid_sim%cbuffzC(:,:,:,1),this%prim_budget%igrid_sim%sp_gpC)
          call this%prim_budget%igrid_sim%Pade6opZ%ddz_C2C(this%prim_budget%igrid_sim%cbuffzC(:,:,:,1),this%prim_budget%igrid_sim%cbuffzC(:,:,:,2),0,0)
@@ -2475,11 +2176,7 @@ module budgets_time_avg_deficit_mod
      subroutine interp_Edge2Cell(this, fE, fC)
          class(budgets_time_avg_deficit), intent(inout) :: this
          real(rkind), dimension(this%prim_budget%igrid_sim%gpE%xsz(1),this%prim_budget%igrid_sim%gpE%xsz(2),this%prim_budget%igrid_sim%gpE%xsz(3)), intent(in) :: fE
-<<<<<<< HEAD
          real(rkind), dimension(this%nx,this%ny,this%nz), intent(out) :: fC
-=======
-         real(rkind), dimension(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3)), intent(out) :: fC
->>>>>>> origin/main
  
          call transpose_x_to_y(fE,this%prim_budget%igrid_sim%rbuffyE(:,:,:,1),this%prim_budget%igrid_sim%gpE)
          call transpose_y_to_z(this%prim_budget%igrid_sim%rbuffyE(:,:,:,1),this%prim_budget%igrid_sim%rbuffzE(:,:,:,1),this%prim_budget%igrid_sim%gpE)
@@ -2491,11 +2188,7 @@ module budgets_time_avg_deficit_mod
  
      subroutine interp_Cell2Edge(this, fC, fE)
          class(budgets_time_avg_deficit), intent(inout) :: this
-<<<<<<< HEAD
          real(rkind), dimension(this%nx,this%ny,this%nz), intent(in) :: fC
-=======
-         real(rkind), dimension(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3)), intent(in) :: fC
->>>>>>> origin/main
          real(rkind), dimension(this%prim_budget%igrid_sim%gpE%xsz(1),this%prim_budget%igrid_sim%gpE%xsz(2),this%prim_budget%igrid_sim%gpE%xsz(3)), intent(out) :: fE
  
          call transpose_x_to_y(fC,this%prim_budget%igrid_sim%rbuffyC(:,:,:,1),this%prim_budget%igrid_sim%gpC)
@@ -2508,13 +2201,8 @@ module budgets_time_avg_deficit_mod
          
      subroutine multiply_CellFieldsOnEdges(this, f1C, f2C, fmultC)
          class(budgets_time_avg_deficit), intent(inout) :: this
-<<<<<<< HEAD
          real(rkind), dimension(this%nx,this%ny,this%nz), intent(in) :: f1C,f2C
          real(rkind), dimension(this%nx,this%ny,this%nz), intent(out) :: fmultC
-=======
-         real(rkind), dimension(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3)), intent(in) :: f1C,f2C
-         real(rkind), dimension(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3)), intent(out) :: fmultC
->>>>>>> origin/main
  
          ! interpolate 1st Cell field
          call transpose_x_to_y(f1C,this%prim_budget%igrid_sim%rbuffyC(:,:,:,1),this%prim_budget%igrid_sim%gpC)
