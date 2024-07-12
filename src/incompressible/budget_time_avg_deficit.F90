@@ -366,6 +366,10 @@ module budgets_time_avg_deficit_mod
          if(present(forceDump)) then
              this%forceDump = forceDump
          endif
+
+        if(this%prim_budget%igrid_sim%tsim > this%prim_budget%igrid_sim%tstop) then
+            this%forceDump = .TRUE.
+        endif
  
          if (this%do_budgets)  then
              if( ( (this%tidx_budget_start>0) .and. (this%prim_budget%igrid_sim%step>this%tidx_budget_start) ) .or. &
