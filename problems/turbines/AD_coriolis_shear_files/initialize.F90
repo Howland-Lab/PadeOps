@@ -29,22 +29,14 @@ subroutine init_fringe_targets(inputfile, mesh)
     character(len=*),                intent(in)    :: inputfile
     real(rkind), dimension(:,:,:,:), intent(in), target    :: mesh
     real(rkind), dimension(:,:,:), pointer :: z
-<<<<<<< HEAD
     real(rkind) :: Lx, Ly, Lz, uInflow, vInflow, yaw 
-=======
-    real(rkind) :: Lx, Ly, Lz, uInflow, vInflow, inflowAngle, alphaShear  
->>>>>>> main
     real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid
     integer :: ioUnit
     integer :: InflowProfileType
     logical :: useGeostrophicForcing
 
     namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, & 
-<<<<<<< HEAD
                                 InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw
-=======
-                                InflowProfileAmplit, InflowProfileThick, InflowProfileType, inflowAngle, alphaShear
->>>>>>> main
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -77,18 +69,18 @@ subroutine get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, z
     integer:: i
     real(rkind) :: a_max, g_min, g_max
     real(rkind), dimension(:,:,:), allocatable :: alpha, g
-    real(rkind) :: buffer=8.0d-1
+    real(rkind) :: buffer=8.0d-1  ! buffer value = 1 - umin
 
     select case(InflowProfileType)
       case(0)
           u = uInflow 
           v = zero
-      case(1)
-          u = uInflow*(one  + InflowProfileAmplit*tanh((z-zMid)/InflowProfileThick))
-          v = zero
+      case(1)  ! changed from MFH tanh shear and veer by KSH 07/11/2024
+          u = uInflow 
+          v = vInflow * buffer * tanh(InflowProfileAmplit * (z-zMid) / buffer)
       case(2)
-          u = uInflow*(one  + InflowProfileAmplit*tanh((z-zMid)/InflowProfileThick))
-          v = vInflow * tanh((z-zMid)/InflowProfileThick);
+          u = uInflow*(one  + buffer * tanh(InflowProfileAmplit * (z-zMid) / buffer))
+          v = vInflow * buffer * tanh(InflowProfileAmplit * (z-zMid) / buffer)
       case(3)  ! shear only (deprecated)
           u = uInflow*(one + (z-zMid)/InflowProfileThick)
           v = zero
@@ -236,8 +228,6 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     integer :: nz, nzE
     real(rkind)  :: Lx = one, Ly = one, Lz = one, G_alpha, yaw
     real(rkind) :: uInflow, vInflow  
-    real(rkind)  :: Lx = one, Ly = one, Lz = one, G_alpha
-    real(rkind) :: uInflow, vInflow, inflowAngle, alphaShear
     real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid
     integer :: InflowProfileType
     
@@ -259,13 +249,6 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     y => mesh(:,:,:,2)
     x => mesh(:,:,:,1)
 
-   
-    !u = one * cos(G_alpha * pi / 180.d0)!z*(2 - z) + epsnd*(z/Lz)*cos(periods*2*pi*x/Lx)*sin(periods*2*pi*y/Lx)*exp(-0.5*(z/zpeak/Lz)**2) &
-      !+ epsnd*((2-z)/Lz)*cos(periods*2*pi*x/Lx)*sin(periods*2*pi*y/Lx)*exp(-0.5*((2-z)/zpeak/Lz)**2)
-    
-    !v = one * sin(G_alpha * pi / 180.d0)!- epsnd*(z/Lz)*sin(periods*2*pi*x/Lx)*cos(periods*2*pi*y/Lx)*exp(-0.5*(z/zpeak/Lz)**2) &
-        !- epsnd*((2-z)/Lz)*sin(periods*2*pi*x/Lx)*cos(periods*2*pi*y/Lx)*exp(-0.5*((2-z)/zpeak/Lz)**2)
-    
     wC = zero
     zMid = Lz / 2.d0
     
@@ -283,10 +266,6 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     call message_min_max(1,"Bounds for v:", p_minval(minval(v)), p_maxval(maxval(v)))
     call message_min_max(1,"Bounds for w:", p_minval(minval(w)), p_maxval(maxval(w)))
     
-    !u = one!1.6d0*z*(2.d0 - z) 
-    !v = zero;
-    !w = zero;
-
     ! Interpolate wC to w
     allocate(ybuffC(decompC%ysz(1),decompC%ysz(2), decompC%ysz(3)))
     allocate(ybuffE(decompE%ysz(1),decompE%ysz(2), decompE%ysz(3)))
@@ -303,14 +282,10 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     zbuffE(:,:,2:nzE-1) = half*(zbuffC(:,:,1:nz-1) + zbuffC(:,:,2:nz))
     call transpose_z_to_y(zbuffE,ybuffE,decompE)
     call transpose_y_to_x(ybuffE,w,decompE) 
-    
-    
 
     deallocate(ybuffC,ybuffE,zbuffC, zbuffE) 
-  
-      
+
     nullify(u,v,w,x,y,z)
-   
 
     call message(0,"Velocity Field Initialized")
 
@@ -349,20 +324,8 @@ subroutine setInhomogeneousNeumannBC_Temp(inputfile, wTh_surf)
 
     character(len=*),                intent(in)    :: inputfile
     real(rkind), intent(out) :: wTh_surf
-    integer :: ioUnit 
-    real(rkind) :: ThetaRef, Lx, Ly, Lz, yaw
-    logical :: initPurturbations = .false. 
-    real(rkind) :: uInflow, vInflow, inflowAngle, alphaShear  
-    real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid
-    integer :: InflowProfileType
-    namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, & 
-                                InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw
-     
-    ioUnit = 11
-    open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
-    read(unit=ioUnit, NML=AD_CoriolisINPUT)
-    close(ioUnit)    
 
+    wTh_surf = zero
     ! Do nothing really since this is an unstratified simulation
 end subroutine
 
@@ -373,22 +336,8 @@ subroutine setDirichletBC_Temp(inputfile, Tsurf, dTsurf_dt)
 
     character(len=*),                intent(in)    :: inputfile
     real(rkind), intent(out) :: Tsurf, dTsurf_dt
-    real(rkind) :: ThetaRef, Lx, Ly, Lz, G_alpha, yaw
-    integer :: iounit
-    real(rkind) :: uInflow, vInflow, inflowAngle, alphaShear  
-    real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid
-    integer :: InflowProfileType
-    namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, & 
-                                InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw
     
-    Tsurf = zero; dTsurf_dt = zero; ThetaRef = one
-    
-
-    ioUnit = 11
-    open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
-    read(unit=ioUnit, NML=AD_CoriolisINPUT)
-    close(ioUnit)    
-
+    Tsurf = zero; dTsurf_dt = zero
     ! Do nothing really since this is an unstratified simulation
 end subroutine
 
@@ -398,24 +347,9 @@ subroutine set_Reference_Temperature(inputfile, Tref)
     implicit none 
     character(len=*),                intent(in)    :: inputfile
     real(rkind), intent(out) :: Tref
-    real(rkind) :: Lx, Ly, Lz, G_alpha, yaw
-    integer :: iounit
-    real(rkind) :: uInflow, vInflow, inflowAngle, alphaShear  
-    real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid
-    integer :: InflowProfileType
-    
-    namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, & 
-                                InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw
 
-    ioUnit = 11
-    open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
-    read(unit=ioUnit, NML=AD_CoriolisINPUT)
-    close(ioUnit)    
-     
     Tref = 0.d0
-    
     ! Do nothing really since this is an unstratified simulation
-
 end subroutine
 
 subroutine hook_probes(inputfile, probe_locs)
@@ -429,7 +363,6 @@ subroutine hook_probes(inputfile, probe_locs)
     ! probe_locs(1,3) : x -location of the third probe
     ! probe_locs(2,3) : y -location of the third probe
     ! probe_locs(3,3) : z -location of the third probe
-
 
     ! Add probes here if needed
     ! Example code: The following allocates 2 probes at (0.1,0.1,0.1) and
