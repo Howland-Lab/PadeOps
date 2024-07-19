@@ -1,10 +1,10 @@
 &INPUT
 inputdir              = "/home/ctrsp-2024/youngin/PadeOps/data/half_channel_concurrent/midfid_case"   ! Directory for any input files
 outputdir             = "/home/ctrsp-2024/youngin/PadeOps/data/half_channel_concurrent/midfid_case"   ! Directory for all output files
-nx                    = 74         ! Number of points in X
-ny                    = 14         ! Number of points in Y
-nz                    = 32         ! Number of points in Z
-tstop                 = 40.D0     ! Physical time to stop the simulation
+nx                    = 64         ! Number of points in X
+ny                    = 64         ! Number of points in Y
+nz                    = 64         ! Number of points in Z
+tstop                 = 100.D0     ! Physical time to stop the simulation
 dt                    = -0.0001D0   ! Fixed time step value (only used if CFL is set to negative)
 CFL                   = 0.8D0       ! CFL criterion for calculating the time step (Set to negative to disable)
 prow                  = 0           ! Number of rows in 2D processor decomposition (set 0 for auto-tuning)
@@ -39,7 +39,7 @@ t_stop_planeDump      = 500000        ! When do you want to stop dumping planes?
 tid_StatsDump         = 10000        ! Dumping Frequency for Statistics file (# of time steps)
 tid_compStats         = 10         ! Frequency of Computing Statistics
 tSimStartStats        = 5.d0       ! Simulation time for starting stats calculations 
-normStatsByUstar      = .FALSE.      ! Normalize Statistics by ustar at each instant
+normStatsByUstar      = .TRUE.      ! Normalize Statistics by ustar at each instant
 computeSpectra        = .FALSE.
 timeAvgFullFields     = .FALSE.
 /
@@ -99,7 +99,6 @@ useSGSDynamicRestart  = .FALSE.      ! Clip the constant values when they are ne
 useVerticalTfilter    = .FALSE.     ! Test filter in the vertical direction? Used for Dynamic Procedure
 SGSDynamicRestartFile = "null"      ! Clip the constant values when they are negative
 useFullyLocalWM       = .FALSE.
-WM_matchingIndex      = 3
 /
 /
 &WINDTURBINES
@@ -135,25 +134,25 @@ t_dumpKSprep          = 10             ! Dumping Frequency for KS files
 /
 /
 &PBLINPUT
-Lx                    = 14.4d0                  ! Domain Length (appropriate dimesnions/non-dimensionalized)
-Ly                    = 2.6666666d0             ! Domain Length (appropriate dimesnions/non-dimensionalized)
+&PBLINPUT
+Lx                    = 14.4d0            ! Domain Length (appropriate dimesnions/non-dimensionalized)
+Ly                    = 2.6666666d0 ! Domain Length (appropriate dimesnions/non-dimensionalized)
 Lz                    = 1.0d0               ! Domain Height (appropriate dimesnions/non-dimensionalized)
 z0init                = 6.66667d-4              ! Roughness scale used to initialize the profile
-z0init_field          = .TRUE.                  ! To initiate a varied z0 field (use only when useFullyLocalWM is true)
-z02init               = 6.66667d-4              ! Roughness length in patch
-z02init_startx        = 2.4d0                   ! Nondimensionalized x position of patch start
-z02init_endx          = 7.2d0                   ! Nondimensionalized x position  of patch end
-zd                    = 0                       ! Displacement length    (1/kappa)*ln((z-zd)/z0)
-CES_LES_int_var       = .TRUE.    ! Are you trying to calculate internal variability for CES-LES?
+z0init_field          = .FALSE.              ! To initiate a varied z0 field (use only when useFullyLocalWM is true)
+z02init               = 0.00233267d0              ! Roughness length in patch
+z02init_startx        = 0                   ! Nondimensionalized x position of patch start
+z02init_endx          = 14.4d0                   ! Nondimensionalized x position  of patch end
+zd                    = 0.0450307d0                   ! Displacement length    (1/kappa)*ln((z-zd)/z0)
 /
 /
 &BUDGET_TIME_AVG
 do_budgets            = .TRUE.              ! Perform budget calculations?
-budgetType            = 0                   ! See type descriptions in budget_time_avg.F90
-budgets_dir           = "/home/ctrsp-2024/youngin/mypadeops/PadeOps/data/half_channel_concurrent/midfid_case"              ! Write in default output directory
+budgetType            = 1                   ! See type descriptions in budget_time_avg.F90
+budgets_dir           = "/home/ctrsp-2024/youngin/PadeOps/data/half_channel_concurrent/midfid_case"              ! Write in default output directory
 tidx_compute          = 1                   ! How often should budgets be computed?
-tidx_dump             = 50                 ! How often should budget files be written to disk?
-tidx_budget_start     = 10000                  ! Start budget computation from this timestep onward
+tidx_dump             = 1000                 ! How often should budget files be written to disk?
+tidx_budget_start     = 1                   ! Start budget computation from this timestep onward
 restart_budgets       = .FALSE.             ! use existing budget file to restart budget calculations?
 restart_rid           = 2                   ! Restart budget file run index
 restart_tid           = 99999               ! Restart budget file time index

@@ -62,7 +62,7 @@ module sgsmod_igrid
         complex(rkind),dimension(:,:,:,:), allocatable :: tauijWMhat_inZ, tauijWMhat_inY 
         real(rkind), dimension(:,:,:), allocatable :: filteredSpeedSq
         real(rkind), dimension(:,:), allocatable :: vsurf_filt, usurf_filt, Tmatch_filt, ustar_surf, PsiM_surf, Linv_surf, T_surf, wTheta_surf
-        real(rkind), dimension(:,:), allocatable :: WallMFactors   ! YIS added
+        real(rkind), dimension(:,:), allocatable :: WallMFactors, WallMEpsilon, WallMUmatching, WallMVmatching   ! YIS added
         complex(rkind), dimension(:,:,:), allocatable :: Tfilhat, Tfilhatz1, Tfilhatz2
         logical :: useWallModel = .false.
         integer :: botBC_temp = 1
@@ -76,7 +76,7 @@ module sgsmod_igrid
         logical :: z0_field, Primary_Run ! YIS added 
         real(rkind) :: z02, z02_startx, z02_endx    ! YIS added 
         integer :: z02_start_idx, z02_end_idx  ! YIS added
-      
+        real(rkind) :: zd ! YIS (displacement length) 
 
         ! for dynamic procedures - all are at edges
         type(gaussian) :: gaussianTestFilterZ
@@ -226,7 +226,7 @@ subroutine setTauBC(this, botwall, topwall)
 end subroutine 
 
 
-subroutine getTauSGS(this, duidxjC, duidxjE, uhatC, vhatC, whatC, ThatC, uC, vC, wC, TC, newTimeStep, dTdx, dTdy, dTdz, dTdxE, dTdyE, dTdzE, xline)   ! YIS added xline
+subroutine getTauSGS(this, duidxjC, duidxjE, uhatC, vhatC, whatC, ThatC, uC, vC, wC, TC, newTimeStep, dTdx, dTdy, dTdz, dTdxE, dTdyE, dTdzE, xline, dt)   ! YIS added xline, dt
    class(sgs_igrid), intent(inout) :: this
    real(rkind), dimension(this%gpC%xsz(1),this%gpC%xsz(2),this%gpC%xsz(3),9), intent(in) :: duidxjC
    real(rkind), dimension(this%gpE%xsz(1),this%gpE%xsz(2),this%gpE%xsz(3),9), intent(in) :: duidxjE
@@ -235,10 +235,10 @@ subroutine getTauSGS(this, duidxjC, duidxjE, uhatC, vhatC, whatC, ThatC, uC, vC,
    logical, intent(in) :: newTimeStep
    real(rkind), dimension(this%gpC%xsz(1),this%gpC%xsz(2),this%gpC%xsz(3)), intent(in) :: dTdx, dTdy, dTdz
    real(rkind), dimension(this%gpE%xsz(1),this%gpE%xsz(2),this%gpE%xsz(3)), intent(in) :: dTdxE, dTdyE, dTdzE
-   real(rkind) :: TwobyRe
-   real(rkind), dimension(this%gpC%xsz(1)), intent(in) :: xline
+   real(rkind) :: TwobyRe, dt   ! YIS added dt 
+   real(rkind), dimension(this%gpC%xsz(1)), intent(in) :: xline          ! YIS
 
-   if (this%useWallModel) call this%computeWallStress( uC, vC, TC, uhatC, vhatC, ThatC, xline) 
+   if (this%useWallModel) call this%computeWallStress( uC, vC, TC, uhatC, vhatC, ThatC, xline, dt) 
 
    if (this%isEddyViscosityModel) then
 
@@ -290,7 +290,7 @@ subroutine getTauSGS(this, duidxjC, duidxjE, uhatC, vhatC, whatC, ThatC, uC, vC,
 end subroutine
 
 !subroutine getRHS_SGS(this, urhs, vrhs, wrhs, duidxjC, duidxjE, duidxjEhat, uhatE, vhatE, whatE, uhatC, vhatC, ThatC, uC, vC, uE, vE, wE, newTimeStep)
-subroutine getRHS_SGS(this, urhs, vrhs, wrhs, duidxjC, duidxjE, uhatC, vhatC, whatC, ThatC, uC, vC, wC, TC, newTimeStep, dTdx, dTdy, dTdz, dTdxE, dTdyE, dTdzE, xline)  ! YIS added xline
+subroutine getRHS_SGS(this, urhs, vrhs, wrhs, duidxjC, duidxjE, uhatC, vhatC, whatC, ThatC, uC, vC, wC, TC, newTimeStep, dTdx, dTdy, dTdz, dTdxE, dTdyE, dTdzE, xline, dt)  ! YIS added xline
    class(sgs_igrid), intent(inout), target :: this
    real(rkind), dimension(this%gpC%xsz(1),this%gpC%xsz(2),this%gpC%xsz(3),9), intent(in) :: duidxjC
    real(rkind), dimension(this%gpE%xsz(1),this%gpE%xsz(2),this%gpE%xsz(3),9), intent(in) :: duidxjE
@@ -306,8 +306,9 @@ subroutine getRHS_SGS(this, urhs, vrhs, wrhs, duidxjC, duidxjE, uhatC, vhatC, wh
    real(rkind), dimension(this%gpC%xsz(1),this%gpC%xsz(2),this%gpC%xsz(3)), intent(in) :: dTdx, dTdy, dTdz
    real(rkind), dimension(this%gpE%xsz(1),this%gpE%xsz(2),this%gpE%xsz(3)), intent(in) :: dTdxE, dTdyE, dTdzE
    real(rkind), dimension(this%gpC%xsz(1)), intent(in) :: xline
+   real(rkind), intent(in) :: dt   ! YIS added for temporal filter 07142024
 
-   call this%getTauSGS(duidxjC, duidxjE, uhatC, vhatC, whatC, ThatC, uC, vC, wC, TC, newTimeStep, dTdx, dTdy, dTdz, dTdxE, dTdyE, dTdzE, xline)
+   call this%getTauSGS(duidxjC, duidxjE, uhatC, vhatC, whatC, ThatC, uC, vC, wC, TC, newTimeStep, dTdx, dTdy, dTdz, dTdxE, dTdyE, dTdzE, xline, dt)
 
    cbuffy1 => this%cbuffyC(:,:,:,1); cbuffy2 => this%cbuffyE(:,:,:,1); 
    cbuffz1 => this%cbuffzC(:,:,:,1); cbuffz2 => this%cbuffzE(:,:,:,1) 

@@ -141,7 +141,6 @@ z0init_field          = .TRUE.              ! To initiate a varied z0 field (use
 z02init               = 6.8e-3              ! Roughness length in patch
 z02init_startx        = 1                   ! Nondimensionalized x position of patch start
 z02init_endx          = 4                   ! Nondimensionalized x position  of patch end
-zd                    = 0                   ! Displacement length    (1/kappa)*ln((z-zd)/z0)
 /
 /
 &BUDGET_TIME_AVG

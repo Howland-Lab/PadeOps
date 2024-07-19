@@ -1,10 +1,10 @@
 &INPUT
 inputdir              = "/home/ctrsp-2024/youngin/PadeOps/data/half_channel_concurrent/midfid_case"   ! Directory for any input files
 outputdir             = "/home/ctrsp-2024/youngin/PadeOps/data/half_channel_concurrent/midfid_case"   ! Directory for all output files
-nx                    = 74         ! Number of points in X
-ny                    = 14         ! Number of points in Y
+nx                    = 32         ! Number of points in X
+ny                    = 32         ! Number of points in Y
 nz                    = 32         ! Number of points in Z
-tstop                 = 40.D0     ! Physical time to stop the simulation
+tstop                 = 100.D0     ! Physical time to stop the simulation
 dt                    = -0.0001D0   ! Fixed time step value (only used if CFL is set to negative)
 CFL                   = 0.8D0       ! CFL criterion for calculating the time step (Set to negative to disable)
 prow                  = 0           ! Number of rows in 2D processor decomposition (set 0 for auto-tuning)
@@ -12,7 +12,7 @@ pcol                  = 0           ! Number of rows in 2D processor decompositi
 useRestartFile        = .FALSE.     ! Set to false if it's a fresh simulation 
 restartFile_TID       = 194069      ! TimeID of the restart file being used
 restartFile_RID       = 10          ! RunID of the restart file being used
-Primary_Run           = .TRUE.
+Primary_Run           = .FALSE.
 /
 /
 &NUMERICS
@@ -25,13 +25,13 @@ t_DivergenceCheck     = 100         ! Check divergence every $ timesteps. Reproj
 /
 /
 &IO
-RunID                 = 1           ! Run Label (All output files will be tagged with this nubber)
+RunID                 = 2           ! Run Label (All output files will be tagged with this nubber)
 t_restartDump         = 10000        ! Restart File Dumping Frequency  (# of timesteps)
-t_dataDump            = 10000        ! Data dumping frequency (# of timesteps)
+t_dataDump            = 1000        ! Data dumping frequency (# of timesteps)
 ioType                = 0           ! 0: Fortran Binaries, 1: .vtk files
-dumpPlanes            = .TRUE.     ! Dump plane visualations. Select planes in initialize.F90
-t_planeDump           = 20000         ! Plane dumping frequency (# of timesteps)
-t_start_planeDump     = 20000           ! When do you want to start dumping planes?
+dumpPlanes            = .FALSE.     ! Dump plane visualations. Select planes in initialize.F90
+t_planeDump           = 12500         ! Plane dumping frequency (# of timesteps)
+t_start_planeDump     = 1           ! When do you want to start dumping planes?
 t_stop_planeDump      = 500000        ! When do you want to stop dumping planes?
 /
 /
@@ -39,7 +39,7 @@ t_stop_planeDump      = 500000        ! When do you want to stop dumping planes?
 tid_StatsDump         = 10000        ! Dumping Frequency for Statistics file (# of time steps)
 tid_compStats         = 10         ! Frequency of Computing Statistics
 tSimStartStats        = 5.d0       ! Simulation time for starting stats calculations 
-normStatsByUstar      = .FALSE.      ! Normalize Statistics by ustar at each instant
+normStatsByUstar      = .TRUE.      ! Normalize Statistics by ustar at each instant
 computeSpectra        = .FALSE.
 timeAvgFullFields     = .FALSE.
 /
@@ -53,7 +53,7 @@ controlDir            = "null"          ! Check in this directory for command fi
 &PHYSICS
 isInviscid            = .TRUE.      ! Is this a viscous simulation?
 useCoriolis           = .FALSE.     ! Activate the coriolis term? 
-useExtraForcing       = .FALSE.      ! Is an extra forcing term being used? (non-Geostrophic forcing only)
+useExtraForcing       = .TRUE.      ! Is an extra forcing term being used? (non-Geostrophic forcing only)
 useGeostrophicForcing = .FALSE.     ! This is true if forcing is provided using the coriolis term  
 isStratified          = .FALSE.     ! Use Stratification / active scalar in momentum
 Pr                    = 0.6D0       ! Turbulent Prandtl Number; used when 
@@ -70,10 +70,9 @@ useSGS                = .TRUE.      ! Do you want to use the SGS model?
 /
 &PRESSURE_CALC
 fastCalcPressure      = .TRUE.      ! Compute and store pressure at every time step using the faster algorithm?
-storePressure         = .TRUE.      ! Would you like to compute and store pressure?
-P_dumpFreq            = 10000       ! How often (timesteps) do you want to dump pressure?
+storePressure         = .TRUE.     ! Would you like to compute and store pressure?
+P_dumpFreq            = 10000         ! How often (timesteps) do you want to dump pressure?
 P_compFreq            = 10          ! How often (timesteps) do you want to compute pressure? 
-computeFringePressure = .TRUE.      ! Pressure of fringe
 /
 /
 &BCs
@@ -83,7 +82,7 @@ useSpongeLayer        = .FALSE.     ! Use a sponge layer at the top
 zstSponge             = 0.8d0       ! Height above which the sponge layer is active
 SpongeTscale          = 50.d0       ! e-folding time to dt ratio (somewhere between 10 - 50) 
 botBC_Temp            = 0           ! Dirichlet = 0, Neumann = 1
-useFringe             = .TRUE.     ! This is false if simulation is periodic. 
+useFringe             = .false.     ! This is false if simulation is periodic. 
 /
 /
 &SGS_MODEL
@@ -99,7 +98,6 @@ useSGSDynamicRestart  = .FALSE.      ! Clip the constant values when they are ne
 useVerticalTfilter    = .FALSE.     ! Test filter in the vertical direction? Used for Dynamic Procedure
 SGSDynamicRestartFile = "null"      ! Clip the constant values when they are negative
 useFullyLocalWM       = .FALSE.
-WM_matchingIndex      = 3
 /
 /
 &WINDTURBINES
@@ -114,7 +112,7 @@ yawUpdateInterval     = 1000
 /
 /
 &FRINGE
-apply_x_fringe        = .TRUE.
+apply_x_fringe        = .FALSE.
 apply_y_fringe        = .FALSE.
 Fringe_xst            = 0.75d0         
 Fringe_xen            = 1.00d0
@@ -135,25 +133,25 @@ t_dumpKSprep          = 10             ! Dumping Frequency for KS files
 /
 /
 &PBLINPUT
-Lx                    = 14.4d0                  ! Domain Length (appropriate dimesnions/non-dimensionalized)
-Ly                    = 2.6666666d0             ! Domain Length (appropriate dimesnions/non-dimensionalized)
+Lx                    = 14.4d0            ! Domain Length (appropriate dimesnions/non-dimensionalized)
+Ly                    = 2.6666666d0 ! Domain Length (appropriate dimesnions/non-dimensionalized)
 Lz                    = 1.0d0               ! Domain Height (appropriate dimesnions/non-dimensionalized)
 z0init                = 6.66667d-4              ! Roughness scale used to initialize the profile
-z0init_field          = .TRUE.                  ! To initiate a varied z0 field (use only when useFullyLocalWM is true)
-z02init               = 6.66667d-4              ! Roughness length in patch
-z02init_startx        = 2.4d0                   ! Nondimensionalized x position of patch start
-z02init_endx          = 7.2d0                   ! Nondimensionalized x position  of patch end
-zd                    = 0                       ! Displacement length    (1/kappa)*ln((z-zd)/z0)
-CES_LES_int_var       = .TRUE.    ! Are you trying to calculate internal variability for CES-LES?
+z0init_field          = .FALSE.              ! To initiate a varied z0 field (use only when useFullyLocalWM is true)
+z02init               = 0.00233267d0              ! Roughness length in patch
+z02init_startx        = 0                   ! Nondimensionalized x position of patch start
+z02init_endx          = 14.4d0                   ! Nondimensionalized x position  of patch end
+zd                    = 0.0450307d0                   ! Displacement length    (1/kappa)*ln((z-zd)/z0)
+
 /
 /
 &BUDGET_TIME_AVG
-do_budgets            = .TRUE.              ! Perform budget calculations?
-budgetType            = 0                   ! See type descriptions in budget_time_avg.F90
-budgets_dir           = "/home/ctrsp-2024/youngin/mypadeops/PadeOps/data/half_channel_concurrent/midfid_case"              ! Write in default output directory
+do_budgets            = .FALSE.              ! Perform budget calculations?
+budgetType            = 3                   ! See type descriptions in budget_time_avg.F90
+budgets_dir           = "/home/ctrsp-2024/youngin/PadeOps/data/half_channel_concurrent/midfid_case"       ! Write in default output directory
 tidx_compute          = 1                   ! How often should budgets be computed?
-tidx_dump             = 50                 ! How often should budget files be written to disk?
-tidx_budget_start     = 10000                  ! Start budget computation from this timestep onward
+tidx_dump             = 100                 ! How often should budget files be written to disk?
+tidx_budget_start     = 60000               ! Start budget computation from this timestep onward
 restart_budgets       = .FALSE.             ! use existing budget file to restart budget calculations?
 restart_rid           = 2                   ! Restart budget file run index
 restart_tid           = 99999               ! Restart budget file time index

@@ -32,7 +32,7 @@ subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
     logical :: initPurturbations = .false. 
     real(rkind) :: z0init
     logical :: z0init_field   ! YIS
-    real(rkind) :: z02init, z02init_startx, z02init_endx, zd   ! YIS
+    real(rkind) :: z02init, z02init_startx, z02init_endx, zd  ! YIS
     namelist /PBLINPUT/ Lx, Ly, Lz, z0init_field, z0init, z02init, z02init_startx, z02init_endx, initPurturbations, zd   ! YIS  
 
 
