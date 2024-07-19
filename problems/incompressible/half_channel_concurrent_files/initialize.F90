@@ -44,7 +44,6 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     logical :: initPurturbations = .true.
     logical :: z0init_field   ! YIS
     real(rkind) :: z02init, z02init_startx, z02init_endx, zd   ! YIS
-<<<<<<< HEAD
     logical :: CES_LES_int_var = .FALSE.
     integer :: p
     character(8) :: date
@@ -55,9 +54,6 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     character(len=20) :: str
 
     namelist /PBLINPUT/ Lx, Ly, Lz, z0init_field, z0init, z02init, z02init_startx, z02init_endx, initPurturbations, zd, CES_LES_int_var         ! YIS
-=======
-    namelist /PBLINPUT/ Lx, Ly, Lz, z0init_field, z0init, z02init, z02init_startx, z02init_endx, initPurturbations, zd         ! YIS
->>>>>>> 039013918f09b733274e6735f49beb1a9c1701d5
 
 
     ioUnit = 11
@@ -77,10 +73,7 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
 
     epsnd = 5.d0
 
-<<<<<<< HEAD
 
-=======
->>>>>>> 039013918f09b733274e6735f49beb1a9c1701d5
     if (initPurturbations) then
       u = (one/kappa)*log(z/z0init) + epsnd*cos(Yperiods*two*pi*y/Ly)*exp(-half*(z/zpeak/Lz)**2)
       v = epsnd*(z/Lz)*cos(Xperiods*two*pi*x/Lx)*exp(-half*(z/zpeak/Lz)**2)
@@ -172,12 +165,8 @@ subroutine setDirichletBC_Temp(inputfile, Tsurf, dTsurf_dt)
     logical :: initPurturbations = .false.
     logical :: z0init_field   ! YIS
     real(rkind) :: z02init, z02init_startx, z02init_endx, zd   ! YIS
-<<<<<<< HEAD
     logical :: CES_LES_int_var = .FALSE.
     namelist /PBLINPUT/ Lx, Ly, Lz, z0init_field, z0init, z02init, z02init_startx, z02init_endx, initPurturbations, zd, CES_LES_int_var         ! YIS
-=======
-    namelist /PBLINPUT/ Lx, Ly, Lz, z0init_field, z0init, z02init, z02init_startx, z02init_endx, initPurturbations, zd   ! YIS
->>>>>>> 039013918f09b733274e6735f49beb1a9c1701d5
 
 
     Tsurf = zero; dTsurf_dt = zero; ThetaRef = one
@@ -251,15 +240,10 @@ subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
     logical :: initPurturbations = .false.
     real(rkind) :: z0init = 0.1d0 
     logical :: z0init_field   ! YIS
-<<<<<<< HEAD
     real(rkind) :: z02init, z02init_startx, z02init_endx, zd  ! YIS
     logical :: CES_LES_int_var = .FALSE.
     namelist /PBLINPUT/ Lx, Ly, Lz, z0init_field, z0init, z02init, z02init_startx, z02init_endx, initPurturbations, zd, CES_LES_int_var         ! YIS
 
-=======
-    real(rkind) :: z02init, z02init_startx, z02init_endx, zd   ! YIS
-    namelist /PBLINPUT/ Lx, Ly, Lz, z0init_field, z0init, z02init, z02init_startx, z02init_endx, initPurturbations, zd   ! YIS
->>>>>>> 039013918f09b733274e6735f49beb1a9c1701d5
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -310,12 +294,8 @@ subroutine set_Reference_Temperature(inputfile, Tref)
     logical :: initPurturbations = .false.
     logical :: z0init_field   ! YIS
     real(rkind) :: z02init, z02init_startx, z02init_endx, zd   ! YIS
-<<<<<<< HEAD
     logical :: CES_LES_int_var = .FALSE.
     namelist /PBLINPUT/ Lx, Ly, Lz, z0init_field, z0init, z02init, z02init_startx, z02init_endx, initPurturbations, zd, CES_LES_int_var         ! YIS
-=======
-    namelist /PBLINPUT/ Lx, Ly, Lz, z0init_field, z0init, z02init, z02init_startx, z02init_endx, initPurturbations, zd   ! YIS
->>>>>>> 039013918f09b733274e6735f49beb1a9c1701d5
 
 
     ioUnit = 11
