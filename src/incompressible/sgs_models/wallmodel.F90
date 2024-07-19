@@ -112,8 +112,13 @@ subroutine computeWallStress(this, u, v, T, uhat, vhat, That, xline, dt)
                    matchingloc = real(this%WM_matchingIndex)-real(one)/real(two)
 
                    ! Overwrite based on assigned geometry
+<<<<<<< HEAD
                    this%WallMFactors(locator_min(1):locator_max(1),:) = -(kappa / (log((this%dz*matchingloc - this%zd) / this%z02) - this%PsiM))**2
  
+=======
+                   this%WallMFactors(locator_min(1):locator_max(1),:) = -(kappa / (log(((this%dz / two) - this%zd) / this%z02) - this%PsiM))**2               
+                   
+>>>>>>> 039013918f09b733274e6735f49beb1a9c1701d5
                    ! Generates array of filtered speed squared (3D array)
                    ! call this%getfilteredSpeedSqAtWall(uhat, vhat)              
      

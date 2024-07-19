@@ -176,7 +176,11 @@ subroutine init(this, gpC, gpE, spectC, spectE, dx, dy, dz, inputfile, zMeshE, z
   this%z02_endx = z02_endx
   this%Primary_Run = Primary_Run
   this%zd = zd
+<<<<<<< HEAD
   ! YIS
+=======
+  ! YIS  
+>>>>>>> 039013918f09b733274e6735f49beb1a9c1701d5
 
   this%DynamicProcedureType = DynamicProcedureType
   this%DynProcFreq = DynProcFreq

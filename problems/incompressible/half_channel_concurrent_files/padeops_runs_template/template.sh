@@ -1,4 +1,9 @@
 #!/bin/bash
+<<<<<<< HEAD
+=======
+
+#!/bin/bash
+>>>>>>> 039013918f09b733274e6735f49beb1a9c1701d5
 #SBATCH --job-name=wide
 #SBATCH -N 2
 #SBATCH -n 64

@@ -1,10 +1,17 @@
 &INPUT
 inputdir              = "/home/ctrsp-2024/youngin/PadeOps/data/half_channel_concurrent/midfid_case"   ! Directory for any input files
 outputdir             = "/home/ctrsp-2024/youngin/PadeOps/data/half_channel_concurrent/midfid_case"   ! Directory for all output files
+<<<<<<< HEAD
 nx                    = 74         ! Number of points in X
 ny                    = 14         ! Number of points in Y
 nz                    = 32         ! Number of points in Z
 tstop                 = 40.D0     ! Physical time to stop the simulation
+=======
+nx                    = 32         ! Number of points in X
+ny                    = 32         ! Number of points in Y
+nz                    = 32         ! Number of points in Z
+tstop                 = 100.D0     ! Physical time to stop the simulation
+>>>>>>> 039013918f09b733274e6735f49beb1a9c1701d5
 dt                    = -0.0001D0   ! Fixed time step value (only used if CFL is set to negative)
 CFL                   = 0.8D0       ! CFL criterion for calculating the time step (Set to negative to disable)
 prow                  = 0           ! Number of rows in 2D processor decomposition (set 0 for auto-tuning)
@@ -27,7 +34,11 @@ t_DivergenceCheck     = 100         ! Check divergence every $ timesteps. Reproj
 &IO
 RunID                 = 1           ! Run Label (All output files will be tagged with this nubber)
 t_restartDump         = 10000        ! Restart File Dumping Frequency  (# of timesteps)
+<<<<<<< HEAD
 t_dataDump            = 10000        ! Data dumping frequency (# of timesteps)
+=======
+t_dataDump            = 1000        ! Data dumping frequency (# of timesteps)
+>>>>>>> 039013918f09b733274e6735f49beb1a9c1701d5
 ioType                = 0           ! 0: Fortran Binaries, 1: .vtk files
 dumpPlanes            = .TRUE.     ! Dump plane visualations. Select planes in initialize.F90
 t_planeDump           = 20000         ! Plane dumping frequency (# of timesteps)
@@ -99,7 +110,10 @@ useSGSDynamicRestart  = .FALSE.      ! Clip the constant values when they are ne
 useVerticalTfilter    = .FALSE.     ! Test filter in the vertical direction? Used for Dynamic Procedure
 SGSDynamicRestartFile = "null"      ! Clip the constant values when they are negative
 useFullyLocalWM       = .FALSE.
+<<<<<<< HEAD
 WM_matchingIndex      = 3
+=======
+>>>>>>> 039013918f09b733274e6735f49beb1a9c1701d5
 /
 /
 &WINDTURBINES
@@ -135,6 +149,7 @@ t_dumpKSprep          = 10             ! Dumping Frequency for KS files
 /
 /
 &PBLINPUT
+<<<<<<< HEAD
 Lx                    = 14.4d0                  ! Domain Length (appropriate dimesnions/non-dimensionalized)
 Ly                    = 2.6666666d0             ! Domain Length (appropriate dimesnions/non-dimensionalized)
 Lz                    = 1.0d0               ! Domain Height (appropriate dimesnions/non-dimensionalized)
@@ -145,15 +160,34 @@ z02init_startx        = 2.4d0                   ! Nondimensionalized x position 
 z02init_endx          = 7.2d0                   ! Nondimensionalized x position  of patch end
 zd                    = 0                       ! Displacement length    (1/kappa)*ln((z-zd)/z0)
 CES_LES_int_var       = .TRUE.    ! Are you trying to calculate internal variability for CES-LES?
+=======
+Lx                    = 14.4d0            ! Domain Length (appropriate dimesnions/non-dimensionalized)
+Ly                    = 2.6666666d0 ! Domain Length (appropriate dimesnions/non-dimensionalized)
+Lz                    = 1.0d0               ! Domain Height (appropriate dimesnions/non-dimensionalized)
+z0init                = 6.66667d-4              ! Roughness scale used to initialize the profile
+z0init_field          = .FALSE.              ! To initiate a varied z0 field (use only when useFullyLocalWM is true)
+z02init               = 6.66667e-3              ! Roughness length in patch
+z02init_startx        = 1                   ! Nondimensionalized x position of patch start
+z02init_endx          = 4                   ! Nondimensionalized x position  of patch end
+zd                    = 0                   ! Displacement length    (1/kappa)*ln((z-zd)/z0)
+>>>>>>> 039013918f09b733274e6735f49beb1a9c1701d5
 /
 /
 &BUDGET_TIME_AVG
 do_budgets            = .TRUE.              ! Perform budget calculations?
+<<<<<<< HEAD
 budgetType            = 0                   ! See type descriptions in budget_time_avg.F90
 budgets_dir           = "/home/ctrsp-2024/youngin/mypadeops/PadeOps/data/half_channel_concurrent/midfid_case"              ! Write in default output directory
 tidx_compute          = 1                   ! How often should budgets be computed?
 tidx_dump             = 50                 ! How often should budget files be written to disk?
 tidx_budget_start     = 10000                  ! Start budget computation from this timestep onward
+=======
+budgetType            = 2                   ! See type descriptions in budget_time_avg.F90
+budgets_dir           = "/home/ctrsp-2024/youngin/PadeOps/data/half_channel_concurrent/midfid_case"              ! Write in default output directory
+tidx_compute          = 1                   ! How often should budgets be computed?
+tidx_dump             = 500                 ! How often should budget files be written to disk?
+tidx_budget_start     = 500               ! Start budget computation from this timestep onward
+>>>>>>> 039013918f09b733274e6735f49beb1a9c1701d5
 restart_budgets       = .FALSE.             ! use existing budget file to restart budget calculations?
 restart_rid           = 2                   ! Restart budget file run index
 restart_tid           = 99999               ! Restart budget file time index
