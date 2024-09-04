@@ -10,8 +10,6 @@ module AD_Coriolis_parameters
     real(rkind) :: randomScaleFact = 0.002_rkind ! 0.2% of the mean value
     integer :: nxg, nyg, nzg
     
-    real(rkind), parameter :: xdim = 1000._rkind, udim = 0.45_rkind
-    real(rkind), parameter :: timeDim = xdim/udim
     real(rkind), dimension(:,:,:), allocatable :: utarget, vtarget, wtarget
 
     contains
@@ -30,12 +28,12 @@ subroutine init_fringe_targets(inputfile, mesh)
     real(rkind), dimension(:,:,:,:), intent(in), target    :: mesh
     real(rkind), dimension(:,:,:), pointer :: z
     real(rkind) :: Lx, Ly, Lz, uInflow, vInflow, yaw 
-    real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid
+    real(rkind) :: InflowProfileAmplit, InflowProfileThick, zmid=-1
     integer :: ioUnit
     integer :: InflowProfileType
     logical :: useGeostrophicForcing
 
-    namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, & 
+    namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, zmid, & 
                                 InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw
 
     ioUnit = 11
@@ -48,7 +46,9 @@ subroutine init_fringe_targets(inputfile, mesh)
     ! Do something similar for v
     ! Compute the targets
     wtarget = zero 
-    zMid = Lz / two
+    if (zmid < 0) then
+        zMid = Lz / two
+    end if
     z => mesh(:,:,:,3)
     call get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, zMid, InflowProfileType, yaw, utarget, vtarget)   
 
@@ -77,10 +77,10 @@ subroutine get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, z
           v = zero
       case(1)  ! changed from MFH tanh shear and veer by KSH 07/11/2024
           u = uInflow 
-          v = vInflow * buffer * tanh(InflowProfileAmplit * (z-zMid) / buffer)
+          v = uInflow * buffer * tanh(vinflow * InflowProfileAmplit * (z-zMid) / buffer)
       case(2)
           u = uInflow*(one  + buffer * tanh(InflowProfileAmplit * (z-zMid) / buffer))
-          v = vInflow * buffer * tanh(InflowProfileAmplit * (z-zMid) / buffer)
+          v = uInflow * buffer * tanh(vinflow * InflowProfileAmplit * (z-zMid) / buffer)
       case(3)  ! shear only (deprecated)
           u = uInflow*(one + (z-zMid)/InflowProfileThick)
           v = zero
@@ -162,10 +162,10 @@ subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
     character(len=*),                intent(in)    :: inputfile
     integer :: ix1, ixn, iy1, iyn, iz1, izn
     real(rkind)  :: Lx = one, Ly = one, Lz = one, yaw
-    real(rkind) :: uInflow, vInflow  
+    real(rkind) :: uInflow, vInflow, zmid
     real(rkind) :: InflowProfileAmplit, InflowProfileThick
     integer :: InflowProfileType
-    namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, & 
+    namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, zmid, & 
                                 InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw
 
     ioUnit = 11
@@ -228,10 +228,10 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     integer :: nz, nzE
     real(rkind)  :: Lx = one, Ly = one, Lz = one, G_alpha, yaw
     real(rkind) :: uInflow, vInflow  
-    real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid
+    real(rkind) :: InflowProfileAmplit, InflowProfileThick, zmid=-1
     integer :: InflowProfileType
     
-    namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, & 
+    namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, zmid, & 
                                 InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw
 
     ioUnit = 11
@@ -250,7 +250,9 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     x => mesh(:,:,:,1)
 
     wC = zero
-    zMid = Lz / 2.d0
+    if (zmid < 0) then
+        zMid = Lz / 2.d0
+    end if
     
     ! initialize inflow profile
     call get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, zMid, InflowProfileType, yaw, u, v)
