@@ -91,7 +91,7 @@ module budgets_time_avg_mod
    ! 7:  Actuator disk sink        (J)
    ! 8:  Geostrophic              
    ! 9:  Coriolis    
-   ! 20: Buoyancy              
+   ! 10: Buoyancy              
 
 
    ! BUDGET_3 term indices:
