@@ -2,14 +2,18 @@ module HIT_shear_parameters
 
     use exits, only: message
     use kind_parameters,  only: rkind
-    use constants, only: kappa
+    use constants, only: kappa, zero
     implicit none
+
+    ! I realize it is probably bad practice to store information here, but it is the easiest way I've found
+    ! -KSH 10/02/2024
+
     integer :: simulationID = 0
-    integer :: nxSize = 128, nySize = 128, nzSize = 128
-    ! integer :: InflowProfileType = 0
-    ! real(rkind) :: InflowProfileAmplit = 0.5d0, InflowProfileThick = 0.01d0
-    real(rkind), dimension(:,:,:), allocatable :: utarget0, vtarget0, wtarget0   ! u, v, w fringe targets
-    real(rkind) :: adsim_Lx, adsim_Ly, adsim_Lz
+    integer :: nxADSim, nyADSim, nzADSim, nxHITSim, nyHITSim, nzHITSim
+    real(rkind), dimension(:,:,:), allocatable :: utarget0, vtarget0, wtarget0   ! u, v, w laminar fringe targets
+    real(rkind) :: InflowSpeed = 1.d0, TI = -1, TI_fact = -1, Kp_TI = 0.1d0
+    real(rkind), dimension(:,:,:), allocatable :: z_global, utarget_1d, vtarget_1d, wtarget_1d  ! global z-axis of shape (1,1,nz)
+    logical :: inflow_varies_in_z = .false., debug_TI_gain = .true.
 contains
 
 ! build the velocity profiles
@@ -88,6 +92,20 @@ contains
         end select
     end subroutine
 
+! makes global fringe targets necessary for do_phaseshifting (spectral z-decomp workaround)
+    subroutine make_global_zaxis(adsim)
+        use IncompressibleGrid, only : igrid
+        use constants, only : zero, half
+
+        type(igrid), allocatable, target :: adsim
+        integer :: i
+
+        allocate(z_global(1,1,adsim%nz), utarget_1d(1,1,adsim%nz), vtarget_1d(1,1,adsim%nz), wtarget_1d(1,1,adsim%nz))  ! all use the "global" z-axis
+        z_global = reshape((/(real(i) - half, i=1, adsim%nz)/) * adsim%dz, (/1,1,adsim%nz/))  ! (1,1,nz) array
+        utarget_1d = zero
+        vtarget_1d = zero
+        wtarget_1d = zero
+    end subroutine
 
 ! fringe function
     pure subroutine Sfunc(x, val)
@@ -110,11 +128,7 @@ contains
         use exits, only: message
         use kind_parameters,    only: rkind
         use constants,          only: zero, one, two, pi, half
-        use gridtools,          only: alloc_buffs
         use random,             only: gaussian_random
-        use decomp_2d
-        use reductions,         only: p_maxval, p_minval
-        use exits,              only: message_min_max
 
         implicit none
         character(len=*),                intent(in)    :: inputfile
@@ -140,10 +154,83 @@ contains
         end if
         z => mesh(:,:,:,3)
         call get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, zMid, InflowProfileType, yaw, utarget0, vtarget0)
+        call get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z_global, zMid, InflowProfileType, yaw, utarget_1d, vtarget_1d)
+
+        InflowSpeed = uInflow  ! set the "linear advection" velocity
+        if (InflowProfileType == 0) then
+            inflow_varies_in_z = .false.
+        else
+            inflow_varies_in_z = .true.
+        endif
 
         ! The velocity profile in z needs to go to slip wall at the top
         ! Both u and v need slip conditions
+    end subroutine
 
+! Do phase shifting here
+    subroutine do_phaseshifting(hitsim, adsim, u, v, w)
+        use kind_parameters,  only: rkind
+        use IncompressibleGrid, only: igrid
+
+        type(igrid), allocatable, target :: hitsim, adsim
+        real(rkind), dimension(:,:,:), allocatable, intent(inout) :: u, v, w
+        real(rkind), dimension(size(z_global,3)) :: x_shift_z, y_shift_z
+        real(rkind) :: x_shift
+
+        if (inflow_varies_in_z) then
+            ! need to take the full z-domain
+            x_shift_z = adsim%tsim * utarget_1d(1, 1,:)
+            y_shift_z = adsim%tsim * vtarget_1d(1, 1,:)
+
+            call hitsim%spectC%bandpassFilter_and_phaseshift_z(hitsim%whatC, u(nxADSim-nxHITSim+1:nxADSim,:,:), x_shift_z, y_shift_z)
+            call hitsim%interpolate_cellField_to_edgeField(u(nxADSim-nxHITSim+1:nxADSim,:,:), w(nxADSim-nxHITSim+1:nxADSim,:,:),0,0)
+            call hitsim%spectC%bandpassFilter_and_phaseshift_z(hitsim%uhat, u(nxADSim-nxHITSim+1:nxADSim,:,:), x_shift_z, y_shift_z)
+            call hitsim%spectC%bandpassFilter_and_phaseshift_z(hitsim%vhat, v(nxADSim-nxHITSim+1:nxADSim,:,:), x_shift_z, y_shift_z)
+        else
+            ! Set the true target field for AD simulation
+            x_shift = adsim%tsim * InflowSpeed
+
+            ! old code:
+            call hitsim%spectC%bandpassFilter_and_phaseshift(hitsim%whatC, u(nxADSim-nxHITSim+1:nxADSim,:,:), x_shift)
+            call hitsim%interpolate_cellField_to_edgeField(u(nxADSim-nxHITSim+1:nxADSim,:,:), w(nxADSim-nxHITSim+1:nxADSim,:,:),0,0)
+            call hitsim%spectC%bandpassFilter_and_phaseshift(hitsim%uhat, u(nxADSim-nxHITSim+1:nxADSim,:,:), x_shift)
+            call hitsim%spectC%bandpassFilter_and_phaseshift(hitsim%vhat, v(nxADSim-nxHITSim+1:nxADSim,:,:), x_shift)
+
+        end if
+        ! Now scale rhw HIT field appropriately
+        u(nxADSim-nxHITSim+1:nxADSim,:,:) = u(nxADSim-nxHITSim+1:nxADSim,:,:)*TI_fact + utarget0(nxADSim-nxHITSim+1:nxADSim,:,:)
+        v(nxADSim-nxHITSim+1:nxADSim,:,:) = v(nxADSim-nxHITSim+1:nxADSim,:,:)*TI_fact + vtarget0(nxADSim-nxHITSim+1:nxADSim,:,:)
+        w(nxADSim-nxHITSim+1:nxADSim,:,:) = w(nxADSim-nxHITSim+1:nxADSim,:,:)*TI_fact
+    end subroutine
+
+! Update TI gain
+    subroutine update_TI_fact(adsim, xid)
+        use IncompressibleGrid, only : igrid
+        use constants, only          : zero, one, two, three
+        use reductions, only         : p_sum
+        use exits, only              : message
+
+        type(igrid), allocatable, target :: adsim
+        integer, intent(in) :: xid
+        real(rkind), dimension(adsim%gpC%xsz(2), adsim%gpC%xsz(3)) :: buff1, buff2
+        real(rkind) :: TI_inst
+
+        if (TI < 0) then
+            TI_fact = one
+            return  ! Doesn't compute anything
+        end if
+
+        ! need to compute TKE, TI
+        buff1 = 0.5 * ((adsim%u(xid,:,:)-utarget0(xid,:,:))**2 + (adsim%v(xid,:,:)-vtarget0(xid,:,:))**2 + (adsim%wC(xid,:,:))**2)  ! TKE
+        buff2 = sqrt(utarget0(xid,:,:)**2 + vtarget0(xid,:,:)**2)  ! U_inf velocity
+        buff1 = sqrt(two / three * buff1) / buff2
+        TI_inst = p_sum(buff1) / (adsim%ny*adsim%nz)  ! mean TI at the given xid
+        TI_fact = max(zero, TI_fact + ((TI - TI_inst) * Kp_TI))
+
+        if (debug_TI_gain) then
+            call message(1, "update_TI: TI_inst", TI_inst)
+            call message(1, "update_TI: TI_fact", TI_fact)
+        end if
     end subroutine
 
 end module  ! end module functions
@@ -156,15 +243,14 @@ subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
     use decomp_2d,        only: decomp_info
     implicit none
 
-    type(decomp_info),                                          intent(in)    :: decomp
-    real(rkind),                                                intent(inout) :: dx,dy,dz
+    type(decomp_info),               intent(in)    :: decomp
+    real(rkind),                     intent(inout) :: dx,dy,dz
     real(rkind), dimension(:,:,:,:), intent(inout) :: mesh
-    integer :: i,j,k, ioUnit
     character(len=*),                intent(in)    :: inputfile
+    integer :: i,j,k, ioUnit
     integer :: nxg, nyg, nzg
     integer :: ix1, ixn, iy1, iyn, iz1, izn
-    ! real(rkind)  :: Lx = one, Ly = one, Lz = one, uInflow = one
-    ! namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, InflowProfileType, InflowProfileAmplit, InflowProfileThick
+
     real(rkind) :: Lx, Ly, Lz, uInflow, vInflow, yaw
     real(rkind) :: InflowProfileAmplit, InflowProfileThick, zmid=-1
     integer :: InflowProfileType
@@ -213,8 +299,10 @@ subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
 
     end associate
 
-    if (simulationID == 1) then
-        nxSize = nxg; nySize = nyg; nzSize = nzg
+    if (simulationID == 1) then  ! primary simulation (AD)
+        nxADSim = nxg; nyADSim = nyg; nzADSim = nzg
+    elseif (simulationID == 2) then  ! HIT simulation
+        nxHITSim = nxg; nyHITSim = nyg; nzHITSim = nzg
     end if
 
     call message(0, "meshgen_wallM: initialized grid")
@@ -271,14 +359,6 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
             zmid = Lz * half
         end if
 
-        ! select case(InflowProfileType)
-        !   case(0)
-        !     u = uInflow
-        !   case(1)
-        !     u = uInflow*(one  + InflowProfileAmplit*tanh((z-zMid)/InflowProfileThick))
-        ! end select
-        ! v = zero
-
         ! initialize velocity fields
         call get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, zMid, InflowProfileType, yaw, u, v)
         wC= zero
@@ -313,8 +393,8 @@ subroutine set_planes_io(xplanes, yplanes, zplanes)
         allocate(xplanes(nxplanes))
         !allocate(zplanes(nzplanes))
         !xplanes = [300,400,500,600,700]
-        yplanes = [nySize/2]
-        xPlanes = [5*nxSize/8] !800
+        yplanes = [nyADSim/2]
+        xPlanes = [5*nxADSim/8] !800
         !zplanes = [128]
     end if
 end subroutine

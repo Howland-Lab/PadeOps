@@ -25,17 +25,15 @@ program HIT_shear
     type(budgets_time_avg) :: budg_tavg
     type(budgets_vol_avg)  :: budg_vavg
     real(rkind), dimension(:,:,:), allocatable :: utarget, vtarget, wtarget
-    real(rkind) :: dt1, dt2, dt
-    real(rkind) :: InflowSpeed = 1.d0, TI = -1, TI_fact
-    real(rkind) :: k_bandpass_left = 10.d0, k_bandpass_right = 64.d0, x_shift
-    integer :: nxADSIM, nxHIT
+    real(rkind) :: dt1 = one, dt2 = one, dt = one
+    real(rkind) :: k_bandpass_left = 10.d0, k_bandpass_right = 64.d0, TI_xloc = 0
     type(fof), dimension(:), allocatable :: filt
     integer, dimension(:), allocatable :: pid
-    integer :: fid, nfilters = 2, tid_FIL_FullField = 75, tid_FIL_Planes = 4
-    logical :: applyFilters = .false.
+    integer :: fid, nfilters = 2, tid_FIL_FullField = 75, tid_FIL_Planes = 4, TI_xid
+    logical :: applyFilters = .false., control_TI = .true.
     logical, parameter :: synchronize_RK_substeps = .true.
 
-    namelist /concurrent/ HIT_InputFile, AD_InputFile, InflowSpeed, k_bandpass_left, k_bandpass_right, TI
+    namelist /concurrent/ HIT_InputFile, AD_InputFile, InflowSpeed, k_bandpass_left, k_bandpass_right, TI, TI_xloc, TI_fact
     namelist /FILTER_INFO/ applyfilters, nfilters, fof_dir, tid_FIL_FullField, tid_FIL_Planes, filoutdir
 
     call MPI_Init(ierr)
@@ -68,22 +66,47 @@ program HIT_shear
     call hit%printDivergence()
     call message("Initialized CONCURRENT HIT simulation")
 
-    ! ! allocate target cells for the fringe
+    call make_global_zaxis(adsim)  ! allocate the global-z axis variables
+
+    ! decide whether to turn on the TI controller
+    if ((TI < 0) .and. (TI_fact < 0))then
+        TI_fact = one
+    end if
+
+    if (TI_fact >= 0) then  ! TI_fact specified, no TI controller
+        control_TI = .false.
+        call message(0, "TI controller not used")
+    else  ! Use TI control
+        control_TI = .true.
+        TI_fact = one
+        TI_xid = minloc(abs(adsim%mesh(:,1,1,1) - TI_xloc), 1)  ! xid corresponding to TI sampling location
+        call message(0, "TI controller activated, tracking x-location:", adsim%mesh(TI_xid,1,1,1))
+    end if
+
+    ! if ((TI >= 0) .and. (TI_xloc >= 0)) then
+    !     if (TI_fact < 0) then
+    !         control_TI = .true.
+    !         TI_xid = minloc(abs(adsim%mesh(:,1,1,1) - TI_xloc), 1)  ! xid corresponding to TI sampling location
+    !     else
+    !         control_TI = .false.
+
+    ! allocate target cells for the fringe
     allocate(utarget0(adsim%gpC%xsz(1), adsim%gpC%xsz(2), adsim%gpC%xsz(3)))
     allocate(vtarget0(adsim%gpC%xsz(1), adsim%gpC%xsz(2), adsim%gpC%xsz(3)))
-    allocate(wtarget0(adsim%gpC%xsz(1), adsim%gpC%xsz(2), adsim%gpC%xsz(3)))
+    allocate(wtarget0(adsim%gpE%xsz(1), adsim%gpE%xsz(2), adsim%gpE%xsz(3)))
     call init_fringe_targets(AD_inputfile, adsim%mesh)  ! populates utarget0, vtarget0, wtarget0
 
-    ! ! allocate moving (turbulent) targets
+    ! allocate moving (turbulent) targets
     allocate(utarget(adsim%gpC%xsz(1), adsim%gpC%xsz(2), adsim%gpC%xsz(3)))
     allocate(vtarget(adsim%gpC%xsz(1), adsim%gpC%xsz(2), adsim%gpC%xsz(3)))
-    allocate(wtarget(adsim%gpC%xsz(1), adsim%gpC%xsz(2), adsim%gpC%xsz(3)))
+    allocate(wtarget(adsim%gpE%xsz(1), adsim%gpE%xsz(2), adsim%gpE%xsz(3)))
+
+    ! initialize turbulent fluctuations as zero
     utarget = zero
     vtarget = zero
     wtarget = zero
-    
-    nxHIT = hit%gpC%xsz(1)
-    nxADSIM  = adsim%gpC%xsz(1)
+
+    ! initialize bandpass filter
     call hit%spectC%init_bandpass_filter(k_bandpass_left, k_bandpass_right, hit%cbuffzC(:,:,:,1), hit%cbuffyC(:,:,:,1))
 
     ! now initialize turbulent fringe targets
@@ -100,20 +123,11 @@ program HIT_shear
         call adsim%fringe_x%associateFringeTargets(utarget, vtarget, wtarget)
     end if
 
-    ! Set the true target field for AD simulation
-    x_shift = adsim%tsim*InflowSpeed
-    call hit%spectC%bandpassFilter_and_phaseshift(hit%whatC , utarget(nxADSIM-nxHIT+1:nxADSIM,:,:), x_shift)
-    call hit%interpolate_cellField_to_edgeField(utarget(nxADSIM-nxHIT+1:nxADSIM,:,:), wtarget(nxADSIM-nxHIT+1:nxADSIM,:,:),0,0)
-    call hit%spectC%bandpassFilter_and_phaseshift(hit%uhat  , utarget(nxADSIM-nxHIT+1:nxADSIM,:,:), x_shift)
-    call hit%spectC%bandpassFilter_and_phaseshift(hit%vhat  , vtarget(nxADSIM-nxHIT+1:nxADSIM,:,:), x_shift)
+    ! phaseshift turbulent fringe targets using the laminar fringe targets
+    call update_TI_fact(adsim, TI_xid)
+    call do_phaseshifting(hit, adsim, utarget, vtarget, wtarget)
 
-    ! Now scale rhw HIT field appropriately
-    ! Note that the bandpass filtered velocity field has zero mean
-    utarget(nxADSIM-nxHIT+1:nxADSIM,:,:) = utarget(nxADSIM-nxHIT+1:nxADSIM,:,:)  + utarget0(nxADSIM-nxHIT+1:nxADSIM,:,:)
-    vtarget(nxADSIM-nxHIT+1:nxADSIM,:,:) = vtarget(nxADSIM-nxHIT+1:nxADSIM,:,:)  + vtarget0(nxADSIM-nxHIT+1:nxADSIM,:,:)
-    wtarget(nxADSIM-nxHIT+1:nxADSIM,:,:) = wtarget(nxADSIM-nxHIT+1:nxADSIM,:,:)
-
-    ! initialize budgets 
+    ! initialize budgets
     call budg_tavg%init(AD_Inputfile, adsim)   !<-- Budget class initialization
     call budg_vavg%init(HIT_Inputfile, hit)    !<-- Budget class initialization
 
@@ -155,17 +169,9 @@ program HIT_shear
         call budg_tavg%doBudgets()       !<--- perform budget related operations
         call budg_vavg%doBudgets()       !<--- perform budget related operations
 
-        ! advect the HIT flow artificially
-        x_shift = adsim%tsim*InflowSpeed
-        call hit%spectC%bandpassFilter_and_phaseshift(hit%whatC , utarget(nxADSIM-nxHIT+1:nxADSIM,:,:), x_shift)  ! utarget used as buffer
-        call hit%interpolate_cellField_to_edgeField(utarget(nxADSIM-nxHIT+1:nxADSIM,:,:), wtarget(nxADSIM-nxHIT+1:nxADSIM,:,:),0,0)
-        call hit%spectC%bandpassFilter_and_phaseshift(hit%uhat  , utarget(nxADSIM-nxHIT+1:nxADSIM,:,:), x_shift)
-        call hit%spectC%bandpassFilter_and_phaseshift(hit%vhat  , vtarget(nxADSIM-nxHIT+1:nxADSIM,:,:), x_shift)
-
-        ! Now scale rhw HIT field appropriately
-        utarget(nxADSIM-nxHIT+1:nxADSIM,:,:) = utarget(nxADSIM-nxHIT+1:nxADSIM,:,:) + uTarget0(nxADSIM-nxHIT+1:nxADSIM,:,:)
-        vtarget(nxADSIM-nxHIT+1:nxADSIM,:,:) = vtarget(nxADSIM-nxHIT+1:nxADSIM,:,:) + vTarget0(nxADSIM-nxHIT+1:nxADSIM,:,:)
-        wtarget(nxADSIM-nxHIT+1:nxADSIM,:,:) = wtarget(nxADSIM-nxHIT+1:nxADSIM,:,:)
+        ! phaseshift turbulent fringe targets using the laminar fringe targets
+        call update_TI_fact(adsim, TI_xid)
+        call do_phaseshifting(hit, adsim, utarget, vtarget, wtarget)
 
         call doTemporalStuff(adsim, 1)
         call doTemporalStuff(hit  , 2)
@@ -193,6 +199,12 @@ program HIT_shear
     call adsim%destroy()
 
     deallocate(hit, adsim)
+
+    ! deallocate fringe targets
+    deallocate(utarget0, vtarget0, wtarget0)
+    deallocate(utarget, vtarget, wtarget)
+    deallocate(utarget_1d, vtarget_1d)
+    deallocate(z_global)
 
     call MPI_Finalize(ierr)
 
