@@ -157,7 +157,7 @@ program tileFields
     type(decomp_info) :: gpC, gpE, gpC_upX, gpC_upXY, gpC_upXYZ, gpE_upX, gpE_upXY, gpE_upXYZ
     real(rkind), dimension(:,:,:), allocatable :: f, fxup_inX, fxup_inY, fxyup_inY
     real(rkind), dimension(:,:,:), allocatable :: fxyup_inZ, fxyup_inX, fxyzup_inZ, fxyzup_inY, fxyzup_inX
-    real(rkind) :: tsim, frameangle=zero, pfact=one
+    real(rkind) :: tsim, frameangle=zero, pfact=1e-2  ! small potential temp perturbations
     character(len=clen) :: tempname, fname
     character(len=clen), dimension(3) :: keys
     keys = [character(len=clen) :: "_u.", "_v.", "_T."]  !<-- cell-centered field names
