@@ -7,6 +7,7 @@ program HIT_shear
     use mpi
     use kind_parameters,  only: clen, rkind
     use IncompressibleGrid, only: igrid
+    use frozen_igrid_mod, only: frozen_igrid
     use temporalhook, only: doTemporalStuff
     use timer, only: tic, toc
     use exits, only: message, message_min_max, GracefulExit
@@ -19,7 +20,8 @@ program HIT_shear
 
     implicit none
 
-    type(igrid), allocatable, target :: hit, adsim
+    ! type(igrid), allocatable, target :: adsim
+    class(igrid), allocatable, target :: hit, adsim  ! make these polymorphic so we can freeze the turbulence if 
     character(len=clen) :: inputfile, HIT_InputFile, AD_InputFile, fof_dir, filoutdir
     integer :: ierr, ioUnit
     type(budgets_time_avg) :: budg_tavg
@@ -30,18 +32,15 @@ program HIT_shear
     type(fof), dimension(:), allocatable :: filt
     integer, dimension(:), allocatable :: pid
     integer :: fid, nfilters = 2, tid_FIL_FullField = 75, tid_FIL_Planes = 4, TI_xid
-    logical :: applyFilters = .false., control_TI = .true.
+    logical :: applyFilters = .false., control_TI = .true., freeze_HIT = .false.
     logical, parameter :: synchronize_RK_substeps = .true.
 
-    namelist /concurrent/ HIT_InputFile, AD_InputFile, InflowSpeed, k_bandpass_left, k_bandpass_right, TI, TI_xloc, TI_fact
+    namelist /concurrent/ HIT_InputFile, AD_InputFile, InflowSpeed, k_bandpass_left, k_bandpass_right, TI, TI_xloc, TI_fact, freeze_HIT
     namelist /FILTER_INFO/ applyfilters, nfilters, fof_dir, tid_FIL_FullField, tid_FIL_Planes, filoutdir
 
     call MPI_Init(ierr)
 
     call GETARG(1,inputfile)
-
-    allocate(hit)
-    allocate(adsim)
 
     ! read concurrent input file
     ioUnit = 11
@@ -49,6 +48,13 @@ program HIT_shear
     read(unit=ioUnit, NML=concurrent)
     read(unit=ioUnit, NML=FILTER_INFO)
     close(ioUnit)
+
+    allocate(adsim)
+    if (freeze_HIT) then
+        allocate(frozen_igrid :: hit)
+    else
+        allocate(igrid :: hit)
+    end if
 
     ! initialize igrid objects
     simulationID = 1
@@ -65,6 +71,9 @@ program HIT_shear
     call hit%start_io(.true.)
     call hit%printDivergence()
     call message("Initialized CONCURRENT HIT simulation")
+    if (freeze_HIT) then
+        call message(1, "HIT targets are FROZEN")
+    end if
 
     call make_global_zaxis(adsim)  ! allocate the global-z axis variables
 
@@ -76,19 +85,13 @@ program HIT_shear
     if (TI_fact >= 0) then  ! TI_fact specified, no TI controller
         control_TI = .false.
         call message(0, "TI controller not used")
+        call message(1, "Using fixed TI gain/loss: ", TI_fact)
     else  ! Use TI control
         control_TI = .true.
         TI_fact = one
         TI_xid = minloc(abs(adsim%mesh(:,1,1,1) - TI_xloc), 1)  ! xid corresponding to TI sampling location
         call message(0, "TI controller activated, tracking x-location:", adsim%mesh(TI_xid,1,1,1))
     end if
-
-    ! if ((TI >= 0) .and. (TI_xloc >= 0)) then
-    !     if (TI_fact < 0) then
-    !         control_TI = .true.
-    !         TI_xid = minloc(abs(adsim%mesh(:,1,1,1) - TI_xloc), 1)  ! xid corresponding to TI sampling location
-    !     else
-    !         control_TI = .false.
 
     ! allocate target cells for the fringe
     allocate(utarget0(adsim%gpC%xsz(1), adsim%gpC%xsz(2), adsim%gpC%xsz(3)))
