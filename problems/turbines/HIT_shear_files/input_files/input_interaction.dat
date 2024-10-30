@@ -1,0 +1,17 @@
+&concurrent
+HIT_InputFile                 = "/scratch/08445/tg877441/hit_ad/newtest/test_02/input_hit.dat"
+AD_InputFile                  = "/scratch/08445/tg877441/hit_ad/newtest/test_02/input_AD.dat"
+InflowSpeed                   = 1.d0
+k_bandpass_left               = 4.0d0
+k_bandpass_right              = 128.d0
+/
+/
+&FILTER_INFO
+applyfilters = .FALSE. 
+nfilters     = 2
+fof_dir      = "/projects/windFlowModeling/PadeOps/HIT_Interact/filter_visualizations/"
+tid_FIL_FullField = 75
+tid_FIL_Planes = 4
+filoutdir    = "/scratch/globus/aghate/filter_visualization/ad_data" 
+/
+/
