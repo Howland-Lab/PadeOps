@@ -97,7 +97,7 @@ contains
         use IncompressibleGrid, only : igrid
         use constants, only : zero, half
 
-        type(igrid), allocatable, target :: adsim
+        class(igrid), allocatable, target :: adsim
         integer :: i
 
         allocate(z_global(1,1,adsim%nz), utarget_1d(1,1,adsim%nz), vtarget_1d(1,1,adsim%nz), wtarget_1d(1,1,adsim%nz))  ! all use the "global" z-axis
@@ -172,7 +172,7 @@ contains
         use kind_parameters,  only: rkind
         use IncompressibleGrid, only: igrid
 
-        type(igrid), allocatable, target :: hitsim, adsim
+        class(igrid), allocatable, target :: hitsim, adsim
         real(rkind), dimension(:,:,:), allocatable, intent(inout) :: u, v, w
         real(rkind), dimension(size(z_global,3)) :: x_shift_z, y_shift_z
         real(rkind) :: x_shift
@@ -210,13 +210,12 @@ contains
         use reductions, only         : p_sum
         use exits, only              : message
 
-        type(igrid), allocatable, target :: adsim
+        class(igrid), allocatable, target :: adsim
         integer, intent(in) :: xid
         real(rkind), dimension(adsim%gpC%xsz(2), adsim%gpC%xsz(3)) :: buff1, buff2
         real(rkind) :: TI_inst
 
         if (TI < 0) then
-            TI_fact = one
             return  ! Doesn't compute anything
         end if
 
