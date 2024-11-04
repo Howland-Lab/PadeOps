@@ -6,9 +6,8 @@
 program HIT_Periodic
     use mpi
     use kind_parameters,  only: clen
-    use HIT_periodic_parameters, only: useBandpassFilter 
     use IncompressibleGrid, only: igrid
-    use HIT_Periodic_parameters, only: k_bp_left, k_bp_right
+    use HIT_Periodic_parameters, only: k_bp_left, k_bp_right, useBandpassFilter
     use temporalhook, only: doTemporalStuff
     use timer, only: tic, toc
     use exits, only: message

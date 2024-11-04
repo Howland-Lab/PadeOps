@@ -5,7 +5,7 @@ module HIT_AD_interact_parameters
     use constants, only: kappa 
     implicit none
     integer :: simulationID = 0
-    integer :: nxSize = 256, nySize = 256, nzSize = 256
+    integer :: nxSize = 128, nySize = 128, nzSize = 128
     integer :: InflowProfileType = 0
     real(rkind) :: InflowProfileAmplit = 0.5d0, InflowProfileThick = 0.01d0
 

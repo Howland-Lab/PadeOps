@@ -37,7 +37,7 @@ contains
             call message_min_max(1,"Bounds for u:", p_minval(minval(gp%u)), p_maxval(maxval(gp%u)))
             call message_min_max(1,"Bounds for v:", p_minval(minval(gp%v)), p_maxval(maxval(gp%v)))
             call message_min_max(1,"Bounds for w:", p_minval(minval(gp%w)), p_maxval(maxval(gp%w)))
-            if (simid == 1) then
+            if ((simid == 1) .and. (gp%useWindTurbines)) then
                 call message(0,"Wind direction hub height", gp%WindTurbineArr%windAngle)
             end if 
             if (gp%useCFL) then
