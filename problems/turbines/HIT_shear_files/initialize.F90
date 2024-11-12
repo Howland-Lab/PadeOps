@@ -9,11 +9,11 @@ module HIT_shear_parameters
     ! -KSH 10/02/2024
 
     integer :: simulationID = 0
-    integer :: nxADSim, nyADSim, nzADSim, nxHITSim, nyHITSim, nzHITSim
+    integer :: nxADSim, nyADSim, nzADSim, nxHITSim, nyHITSim, nzHITSim, nxfringe
     real(rkind), dimension(:,:,:), allocatable :: utarget0, vtarget0, wtarget0   ! u, v, w laminar fringe targets
-    real(rkind) :: InflowSpeed = 1.d0, TI = -1, TI_fact = -1, Kp_TI = 0.1d0
+    real(rkind) :: InflowSpeed = 1.d0, TI_target = -1, TI_fact = -1, Kp_TI = 0.1d0
     real(rkind), dimension(:,:,:), allocatable :: z_global, utarget_1d, vtarget_1d, wtarget_1d  ! global z-axis of shape (1,1,nz)
-    logical :: inflow_varies_in_z = .false., debug_TI_gain = .true.
+    logical :: inflow_varies_in_z = .false., debug_TI_gain = .true., advect_shear = .false.
 contains
 
 ! build the velocity profiles
@@ -29,7 +29,7 @@ contains
         integer, intent(in) :: InflowProfileType
         integer:: i
         real(rkind) :: a_max, g_min, g_max
-        real(rkind), dimension(:,:,:), allocatable :: alpha, g
+        real(rkind), dimension(size(u,1), size(u,2), size(u,3)) :: alpha, g
         real(rkind) :: buffer=8.0d-1  ! buffer value = 1 - umin
 
         select case(InflowProfileType)
@@ -42,10 +42,16 @@ contains
           case(2)
             u = uInflow*(one  + buffer * tanh(InflowProfileAmplit * (z-zMid) / buffer))
             v = uInflow * buffer * tanh(vinflow * InflowProfileAmplit * (z-zMid) / buffer)
-          case(3)  ! shear only (deprecated)
-            call GracefulExit("inflow 3 deprecated", 999)
-          case(4)  ! veer only (deprecated)
-            call GracefulExit("inflow 4 deprecated", 999)
+          case(3)  ! veer only, linear |u|
+            g = uInflow
+            alpha = uInflow * buffer * tanh(vinflow * InflowProfileAmplit * (z-zMid) / buffer)
+            u = g * cos(alpha)
+            v = g * sin(alpha)
+          case(4)  ! shear + veer, linear |u| and \alpha
+            g = uInflow*(one  + buffer * tanh(InflowProfileAmplit * (z-zMid) / buffer))
+            alpha = uInflow * buffer * tanh(vinflow * InflowProfileAmplit * (z-zMid) / buffer)
+            u = g * cos(alpha)
+            v = g * sin(alpha)
           case(5)  ! shear only
             call GracefulExit("inflow 5 deprecated", 999)
           case(6)  ! veer only - FIX THIS
@@ -157,79 +163,14 @@ contains
         call get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z_global, zMid, InflowProfileType, yaw, utarget_1d, vtarget_1d)
 
         InflowSpeed = uInflow  ! set the "linear advection" velocity
-        if (InflowProfileType == 0) then
-            inflow_varies_in_z = .false.
+        if ((InflowProfileType .ne. 0) .and. (advect_shear)) then
+            advect_shear = .true.
         else
-            inflow_varies_in_z = .true.
+            advect_shear = .false.
         endif
 
         ! The velocity profile in z needs to go to slip wall at the top
         ! Both u and v need slip conditions
-    end subroutine
-
-! Do phase shifting here
-    subroutine do_phaseshifting(hitsim, adsim, u, v, w)
-        use kind_parameters,  only: rkind
-        use IncompressibleGrid, only: igrid
-
-        class(igrid), allocatable, target :: hitsim, adsim
-        real(rkind), dimension(:,:,:), allocatable, intent(inout) :: u, v, w
-        real(rkind), dimension(size(z_global,3)) :: x_shift_z, y_shift_z
-        real(rkind) :: x_shift
-
-        if (inflow_varies_in_z) then
-            ! need to take the full z-domain
-            x_shift_z = adsim%tsim * utarget_1d(1, 1,:)
-            y_shift_z = adsim%tsim * vtarget_1d(1, 1,:)
-
-            call hitsim%spectC%bandpassFilter_and_phaseshift_z(hitsim%whatC, u(nxADSim-nxHITSim+1:nxADSim,:,:), x_shift_z, y_shift_z)
-            call hitsim%interpolate_cellField_to_edgeField(u(nxADSim-nxHITSim+1:nxADSim,:,:), w(nxADSim-nxHITSim+1:nxADSim,:,:),0,0)
-            call hitsim%spectC%bandpassFilter_and_phaseshift_z(hitsim%uhat, u(nxADSim-nxHITSim+1:nxADSim,:,:), x_shift_z, y_shift_z)
-            call hitsim%spectC%bandpassFilter_and_phaseshift_z(hitsim%vhat, v(nxADSim-nxHITSim+1:nxADSim,:,:), x_shift_z, y_shift_z)
-        else
-            ! Set the true target field for AD simulation
-            x_shift = adsim%tsim * InflowSpeed
-
-            ! old code:
-            call hitsim%spectC%bandpassFilter_and_phaseshift(hitsim%whatC, u(nxADSim-nxHITSim+1:nxADSim,:,:), x_shift)
-            call hitsim%interpolate_cellField_to_edgeField(u(nxADSim-nxHITSim+1:nxADSim,:,:), w(nxADSim-nxHITSim+1:nxADSim,:,:),0,0)
-            call hitsim%spectC%bandpassFilter_and_phaseshift(hitsim%uhat, u(nxADSim-nxHITSim+1:nxADSim,:,:), x_shift)
-            call hitsim%spectC%bandpassFilter_and_phaseshift(hitsim%vhat, v(nxADSim-nxHITSim+1:nxADSim,:,:), x_shift)
-
-        end if
-        ! Now scale rhw HIT field appropriately
-        u(nxADSim-nxHITSim+1:nxADSim,:,:) = u(nxADSim-nxHITSim+1:nxADSim,:,:)*TI_fact + utarget0(nxADSim-nxHITSim+1:nxADSim,:,:)
-        v(nxADSim-nxHITSim+1:nxADSim,:,:) = v(nxADSim-nxHITSim+1:nxADSim,:,:)*TI_fact + vtarget0(nxADSim-nxHITSim+1:nxADSim,:,:)
-        w(nxADSim-nxHITSim+1:nxADSim,:,:) = w(nxADSim-nxHITSim+1:nxADSim,:,:)*TI_fact
-    end subroutine
-
-! Update TI gain
-    subroutine update_TI_fact(adsim, xid)
-        use IncompressibleGrid, only : igrid
-        use constants, only          : zero, one, two, three
-        use reductions, only         : p_sum
-        use exits, only              : message
-
-        class(igrid), allocatable, target :: adsim
-        integer, intent(in) :: xid
-        real(rkind), dimension(adsim%gpC%xsz(2), adsim%gpC%xsz(3)) :: buff1, buff2
-        real(rkind) :: TI_inst
-
-        if (TI < 0) then
-            return  ! Doesn't compute anything
-        end if
-
-        ! need to compute TKE, TI
-        buff1 = 0.5 * ((adsim%u(xid,:,:)-utarget0(xid,:,:))**2 + (adsim%v(xid,:,:)-vtarget0(xid,:,:))**2 + (adsim%wC(xid,:,:))**2)  ! TKE
-        buff2 = sqrt(utarget0(xid,:,:)**2 + vtarget0(xid,:,:)**2)  ! U_inf velocity
-        buff1 = sqrt(two / three * buff1) / buff2
-        TI_inst = p_sum(buff1) / (adsim%ny*adsim%nz)  ! mean TI at the given xid
-        TI_fact = max(zero, TI_fact + ((TI - TI_inst) * Kp_TI))
-
-        if (debug_TI_gain) then
-            call message(1, "update_TI: TI_inst", TI_inst)
-            call message(1, "update_TI: TI_fact", TI_fact)
-        end if
     end subroutine
 
 end module  ! end module functions
@@ -237,7 +178,7 @@ end module  ! end module functions
 
 subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
     use HIT_shear_parameters
-    use kind_parameters,  only: rkind
+    use kind_parameters,  only: rkind, clen
     use constants,        only: one,two, pi
     use decomp_2d,        only: decomp_info
     implicit none
@@ -249,13 +190,21 @@ subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
     integer :: i,j,k, ioUnit
     integer :: nxg, nyg, nzg
     integer :: ix1, ixn, iy1, iyn, iz1, izn
-
+    ! AD coriolis stuff
     real(rkind) :: Lx, Ly, Lz, uInflow, vInflow, yaw
     real(rkind) :: InflowProfileAmplit, InflowProfileThick, zmid=-1
     integer :: InflowProfileType
+    ! HIT stuff
+    character(len=clen) :: ufname, vfname, wfname
+    real(rkind) :: TI, uadv, kleft, kright, u_init! Lx, Ly, Lz,  - already assigned above
+    integer :: inittype
+    logical :: BandpassFilterFields
 
+    ! AD Coriolis input NML:
     namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, zmid, &
         InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw
+    ! HIT periodic input NML:
+    namelist /HIT_PeriodicINPUT/ ufname, vfname, wfname, TI, uadv, kleft, kright, BandpassFilterFields, Lx, Ly, Lz, initType, u_init
 
     select case (simulationID)
       case (1)
@@ -264,9 +213,13 @@ subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
         read(unit=ioUnit, NML=AD_CoriolisINPUT)
         close(ioUnit)
       case (2)
-        Lx = two*pi
-        Ly = two*pi
-        Lz = two*pi  ! this is fixed as a (2*pi)^3 box  TODO
+        ioUnit = 11
+        open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
+        read(unit=ioUnit, NML=HIT_PeriodicINPUT)
+        close(ioUnit)
+        ! Lx = two*pi
+        ! Ly = two*pi
+        ! Lz = two*pi  ! this is fixed as a (2*pi)^3 box  TODO
     end select
 
     nxg = decomp%xsz(1); nyg = decomp%ysz(2); nzg = decomp%zsz(3)

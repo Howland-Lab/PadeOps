@@ -35,6 +35,7 @@ contains
             call message_min_max(1,"Bounds for w:", p_minval(minval(gp%w)), p_maxval(maxval(gp%w)))
             if (gp%useCFL) then
                 call message(1,"Current dt:",gp%dt)
+                ! call message(1, "dt limit: "//gp%dtlimit)
             end if
             call message(0,"------------------------------------------")
             if (simid == 1) then
