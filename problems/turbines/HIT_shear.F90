@@ -21,7 +21,7 @@ program HIT_shear
     implicit none
 
     ! type(igrid), allocatable, target :: adsim
-    class(igrid), allocatable, target :: hit, adsim  ! make these polymorphic so we can freeze the turbulence if 
+    class(igrid), allocatable, target :: hit, adsim  ! make these polymorphic so we can freeze the turbulence if
     character(len=clen) :: inputfile, HIT_InputFile, AD_InputFile, fof_dir, filoutdir
     integer :: ierr, ioUnit
     type(budgets_time_avg) :: budg_tavg
@@ -33,9 +33,10 @@ program HIT_shear
     integer, dimension(:), allocatable :: pid
     integer :: fid, nfilters = 2, tid_FIL_FullField = 75, tid_FIL_Planes = 4, TI_xid
     logical :: applyFilters = .false., control_TI = .true., freeze_HIT = .false.
-    logical, parameter :: synchronize_RK_substeps = .true.
+    logical, parameter :: synchronize_RK_substeps = .false.
 
-    namelist /concurrent/ HIT_InputFile, AD_InputFile, InflowSpeed, k_bandpass_left, k_bandpass_right, TI, TI_xloc, TI_fact, freeze_HIT
+    namelist /concurrent/ HIT_InputFile, AD_InputFile, InflowSpeed, k_bandpass_left, k_bandpass_right, &
+        TI_target, TI_xloc, TI_fact, freeze_HIT, advect_shear
     namelist /FILTER_INFO/ applyfilters, nfilters, fof_dir, tid_FIL_FullField, tid_FIL_Planes, filoutdir
 
     call MPI_Init(ierr)
@@ -76,9 +77,11 @@ program HIT_shear
     end if
 
     call make_global_zaxis(adsim)  ! allocate the global-z axis variables
+    ! call prep_fringe_nx(hit, adsim)  ! determine domain range from HIT to use in fringe targets
+    nxfringe = min(nxadsim, nxhitsim)  ! determine domain range from HIT to use in fringe targets
 
     ! decide whether to turn on the TI controller
-    if ((TI < 0) .and. (TI_fact < 0))then
+    if ((TI_target < 0) .and. (TI_fact < 0))then
         TI_fact = one
     end if
 
@@ -127,8 +130,8 @@ program HIT_shear
     end if
 
     ! phaseshift turbulent fringe targets using the laminar fringe targets
-    call update_TI_fact(adsim, TI_xid)
-    call do_phaseshifting(hit, adsim, utarget, vtarget, wtarget)
+    call update_TI_fact() !(adsim, TI_xid)
+    call do_phaseshifting() !hit, adsim, utarget, vtarget, wtarget)
 
     ! initialize budgets
     call budg_tavg%init(AD_Inputfile, adsim)   !<-- Budget class initialization
@@ -139,8 +142,12 @@ program HIT_shear
     call tic()
     do while (adsim%tsim < adsim%tstop)
         dt1 = adsim%get_dt(recompute=.true.)
-        dt2 = hit%get_dt(recompute=.true.)
-        dt = min(dt1, dt2)
+        if (freeze_HIT) then
+            dt = dt1  ! don't consider frozen_igrid dt constraints in time stepping
+        else
+            dt2 = hit%get_dt(recompute=.true.)
+            dt = min(dt1, dt2)
+        endif
 
         if (synchronize_RK_substeps) then
             adsim%dt = dt
@@ -173,11 +180,11 @@ program HIT_shear
         call budg_vavg%doBudgets()       !<--- perform budget related operations
 
         ! phaseshift turbulent fringe targets using the laminar fringe targets
-        call update_TI_fact(adsim, TI_xid)
-        call do_phaseshifting(hit, adsim, utarget, vtarget, wtarget)
+        call update_TI_fact()
+        call do_phaseshifting()
 
         call doTemporalStuff(adsim, 1)
-        call doTemporalStuff(hit  , 2)
+        if (.not. freeze_HIT) call doTemporalStuff(hit  , 2)
     end do
 
     ! wrapup tasks
@@ -210,5 +217,63 @@ program HIT_shear
     deallocate(z_global)
 
     call MPI_Finalize(ierr)
+
+contains
+
+    ! Do phase shifting here - program variables are still in scope
+    subroutine do_phaseshifting()
+        real(rkind), dimension(size(z_global,3)) :: x_shift_z, y_shift_z
+        real(rkind) :: x_shift
+
+        if (advect_shear) then
+            ! need to take the full z-domain
+            x_shift_z = adsim%tsim * utarget_1d(1, 1,:)
+            y_shift_z = adsim%tsim * vtarget_1d(1, 1,:)
+
+            call hit%spectC%bandpassFilter_and_phaseshift_z(hit%whatC, hit%rbuffxC(:,:,:,1), x_shift_z, y_shift_z)
+            call hit%interpolate_cellField_to_edgeField(hit%rbuffxC(:,:,:,1), hit%rbuffxE(:,:,:,1),0,0)
+            call hit%spectC%bandpassFilter_and_phaseshift_z(hit%uhat, hit%rbuffxC(:,:,:,1), x_shift_z, y_shift_z)
+            call hit%spectC%bandpassFilter_and_phaseshift_z(hit%vhat, hit%rbuffxC(:,:,:,2), x_shift_z, y_shift_z)
+        else
+            ! Set the true target field for AD simulation
+            x_shift = adsim%tsim * InflowSpeed
+
+            call hit%spectC%bandpassFilter_and_phaseshift(hit%whatC, hit%rbuffxC(:,:,:,1), x_shift)
+            call hit%interpolate_cellField_to_edgeField(hit%rbuffxC(:,:,:,1), hit%rbuffxE(:,:,:,1),0,0)
+            call hit%spectC%bandpassFilter_and_phaseshift(hit%uhat, hit%rbuffxC(:,:,:,1), x_shift)
+            call hit%spectC%bandpassFilter_and_phaseshift(hit%vhat, hit%rbuffxC(:,:,:,2), x_shift)
+
+        end if
+        ! Now modify rhs HIT field appropriately
+        utarget(nxADSim-nxfringe+1:nxADSim,:,:) = hit%rbuffxC(nxhitsim-nxfringe+1:nxhitsim,:,:,1)*TI_fact + utarget0(nxADSim-nxfringe+1:nxADSim,:,:)
+        vtarget(nxADSim-nxfringe+1:nxADSim,:,:) = hit%rbuffxC(nxhitsim-nxfringe+1:nxhitsim,:,:,2)*TI_fact + vtarget0(nxADSim-nxfringe+1:nxADSim,:,:)
+        wtarget(nxADSim-nxfringe+1:nxADSim,:,:) = hit%rbuffxE(nxhitsim-nxfringe+1:nxhitsim,:,:,1)*TI_fact
+    end subroutine
+
+    ! Update TI gain
+    subroutine update_TI_fact()
+        use constants, only          : zero, one, two, three
+        use reductions, only         : p_sum
+        use exits, only              : message
+
+        real(rkind), dimension(adsim%gpC%xsz(2), adsim%gpC%xsz(3)) :: buff1, buff2
+        real(rkind) :: TI_inst
+
+        if (TI_target < 0) then
+            return  ! Doesn't compute anything
+        end if
+
+        ! need to compute TKE, TI
+        buff1 = 0.5 * ((adsim%u(TI_xid,:,:)-utarget0(TI_xid,:,:))**2 + (adsim%v(TI_xid,:,:)-vtarget0(TI_xid,:,:))**2 + (adsim%wC(TI_xid,:,:))**2)  ! TKE
+        buff2 = sqrt(utarget0(TI_xid,:,:)**2 + vtarget0(TI_xid,:,:)**2)  ! U_inf velocity
+        buff1 = sqrt(two / three * buff1) / buff2
+        TI_inst = p_sum(buff1) / (adsim%ny*adsim%nz)  ! mean TI at the given xid
+        TI_fact = max(zero, TI_fact + ((TI_target - TI_inst) * Kp_TI))
+
+        if (debug_TI_gain) then
+            call message(1, "update_TI: TI_inst", TI_inst)
+            call message(1, "update_TI: TI_fact", TI_fact)
+        end if
+    end subroutine
 
 end program
