@@ -108,9 +108,9 @@ program HIT_shear
     allocate(wtarget(adsim%gpE%xsz(1), adsim%gpE%xsz(2), adsim%gpE%xsz(3)))
 
     ! initialize turbulent fluctuations as zero
-    utarget = zero
-    vtarget = zero
-    wtarget = zero
+    utarget = utarget0
+    vtarget = vtarget0
+    wtarget = wtarget0
 
     ! initialize bandpass filter
     call hit%spectC%init_bandpass_filter(k_bandpass_left, k_bandpass_right, hit%cbuffzC(:,:,:,1), hit%cbuffyC(:,:,:,1))
@@ -266,7 +266,8 @@ contains
         ! need to compute TKE, TI
         buff1 = 0.5 * ((adsim%u(TI_xid,:,:)-utarget0(TI_xid,:,:))**2 + (adsim%v(TI_xid,:,:)-vtarget0(TI_xid,:,:))**2 + (adsim%wC(TI_xid,:,:))**2)  ! TKE
         buff2 = sqrt(utarget0(TI_xid,:,:)**2 + vtarget0(TI_xid,:,:)**2)  ! U_inf velocity
-        buff1 = sqrt(two / three * buff1) / buff2
+        ! buff1 = sqrt(two / three * buff1) / buff2
+        buff1 = sqrt(two / three * buff1) / InflowSpeed  ! this is TI, now defined as normalized to uinflow
         TI_inst = p_sum(buff1) / (adsim%ny*adsim%nz)  ! mean TI at the given xid
         TI_fact = max(zero, TI_fact + ((TI_target - TI_inst) * Kp_TI))
 
