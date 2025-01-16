@@ -26,6 +26,8 @@ contains
                 call message(0,"Actuator Disk Simulation Info:")
               case (2)
                 call message(0,"HIT Simulation Info:")
+              case (0)
+                call message(0, "Empty Simulation Info:")  ! for the HIT_AD_deficit problem
             end select
             call message(0,"Time",gp%tsim)
             call message(1,"TIDX:",gp%step)
