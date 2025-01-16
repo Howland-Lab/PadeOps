@@ -269,7 +269,7 @@ contains
         ! buff1 = sqrt(two / three * buff1) / buff2
         buff1 = sqrt(two / three * buff1) / InflowSpeed  ! this is TI, now defined as normalized to uinflow
         TI_inst = p_sum(buff1) / (adsim%ny*adsim%nz)  ! mean TI at the given xid
-        TI_fact = max(zero, TI_fact + ((TI_target - TI_inst) * Kp_TI))
+        TI_fact = max(zero, TI_fact + ((TI_target - TI_inst) * adsim.dt / Tp_TI))
 
         if (debug_TI_gain) then
             call message(1, "update_TI: TI_inst", TI_inst)
