@@ -71,7 +71,7 @@ program HIT_deficit
     ! initialize igrid objects
     simulationID = 1
     call adsim%init(AD_InputFile, .true.)  ! initialize decomposition
-    call adsim%start_io(.true.)
+    call adsim%start_io(.false.)  ! don't start IO
     call adsim%printDivergence()
 
     call mpi_barrier(mpi_comm_world, ierr)
@@ -162,7 +162,7 @@ program HIT_deficit
     end if
 
     ! phaseshift turbulent fringe targets using the laminar fringe targets
-    call update_TI_fact(emptysim)  ! update TI based on the EMPTY simulation
+    call update_TI_fact(emptysim, .true.)  ! update TI based on the EMPTY simulation
     call do_phaseshifting() !hit, adsim, utarget, vtarget, wtarget)
 
     ! initialize budgets
@@ -228,7 +228,7 @@ program HIT_deficit
         !end if
 
         ! phaseshift turbulent fringe targets using the laminar fringe targets
-        call update_TI_fact(emptysim)
+        call update_TI_fact(emptysim, .false.)
         call do_phaseshifting()
 
         call doTemporalStuff(adsim, 1)
@@ -308,7 +308,7 @@ contains
     end subroutine
 
     ! Update TI gain
-    subroutine update_TI_fact(sim)
+    subroutine update_TI_fact(sim, first_timestep)
         use IncompressibleGrid, only : igrid
         use constants, only          : zero, one, two, three
         use reductions, only         : p_sum
@@ -317,6 +317,7 @@ contains
         class(igrid), allocatable, target, intent(in) :: sim
         real(rkind), dimension(sim%gpC%xsz(2), sim%gpC%xsz(3)) :: buff1, buff2
         real(rkind) :: TI_inst
+        logical, intent(in) :: first_timestep
 
         if (TI_target < 0) then
             return  ! Doesn't compute/update anything
@@ -324,11 +325,23 @@ contains
 
         ! need to compute TKE, TI
         buff1 = 0.5 * ((sim%u(TI_xid,:,:)-utarget0(TI_xid,:,:))**2 + (sim%v(TI_xid,:,:)-vtarget0(TI_xid,:,:))**2 + (sim%wC(TI_xid,:,:))**2)  ! TKE
-        buff2 = sqrt(utarget0(TI_xid,:,:)**2 + vtarget0(TI_xid,:,:)**2)  ! U_inf velocity
-        ! buff1 = sqrt(two / three * buff1) / buff2      ! defined as TI = sqrt(2/3 * k)/ U
-        buff1 = sqrt(two / three * buff1) / InflowSpeed  ! this is also TI, now defined as normalized to uinflow
-        TI_inst = p_sum(buff1) / (sim%ny*sim%nz)         ! mean TI at the given xid
-        TI_fact = max(zero, TI_fact + ((TI_target - TI_inst) * adsim.dt / Tp_TI))
+        ! buff2 = sqrt(utarget0(TI_xid,:,:)**2 + vtarget0(TI_xid,:,:)**2)  ! U_inf velocity
+        ! buff2 = sqrt(two / three * buff1) / buff2      ! defined as TI = sqrt(2/3 * k)/ U
+        buff2 = sqrt(two / three * buff1) / InflowSpeed  ! this is also TI, now defined as normalized to uinflow
+        TI_inst = p_sum(buff2) / (sim%ny*sim%nz)         ! mean TI at the given xid
+
+        if (first_timestep) then
+            ! try to start with a reasonable guess for the gain variable
+            if (TI_inst .ge. 1e-6) then  
+                ! If TI_inst is not machine zero, then this is probably from restart files
+                TI_fact = sqrt(three / two / hit%getMeanKE()) * TI_inst
+            else
+                ! If TI_inst is basically zero, then set the "guess" for TI_fact based on TI_target
+                TI_fact = sqrt(three / two / hit%getMeanKE()) * TI_target
+            end if
+        else
+            TI_fact = max(zero, TI_fact + ((TI_target - TI_inst) * adsim.dt / Tp_TI))
+        end if
 
         if (debug_TI_gain) then
             call message(1, "update_TI: TI_inst", TI_inst)
