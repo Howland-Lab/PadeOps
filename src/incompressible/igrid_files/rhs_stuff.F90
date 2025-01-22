@@ -57,12 +57,19 @@
                
                this%rbuffxC(:,:,:,1) = u_target 
                call this%spectC%fft(this%rbuffxC(:,:,:,1),this%Gxhat)
-               this%rbuffxE(:,:,:,1) = u_target
-               call this%spectE%fft(this%rbuffxE(:,:,:,1),this%Gxhat_Edge)
                this%rbuffxC(:,:,:,1) = v_target
                call this%spectC%fft(this%rbuffxC(:,:,:,1),this%Gyhat)
-               this%rbuffxE(:,:,:,1) = v_target
-               call this%spectE%fft(this%rbuffxE(:,:,:,1),this%Gyhat_Edge)
+               if (.not. this%assume_fplane) then
+                    call this%interpolate_cellField_to_edgeField(u_target, this%rbuffxE(:,:,:,1), wBC_bottom, wBC_top)
+                    call this%spectE%fft(this%rbuffxE(:,:,:,1),this%Gxhat_Edge)
+
+                    call this%interpolate_cellField_to_edgeField(v_target, this%rbuffxE(:,:,:,1), wBC_bottom, wBC_top)
+                    call this%spectE%fft(this%rbuffxE(:,:,:,1),this%Gyhat_Edge)
+               else
+                    ! if we assume f-plane, then these will be multiplied by zero anyway
+                    this%Gxhat_Edge = 0.d0
+                    this%Gyhat_Edge = 0.d0
+               end if
            else
                this%rbuffxC(:,:,:,1) = this%G_GEOSTROPHIC*cos(this%G_ALPHA*pi/180.d0)
                call this%spectC%fft(this%rbuffxC(:,:,:,1),this%Gxhat)
@@ -74,23 +81,6 @@
                call this%spectE%fft(this%rbuffxE(:,:,:,1),this%Gyhat_Edge)
            end if
 
-!           this%rbuffxC(:,:,:,1) = u_target 
-!           call this%spectC%fft(this%rbuffxC(:,:,:,1),this%Gxhat)
-!           this%rbuffxE(:,:,:,1) = u_target
-!           call this%spectE%fft(this%rbuffxE(:,:,:,1),this%Gxhat_Edge)
-!           this%rbuffxC(:,:,:,1) = v_target
-!           call this%spectC%fft(this%rbuffxC(:,:,:,1),this%Gyhat)
-!           this%rbuffxE(:,:,:,1) = v_target
-!           call this%spectE%fft(this%rbuffxE(:,:,:,1),this%Gyhat_Edge)
-
-!           this%rbuffxC(:,:,:,1) = this%G_GEOSTROPHIC*cos(this%G_ALPHA*pi/180.d0)
-!           call this%spectC%fft(this%rbuffxC(:,:,:,1),this%Gxhat)
-!           this%rbuffxE(:,:,:,1) = this%G_GEOSTROPHIC*cos(this%G_ALPHA*pi/180.d0)
-!           call this%spectE%fft(this%rbuffxE(:,:,:,1),this%Gxhat_Edge)
-!           this%rbuffxC(:,:,:,1) = this%G_GEOSTROPHIC*sin(this%G_ALPHA*pi/180.d0)
-!           call this%spectC%fft(this%rbuffxC(:,:,:,1),this%Gyhat)
-!           this%rbuffxE(:,:,:,1) = this%G_GEOSTROPHIC*sin(this%G_ALPHA*pi/180.d0)
-!           call this%spectE%fft(this%rbuffxE(:,:,:,1),this%Gyhat_Edge)
        end if
        ! u equation 
        ybuffC1    = (two/this%Ro)*(-this%coriolis_omegaY*this%whatC - this%coriolis_omegaZ*(this%GyHat - this%vhat))
