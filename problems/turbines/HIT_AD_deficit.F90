@@ -316,7 +316,7 @@ contains
 
         class(igrid), allocatable, target, intent(in) :: sim
         real(rkind), dimension(sim%gpC%xsz(2), sim%gpC%xsz(3)) :: buff1, buff2
-        real(rkind) :: TI_inst
+        real(rkind) :: TI_inst, tke_avg
         logical, intent(in) :: first_timestep
 
         if (TI_target < 0) then
@@ -327,8 +327,10 @@ contains
         buff1 = 0.5 * ((sim%u(TI_xid,:,:)-utarget0(TI_xid,:,:))**2 + (sim%v(TI_xid,:,:)-vtarget0(TI_xid,:,:))**2 + (sim%wC(TI_xid,:,:))**2)  ! TKE
         ! buff2 = sqrt(utarget0(TI_xid,:,:)**2 + vtarget0(TI_xid,:,:)**2)  ! U_inf velocity
         ! buff2 = sqrt(two / three * buff1) / buff2      ! defined as TI = sqrt(2/3 * k)/ U
-        buff2 = sqrt(two / three * buff1) / InflowSpeed  ! this is also TI, now defined as normalized to uinflow
-        TI_inst = p_sum(buff2) / (sim%ny*sim%nz)         ! mean TI at the given xid
+        tke_avg = p_sum(buff1) / (sim%ny*sim%nz)
+        TI_inst = sqrt(two / three * tke_avg) / InflowSpeed
+        ! buff2 = sqrt(two / three * buff1) / InflowSpeed  ! this is also TI, now defined as normalized to uinflow
+        ! TI_inst = p_sum(buff2) / (sim%ny*sim%nz)         ! mean TI at the given xid
 
         if (first_timestep) then
             ! try to start with a reasonable guess for the gain variable
