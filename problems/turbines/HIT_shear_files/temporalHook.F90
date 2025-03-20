@@ -2,7 +2,7 @@ module temporalHook
     use kind_parameters,    only: rkind
     use IncompressibleGrid, only: igrid
     use reductions,         only: P_MAXVAL, p_minval
-    use exits,              only: message, message_min_max
+    use exits,              only: message, message_min_max, GracefulExit
     use constants,          only: half
     use timer,              only: tic, toc
     use mpi
@@ -26,6 +26,8 @@ contains
                 call message(0,"Actuator Disk Simulation Info:")
               case (2)
                 call message(0,"HIT Simulation Info:")
+              case (0)
+                call message(0, "Empty Simulation Info:")  ! for the HIT_AD_deficit problem
             end select
             call message(0,"Time",gp%tsim)
             call message(1,"TIDX:",gp%step)
@@ -43,6 +45,16 @@ contains
                     call message_min_max(1,"Bounds for SCALAR 1:", p_minval(minval(gp%scalars(1)%F)), p_maxval(maxval(gp%scalars(1)%F)))
                     call message_min_max(1,"Bounds for SCALAR 2:", p_minval(minval(gp%scalars(2)%F)), p_maxval(maxval(gp%scalars(2)%F)))
                 end if
+                ! check against blowing up
+                if (p_maxval(maxval(gp%u))>10.) then
+                    call message(1, "this step has blown up", gp%tsim)
+                    call gp%dumpFullField(gp%u,"uVel")
+                    call gp%dumpFullField(gp%v,"vVel")
+                    call gp%dumpFullField(gp%wC,"wVel")
+                    call gp%dumpFullField(gp%T, "potT")
+                    call GracefulExit("u-velocity has blown up",1)
+                end if
+
             elseif (simid == 2) then
                 call message(1,"Mean TKE for HIT:", gp%getMeanKE())
                 call message(1,"Mean  uu for HIT:", gp%getMeanuu())

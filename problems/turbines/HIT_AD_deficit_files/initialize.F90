@@ -11,7 +11,7 @@ module HIT_shear_parameters
     integer :: simulationID = 0
     integer :: nxADSim, nyADSim, nzADSim, nxHITSim, nyHITSim, nzHITSim, nxfringe
     real(rkind), dimension(:,:,:), allocatable :: utarget0, vtarget0, wtarget0   ! u, v, w laminar fringe targets
-    real(rkind) :: InflowSpeed = 1.d0, TI_target = -1, TI_fact = -1, Tp_TI = 0.5d0
+    real(rkind) :: InflowSpeed = 1.d0, TI_target = -1, TI_fact = -1, Kp_TI = 0.1d0
     real(rkind), dimension(:,:,:), allocatable :: z_global, utarget_1d, vtarget_1d, wtarget_1d  ! global z-axis of shape (1,1,nz)
     logical :: inflow_varies_in_z = .false., debug_TI_gain = .true., advect_shear = .false.
 contains
@@ -343,10 +343,9 @@ subroutine set_planes_io(xplanes, yplanes, zplanes)
         !allocate(xplanes(nxplanes), yplanes(nyplanes), zplanes(nzplanes))
         allocate(yplanes(nyplanes))
         allocate(xplanes(nxplanes))
-        allocate(zplanes(nzplanes))
+        !allocate(zplanes(nzplanes))
         !xplanes = [300,400,500,600,700]
         yplanes = [nyADSim/2]
-        zplanes = [nzADSim/2]
         xPlanes = [5*nxADSim/8] !800
         !zplanes = [128]
     end if
