@@ -42,7 +42,7 @@ program HIT_deficit
     integer, dimension(:), allocatable :: pid
     integer :: fid, nfilters = 2, tid_FIL_FullField = 75, tid_FIL_Planes = 4, TI_xid
     integer :: aniso_x = 1
-    logical :: applyFilters = .false., freeze_HIT = .false., do_deficit_budgets = .true.
+    logical :: applyFilters = .false., freeze_HIT = .false., control_TI = .false.
     logical, parameter :: synchronize_RK_substeps = .true.
 
     namelist /concurrent/ HIT_InputFile, AD_InputFile, Empty_InputFile, InflowSpeed, &
@@ -111,9 +111,11 @@ program HIT_deficit
     nxfringe = min(nxadsim * aniso_x, nxhitsim)  ! determine domain range from HIT to use in fringe targets
 
     !!!!!!!!!!!!! decide whether to turn on the TI controller !!!!!!!!!!!!!
-    if (TI_Target > 0) then
+    control_TI = .false.
+    if (TI_target > 0) then
         TI_fact = one
         TI_xid = minloc(abs(adsim%mesh(:,1,1,1) - TI_xloc), 1)  ! xid corresponding to TI sampling location
+        control_TI = .true.
         call message(0, "TI controller activated")
         call message(1, "tracking x-location:", adsim%mesh(TI_xid,1,1,1))
         call message(1, "target TI: ", TI_target)
@@ -162,7 +164,7 @@ program HIT_deficit
     end if
 
     ! phaseshift turbulent fringe targets using the laminar fringe targets
-    call update_TI_fact(emptysim, .true.)  ! update TI based on the EMPTY simulation
+    if (control_TI) call update_TI_fact(emptysim, .true.)  ! update TI based on the EMPTY simulation
     call do_phaseshifting() !hit, adsim, utarget, vtarget, wtarget)
 
     ! initialize budgets
@@ -225,7 +227,7 @@ program HIT_deficit
         call budg_tavg_deficit%doBudgets()     !<--- perform budget related operations
 
         ! phaseshift turbulent fringe targets using the laminar fringe targets
-        call update_TI_fact(emptysim, .false.)
+        if (control_TI) call update_TI_fact(emptysim, .false.)
         call do_phaseshifting()
 
         call doTemporalStuff(adsim, 1)
