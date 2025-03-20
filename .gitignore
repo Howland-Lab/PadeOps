@@ -12,3 +12,4 @@ pbsfiles
 batch_scripts
 bin*
 pp
+.vscode/
