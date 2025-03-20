@@ -32,6 +32,7 @@ program HIT_shear
     type(fof), dimension(:), allocatable :: filt
     integer, dimension(:), allocatable :: pid
     integer :: fid, nfilters = 2, tid_FIL_FullField = 75, tid_FIL_Planes = 4, TI_xid
+    integer :: aniso_x = 1
     logical :: applyFilters = .false., control_TI = .true., freeze_HIT = .false.
     logical, parameter :: synchronize_RK_substeps = .false.
 
@@ -76,9 +77,16 @@ program HIT_shear
         call message(1, "HIT targets are FROZEN")
     end if
 
+    ! For anisotropic PRIMARY and EMPTY domains, we will need to declare an anisotropy factor in x
+    aniso_x = nint(adsim%dx / hit%dx)
+    if (abs((adsim%dx / hit%dx) - real(aniso_x)) > 1e-5) then
+        call GracefulExit("Anisotropy factor must be an integer >= 1.", 211)
+    else if (aniso_x .ne. 1) then
+        call message(0, "PRIMARY grid is anisotropic, using aniso_x factor", aniso_x)
+    end if
+
     call make_global_zaxis(adsim)  ! allocate the global-z axis variables
-    ! call prep_fringe_nx(hit, adsim)  ! determine domain range from HIT to use in fringe targets
-    nxfringe = min(nxadsim, nxhitsim)  ! determine domain range from HIT to use in fringe targets
+    nxfringe = min(nxadsim * aniso_x, nxhitsim)  ! determine domain range from HIT to use in fringe targets
 
     ! decide whether to turn on the TI controller
     if ((TI_target < 0) .and. (TI_fact < 0))then
@@ -130,8 +138,8 @@ program HIT_shear
     end if
 
     ! phaseshift turbulent fringe targets using the laminar fringe targets
-    call update_TI_fact() !(adsim, TI_xid)
-    call do_phaseshifting() !hit, adsim, utarget, vtarget, wtarget)
+    call update_TI_fact(.true.)  ! .true. for first timestep
+    call do_phaseshifting()
 
     ! initialize budgets
     call budg_tavg%init(AD_Inputfile, adsim)   !<-- Budget class initialization
@@ -180,7 +188,7 @@ program HIT_shear
         call budg_vavg%doBudgets()       !<--- perform budget related operations
 
         ! phaseshift turbulent fringe targets using the laminar fringe targets
-        call update_TI_fact()
+        call update_TI_fact(.false.)
         call do_phaseshifting()
 
         call doTemporalStuff(adsim, 1)
@@ -224,6 +232,7 @@ contains
     subroutine do_phaseshifting()
         real(rkind), dimension(size(z_global,3)) :: x_shift_z, y_shift_z
         real(rkind) :: x_shift
+        integer :: ad_st, hit_st, hit_en
 
         if (advect_shear) then
             ! need to take the full z-domain
@@ -245,31 +254,45 @@ contains
 
         end if
         ! Now modify rhs HIT field appropriately
-        utarget(nxADSim-nxfringe+1:nxADSim,:,:) = hit%rbuffxC(nxhitsim-nxfringe+1:nxhitsim,:,:,1)*TI_fact + utarget0(nxADSim-nxfringe+1:nxADSim,:,:)
-        vtarget(nxADSim-nxfringe+1:nxADSim,:,:) = hit%rbuffxC(nxhitsim-nxfringe+1:nxhitsim,:,:,2)*TI_fact + vtarget0(nxADSim-nxfringe+1:nxADSim,:,:)
-        wtarget(nxADSim-nxfringe+1:nxADSim,:,:) = hit%rbuffxE(nxhitsim-nxfringe+1:nxhitsim,:,:,1)*TI_fact
+        ad_st = nxADSim - nxfringe / aniso_x + 1
+        hit_st = nxhitsim - nxfringe + 1
+        hit_en = nxhitsim
+        utarget(ad_st:nxADSim,:,:) = hit%rbuffxC(hit_st:hit_en:aniso_x,:,:,1)*TI_fact + utarget0(ad_st:nxADSim,:,:)
+        vtarget(ad_st:nxADSim,:,:) = hit%rbuffxC(hit_st:hit_en:aniso_x,:,:,2)*TI_fact + vtarget0(ad_st:nxADSim,:,:)
+        wtarget(ad_st:nxADSim,:,:) = hit%rbuffxE(hit_st:hit_en:aniso_x,:,:,1)*TI_fact
     end subroutine
 
     ! Update TI gain
-    subroutine update_TI_fact()
+    subroutine update_TI_fact(first_timestep)
         use constants, only          : zero, one, two, three
         use reductions, only         : p_sum
         use exits, only              : message
 
-        real(rkind), dimension(adsim%gpC%xsz(2), adsim%gpC%xsz(3)) :: buff1, buff2
-        real(rkind) :: TI_inst
+        real(rkind), dimension(adsim%gpC%xsz(2), adsim%gpC%xsz(3)) :: buff1
+        real(rkind) :: TI_inst, tke_avg
+        logical, intent(in) :: first_timestep
 
         if (TI_target < 0) then
-            return  ! Doesn't compute anything
+            return  ! Doesn't compute/update anything
         end if
 
         ! need to compute TKE, TI
         buff1 = 0.5 * ((adsim%u(TI_xid,:,:)-utarget0(TI_xid,:,:))**2 + (adsim%v(TI_xid,:,:)-vtarget0(TI_xid,:,:))**2 + (adsim%wC(TI_xid,:,:))**2)  ! TKE
-        buff2 = sqrt(utarget0(TI_xid,:,:)**2 + vtarget0(TI_xid,:,:)**2)  ! U_inf velocity
-        ! buff1 = sqrt(two / three * buff1) / buff2
-        buff1 = sqrt(two / three * buff1) / InflowSpeed  ! this is TI, now defined as normalized to uinflow
-        TI_inst = p_sum(buff1) / (adsim%ny*adsim%nz)  ! mean TI at the given xid
-        TI_fact = max(zero, TI_fact + ((TI_target - TI_inst) * adsim.dt / Tp_TI))
+        tke_avg = p_sum(buff1) / (adsim%ny*adsim%nz)
+        TI_inst = sqrt(two / three * tke_avg) / InflowSpeed
+
+        if (first_timestep) then
+            ! try to start with a reasonable guess for the gain variable
+            if (TI_inst .ge. 1e-6) then  
+                ! If TI_inst is not machine zero, then this is probably from restart files
+                TI_fact = sqrt(three / two / hit%getMeanKE()) * TI_inst
+            else
+                ! If TI_inst is basically zero, then set the "guess" for TI_fact based on TI_target
+                TI_fact = sqrt(three / two / hit%getMeanKE()) * TI_target
+            end if
+        else
+            TI_fact = max(zero, TI_fact + ((TI_target - TI_inst) * adsim.dt / Tp_TI))
+        end if
 
         if (debug_TI_gain) then
             call message(1, "update_TI: TI_inst", TI_inst)

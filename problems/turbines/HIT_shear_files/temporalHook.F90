@@ -2,7 +2,7 @@ module temporalHook
     use kind_parameters,    only: rkind
     use IncompressibleGrid, only: igrid
     use reductions,         only: P_MAXVAL, p_minval
-    use exits,              only: message, message_min_max
+    use exits,              only: message, message_min_max, GracefulExit
     use constants,          only: half
     use timer,              only: tic, toc
     use mpi
