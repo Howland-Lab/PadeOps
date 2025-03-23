@@ -33,15 +33,13 @@ donot_dealias         = .FALSE.
 &IO
 RunID                 = 1          ! Run Label (All output files will be tagged with this nubber)
 t_restartDump         = 50000      ! Restart File Dumping Frequency  (# of timesteps)
-t_dataDump            = 100         ! Data dumping frequency (# of timesteps)
+t_dataDump            = 100        ! Data dumping frequency (# of timesteps)
 ioType                = 0          ! 0: Fortran Binaries, 1: .vtk files
-dumpPlanes            = .FALSE.     ! Dump plane visualations. Select planes in initialize.F90
+dumpPlanes            = .FALSE.    ! Dump plane visualations. Select planes in initialize.F90
 t_planeDump           = 20         ! Plane dumping frequency (# of timesteps)
 t_start_planeDump     = 1          ! When do you want to start dumping planes?
 t_stop_planeDump      = 1000       ! When do you want to stop dumping planes?
-VizDump_Schedule      = 0          ! ???????
-deltaT_dump           = 1.D0       ! ???????
-useProbes             = .false.     ! Use probes?
+useProbes             = .false.    ! Use probes?
 dump_NU_SGS           = .FALSE.    ! Dump nu_sgs?
 dump_KAPPA_SGS        = .FALSE.    ! Dump kappa_sgs?
 t_start_pointProbe    = 1          ! When do you want to start recording data?
@@ -78,10 +76,8 @@ Pr                    = 0.6D0       ! Turbulent Prandtl Number; used when
 Fr                    = 1.D10       ! Froude number; used when isStratified is TRUE
 Ra                    = 1.D14       ! Rayleigh number; used when isStratified is TRUE && BuoyancyTermType==3
 useSGS                = .true.      ! Do you want to use the SGS model?  
-PrandtlFluid          = 1.0D0       ! ?????
 BulkRichardson        = 0.0D0       ! Used if isStratified is TRUE && BuoyancyTermType==2
 BuoyancyTermType      = 1           ! Used if isStratified is TRUE. 1: (Fr, ThetaRef); 2:BulkRichardson; 3: (Ra, Re)
-useforcedStratification = .FALSE.   ! ????
 useGeostrophicForcing = .TRUE.      ! This is true if forcing is provided using the coriolis term  
 G_geostrophic         = 1.D0        ! Geostrophic wind speed 
 G_alpha               = 0.D0        ! Geostrophic wind angle (degrees, from +x axis)
@@ -93,7 +89,6 @@ latitude              = 90.d0       ! Latitude; important if useCoriolis is TRUE
 frameAngle            = 0.D0        ! Mean wind direction; important if assume_fplane is FALSE
 useHITforcing         = .false.     ! Use additional HIT forcing? 
 useScalars            = .false.     ! Do you want to use scalars? --Why was this true for AD????
-buoyancyDirection     = 3           ! Are 1 and 2 implemented????
 /
 /
 &PRESSURE_CALC
@@ -119,8 +114,8 @@ botBC_Temp            = 1           ! 0: Dirichlet; 1: Homog. Neumann; 2: Inhomo
 topBC_temp            = 0           ! 0: Dirichlet; 1: Homog. Neumann; 2: Inhomog. Neumann; 3: ????
 useTopAndBottomSymmetricSponge = .FALSE. 
 useFringe             = .true.     ! Use Fringe/Buffer region in x or y directions?
-usedoubleFringex      = .true.      ! Use two fringes (in x)?
-usecontrol            = .FALSE.     ! Use frame angle controller?
+usedoubleFringex      = .false.      ! Use two fringes (in x)?
+usecontrol            = .false.     ! Use frame angle controller?
 /
 /
 &SGS_MODEL
@@ -152,24 +147,28 @@ WM_MatchingIndex              = 1
 /
 /
 &WINDTURBINES
-useWindTurbines       = .false.    ! Do you want to use Wind turbines ?
+useWindTurbines       = .true.    ! Do you want to use Wind turbines ?
 num_turbines          = 1
 ADM                   = .TRUE.    ! FALSE would be ALM, which is not implemented/linked fully
-turbInfoDir           = "/scratch/08445/tg877441/hit_ad/test/turb"
+turbInfoDir           = "/scratch/08445/tg877441/hit_ad/newtest/test_14"
 ADM_Type              = 5         ! 1 or 2. 2 is optimized and well tested. Use 1 at your own risk.
 /
 /
 &FRINGE
-Fringe1_xst           = 0.75d0         
-Fringe1_xen           = 0.90d0
-Fringe1_delta_st_x    = 0.100d0
-Fringe1_delta_en_x    = 0.05d0
-Fringe2_xst           = 0.800d0         
-Fringe2_xen           = 0.980d0
-Fringe2_delta_st_x    = 0.02d0
-Fringe2_delta_en_x    = 0.05d0
-LambdaFact            = 0.0d0 
-LambdaFact2           = 0.75d0
+! Fringe1_xst           = 0.75d0    ! uncomment the following for a double x-fringe
+! Fringe1_xen           = 0.90d0
+! Fringe1_delta_st_x    = 0.100d0
+! Fringe1_delta_en_x    = 0.05d0
+! Fringe2_xst           = 0.800d0
+! Fringe2_xen           = 0.980d0
+! Fringe2_delta_st_x    = 0.02d0
+! Fringe2_delta_en_x    = 0.05d0
+! LambdaFact2           = 0.75d0
+Fringe_xst              = 0.75d0    ! Fringe start location (non-dim to Lx)
+Fringe_xen              = 0.95d0    ! Fringe end location (non-dim to Lx)
+Fringe_delta_st_x       = 0.10d0    ! Fringe start ramp length (non-dim to Lx)
+Fringe_delta_en_x       = 0.05d0    ! Fringe end ramp length (non-dim to Lx)
+LambdaFact              = 0.75d0    ! Fringe forcing strength (between 0.1-1.0)
 /
 /
 &BUDGET_TIME_AVG
@@ -179,7 +178,7 @@ budgets_dir           = "/scratch/08445/tg877441/hit_ad/newtest/test_02"    ! Wr
 tidx_compute          = 1        ! How often should budgets be computed?  
 tidx_dump             = 1000      ! How often should budget files be written to disk? 
 tidx_budget_start     = -1      ! Start budget computation from this timestep onward
-time_budget_start     = 100.d0
+time_budget_start     = 10.d0
 restart_budgets       = .FALSE.   ! use existing budget file to restart budget calculations? 
 restart_rid           = 2         ! Restart budget file run index
 restart_tid           = 99999     ! Restart budget file time index

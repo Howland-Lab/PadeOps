@@ -88,20 +88,21 @@ program HIT_shear
     call make_global_zaxis(adsim)  ! allocate the global-z axis variables
     nxfringe = min(nxadsim * aniso_x, nxhitsim)  ! determine domain range from HIT to use in fringe targets
 
-    ! decide whether to turn on the TI controller
-    if ((TI_target < 0) .and. (TI_fact < 0))then
-        TI_fact = one
-    end if
-
-    if (TI_fact >= 0) then  ! TI_fact specified, no TI controller
-        control_TI = .false.
-        call message(0, "TI controller not used")
-        call message(1, "Using fixed TI gain/loss: ", TI_fact)
-    else  ! Use TI control
-        control_TI = .true.
+    !!!!!!!!!!!!! decide whether to turn on the TI controller !!!!!!!!!!!!!
+    control_TI = .false.
+    if (TI_target > 0) then
         TI_fact = one
         TI_xid = minloc(abs(adsim%mesh(:,1,1,1) - TI_xloc), 1)  ! xid corresponding to TI sampling location
-        call message(0, "TI controller activated, tracking x-location:", adsim%mesh(TI_xid,1,1,1))
+        control_TI = .true.
+        call message(0, "TI controller activated")
+        call message(1, "tracking x-location:", adsim%mesh(TI_xid,1,1,1))
+        call message(1, "target TI: ", TI_target)
+    else if (TI_fact >= 0) then
+        call message(0, "TI controller not used")
+        call message(1, "Using fixed TI gain/loss: ", TI_fact)
+    else
+        call message(0, "No TI settings provided, superimposing HIT fluctuations")
+        TI_fact = one
     end if
 
     ! allocate target cells for the fringe
@@ -138,7 +139,7 @@ program HIT_shear
     end if
 
     ! phaseshift turbulent fringe targets using the laminar fringe targets
-    call update_TI_fact(.true.)  ! .true. for first timestep
+    if (control_TI) call update_TI_fact(.true.)  ! .true. for first timestep
     call do_phaseshifting()
 
     ! initialize budgets
@@ -188,7 +189,7 @@ program HIT_shear
         call budg_vavg%doBudgets()       !<--- perform budget related operations
 
         ! phaseshift turbulent fringe targets using the laminar fringe targets
-        call update_TI_fact(.false.)
+        if (control_TI) call update_TI_fact(.false.)
         call do_phaseshifting()
 
         call doTemporalStuff(adsim, 1)
