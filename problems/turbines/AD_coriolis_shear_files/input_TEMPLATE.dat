@@ -1,10 +1,10 @@
 &INPUT
-inputdir                      = "EDIT: DIRECTORY"  ! Directory for any input files
+inputdir                      = "EDIT: DIRECTORY"   ! Directory for any input files
 outputdir                     = "EDIT: DIRECTORY"   ! Directory for all output files
 nx                            = 512         ! Number of points in X
-ny                            = 512         ! Number of points in Y
+ny                            = 256         ! Number of points in Y
 nz                            = 256         ! Number of points in Z
-tstop                         = 50000.D0    ! Physical time to stop the simulation
+tstop                         = 1000.D0     ! Physical time to stop the simulation
 CFL                           = 1.4D0       ! CFL criterion for calculating the time step (Set to negative to disable)
 dt                            = 0.001D0     ! Fixed time step value (only used if CFL is set to negative)
 prow                          = 0           ! Number of rows in 2D processor decomposition (set 0 for auto-tuning)
@@ -55,6 +55,7 @@ isInviscid                    = .TRUE.      ! Is this an inviscid simulation?
 useCoriolis                   = .TRUE.      ! Activate the coriolis term? 
 useExtraForcing               = .FALSE.     ! Is an extra forcing term being used? (non-Geostrophic forcing only)
 useGeostrophicForcing         = .TRUE.      ! This is true if forcing is provided using the coriolis term  
+useConstantG                  = .FALSE.     ! Use constant geostropic forcing in z? (modified for shear/veer problem)
 isStratified                  = .FALSE.     ! Use Stratification / active scalar in momentum
 Pr                            = 0.6D0       ! Turbulent Prandtl Number; used when 
 Ro                            = 1.D10       ! Rossby Number used when Coriolis is ON
@@ -100,8 +101,8 @@ explicitCalcEdgeEddyViscosity = .true.      ! Explicitely compute eddy viscosity
 useWindTurbines               = .TRUE.
 num_turbines                  = 1
 ADM                           = .TRUE.
-turbInfoDir                   = "/home1/08445/tg877441/PadeOps/problems/turbines/AD_coriolis_shear_files/turbInfo/1x1array"
-ADM_Type                      = 2
+turbInfoDir                   = "/EDIT/PADEOPS/PATH/problems/turbines/AD_coriolis_shear_files/turbInfo/1x1array"
+ADM_Type                      = 5           ! Use ADM type 2 (Calaf et al. (2010)) or ADM type 5 (Shapiro et al. (2019))
 powerDumpDir                  = "XXX"
 useDynamicYaw                 = .FALSE.
 yawUpdateInterval             = 10000
@@ -109,15 +110,15 @@ inputDirDyaw                  = "XXX"
 /
 /
 &FRINGE
-Fringe_xst                    = 0.75d0         
-Fringe_xen                    = 0.95d0
-Fringe_delta_st_x             = 0.15d0
-Fringe_delta_en_x             = 0.05d0
-Fringe_yst                    = 0.80d0         
+Fringe_xst                    = 0.75d0      ! x-fringe start, non-dim w.r.t Lx
+Fringe_xen                    = 0.95d0      ! x-fringe end, non-dim w.r.t. Lx
+Fringe_delta_st_x             = 0.15d0      ! x-fringe start ramp width, non-dim w.r.t Lx
+Fringe_delta_en_x             = 0.05d0      ! x-fringe end ramp width, non-dim w.r.t Lx
+Fringe_yst                    = 0.80d0      ! Note: y-fringe is disabled
 Fringe_yen                    = 1.00d0
 Fringe_delta_st_y             = 0.20d0
 Fringe_delta_en_y             = 0.05d0
-LambdaFact                    = 0.95d0 
+LambdaFact                    = 0.95d0      ! e-folding fringe strenght, scaled by dt (0.1 - 1)
 /
 /
 &KSPREPROCESS
@@ -131,9 +132,10 @@ t_dumpKSprep                  = 10             ! Dumping Frequency for KS files
 do_budgets                    = .TRUE.              ! Perform budget calculations? 
 budgetType                    = 1                   ! See type descriptions in budget_time_avg.F90
 budgets_dir                   = "EDIT: DIRECTORY"   ! Write in default output directory
-tidx_compute                  = 5                   ! How often should budgets be computed?  
+tidx_compute                  = 1                   ! How often should budgets be computed?  
 tidx_dump                     = 1000                ! How often should budget files be written to disk? 
-tidx_budget_start             = 1500                 ! Start budget computation from this timestep onward
+tidx_budget_start             = -1                  ! Start budget computation from this timestep onward
+time_budet_start              = 200                 ! Simulaiton time to start budget computation
 restart_budgets               = .FALSE.   	    ! use existing budget file to restart budget calculations? 
 restart_rid                   = 1         	    ! Restart budget file run index
 restart_tid                   = 35000    	    ! Restart budget file time index
@@ -141,12 +143,13 @@ restart_counter               = 5544   	  	    ! Restart budget file counter
 /
 /
 &AD_CoriolisINPUT
-Lx                            = 50.0d0      ! Domain Length (appropriate dimensions/non-dimensionalized)
-Ly                            = 20.0d0      ! Domain Width  (appropriate dimensions/non-dimensionalized)
-Lz                            = 10.0d0      ! Domain Height (appropriate dimensions/non-dimensionalized)
-uInflow                       = 1.0d0
-vInflow                       = 0.0d0
-InflowProfileAmplit           = 0.0d0
-InflowProfileThick            = 5.0d0
-InflowProfileType             = 0
+Lx                            = 25.6d0      ! Domain Length (appropriate dimensions/non-dimensionalized)
+Ly                            = 12.8d0      ! Domain Width  (appropriate dimensions/non-dimensionalized)
+Lz                            = 12.8d0      ! Domain Height (appropriate dimensions/non-dimensionalized)
+uInflow                       = 1.0d0       ! Shear strength dU/dz = uInflow/InflowProfileAmplit 
+vInflow                       = 0.0d0       ! Veer strength dalpha/dz = vInflow/InflowProfileAmplit (rad/L)
+InflowProfileAmplit           = 0.0d0       ! Controls amplitude in Type 1, 2
+InflowProfileThick            = 5.0d0       ! (Unused, see initialize.F90 -> get_u())
+InflowProfileType             = 0           ! Inflow profile; 0: uniform, 1: linear dv/dz  2: linear du/dz and dv/dz, 3: linear dα/dz, 4: linear dU/dz, dα/dz, 8: const. angle
+yaw                           = 0           ! yaw angle (DEGREES) for inflow type 8, clockwise positive
 /
