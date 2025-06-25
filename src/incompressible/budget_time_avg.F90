@@ -4,7 +4,7 @@ module budgets_time_avg_mod
    use reductions, only: p_sum
    use incompressibleGrid, only: igrid  
    use exits, only: message, GracefulExit
-   use basic_io, only: read_2d_ascii, write_2d_ascii
+   use basic_io, only: read_2d_ascii, write_2d_ascii, write_1d_ascii
    use constants, only: half, zero
    use mpi 
 
@@ -123,6 +123,7 @@ module budgets_time_avg_mod
         logical :: do_budgets
         logical :: forceDump
         logical :: splitPressureDNS
+        integer :: save_dimension    ! EYS 05302025
 
     contains
         procedure           :: init
@@ -134,7 +135,8 @@ module budgets_time_avg_mod
         procedure, private  :: DumpBudget
         procedure, private  :: restartBudget
         procedure, private  :: dump_budget_field 
-        
+        procedure, private  :: dump_budget_field_2d
+  
         procedure, private  :: AssembleBudget0
         procedure, private  :: DumpBudget0 
         
@@ -174,8 +176,10 @@ contains
         logical :: restart_budgets = .false. 
         integer :: tidx_compute = 1000000, tidx_dump = 1000000, tidx_budget_start = -100
         real(rkind) :: time_budget_start = -1.0d0
-        logical :: do_budgets = .false. 
-        namelist /BUDGET_TIME_AVG/ budgetType, budgets_dir, restart_budgets, restart_rid, restart_tid, restart_counter, tidx_dump, tidx_compute, do_budgets, tidx_budget_start, time_budget_start
+        logical :: do_budgets = .false.
+        integer :: save_dimension = 3 
+        namelist /BUDGET_TIME_AVG/ budgetType, budgets_dir, restart_budgets, restart_rid, restart_tid, restart_counter, tidx_dump, &
+        tidx_compute, do_budgets, tidx_budget_start, time_budget_start, save_dimension 
         
         ! STEP 1: Read in inputs, link pointers and allocate budget vectors
         ioUnit = 534
@@ -198,6 +202,7 @@ contains
 
         this%budgets_dir = budgets_dir
         this%budgetType = budgetType
+        this%save_dimension = save_dimension      ! EYS 05302025
 
         this%splitPressureDNS = this%igrid_sim%computeDNSPressure
 
@@ -296,10 +301,6 @@ contains
             this%forceDump = forceDump
         endif
 
-        if(this%igrid_sim%tsim > this%igrid_sim%tstop) then
-            this%forceDump = .TRUE.
-       endif
-
         if (this%do_budgets)  then
             if( ( (this%tidx_budget_start>0) .and. (this%igrid_sim%step>this%tidx_budget_start) ) .or. &
                 ( (this%time_budget_start>0) .and. (this%igrid_sim%tsim>this%time_budget_start) ) ) then
@@ -353,7 +354,7 @@ contains
         
         ! MKE budget is only assembled before dumping
         if (this%budgetType>1) call this%AssembleBudget2() 
-       
+      
         ! Budget 0: 
         call this%dumpbudget0()
 
@@ -372,15 +373,16 @@ contains
             call this%dumpbudget3()
         end if 
 
+        ! EYS 02242025: commented out because inadvertent errors caused by this
         ! Scalar and Turbine Stats
-        call this%DumpScalarStats()
+        ! call this%DumpScalarStats()
     end subroutine 
 
     ! ---------------------- Budget 0 ------------------------
     subroutine DumpBudget0(this)
         class(budgets_time_avg), intent(inout) :: this
-        integer :: idx 
-        
+        integer :: idx
+
         ! Step 1: Get the average from sum
         this%budget_0 = this%budget_0/(real(this%counter,rkind) + 1.d-18)
         
@@ -434,10 +436,17 @@ contains
         end if
 
         ! Step 7: Dump the full budget 
-        do idx = 1,size(this%budget_0,4)
-            call this%dump_budget_field(this%budget_0(:,:,:,idx),idx,0)
-        end do 
-        
+        if (this%save_dimension == 3) then
+            do idx = 1,size(this%budget_0,4)
+                call this%dump_budget_field(this%budget_0(:,:,:,idx),idx,0)
+            end do
+        elseif (this%save_dimension == 2) then
+            ! EYS budget dump 2d planes (05302025)
+            do idx = 1,size(this%budget_0,4)
+                call this%dump_budget_field_2d(this%budget_0(:,:,:,idx),idx,0) 
+            end do
+        end if
+
         ! Step 8: Go back to summing
         this%budget_0(:,:,:,25) = this%budget_0(:,:,:,25) + this%budget_0(:,:,:,13)*this%budget_0(:,:,:,1)
         this%budget_0(:,:,:,25) = this%budget_0(:,:,:,25) + this%budget_0(:,:,:,15)*this%budget_0(:,:,:,2)
@@ -632,16 +641,23 @@ contains
 
     subroutine DumpBudget1(this)
         class(budgets_time_avg), intent(inout) :: this
-        integer :: idx 
+        integer :: idx
 
         ! Step 1: Get the average from sum
         this%budget_1 = this%budget_1/(real(this%counter,rkind) + 1.d-18)
         
-        ! Step 2: Dump the full budget 
-        do idx = 1,size(this%budget_1,4)
-            call this%dump_budget_field(this%budget_1(:,:,:,idx),idx,1)
-        end do 
-        
+        ! Step 2: Dump the full budget
+        if (this%save_dimension == 3) then
+            do idx = 1,size(this%budget_1,4)
+                call this%dump_budget_field(this%budget_1(:,:,:,idx),idx,1)
+            end do
+        elseif (this%save_dimension == 2) then
+            ! EYS budget dump 2d planes (05302025)
+            do idx = 1,size(this%budget_1,4)
+                call this%dump_budget_field_2d(this%budget_1(:,:,:,idx),idx,1)
+            end do
+        end if 
+
         ! Step 3: Go back to summing instead of averaging
         this%budget_1 = this%budget_1*(real(this%counter,rkind) + 1.d-18)
     end subroutine 
@@ -766,9 +782,16 @@ contains
         integer :: idx
 
         ! Dump the full budget 
-        do idx = 1,size(this%budget_2,4)
-            call this%dump_budget_field(this%budget_2(:,:,:,idx),idx,2)
-        end do 
+        if (this%save_dimension == 3) then
+            do idx = 1,size(this%budget_2,4)
+                call this%dump_budget_field(this%budget_2(:,:,:,idx),idx,2)
+            end do
+        elseif (this%save_dimension == 2) then
+            ! EYS budget dump 2d planes (05302025)
+            do idx = 1,size(this%budget_2,4)
+                call this%dump_budget_field_2d(this%budget_2(:,:,:,idx),idx,2)
+            end do
+        end if
 
     end subroutine 
 
@@ -905,10 +928,16 @@ contains
 
 
         ! Dump the full budget 
-        do idx = 1,size(this%budget_3,4)
-            call this%dump_budget_field(this%budget_3(:,:,:,idx),idx,3)
-        end do 
-
+        if (this%save_dimension == 3) then
+            do idx = 1,size(this%budget_3,4)
+                call this%dump_budget_field(this%budget_3(:,:,:,idx),idx,3)
+            end do 
+        elseif (this%save_dimension == 2) then
+            ! EYS budget dump 2d planes (05302025)
+            do idx = 1,size(this%budget_3,4)
+                call this%dump_budget_field_2d(this%budget_3(:,:,:,idx),idx,3)
+            end do
+        end if
 
         ! Revert arrays to the correct state for Assemble (Order is very
         ! important throughout this subroutine, particularly indices 5 and 6)
@@ -993,11 +1022,26 @@ contains
 
         write(tempname,"(A3,I2.2,A7,I1.1,A5,I2.2,A2,I6.6,A2,I6.6,A4)") "Run",this%run_id,"_budget",BudgetID,"_term",fieldID,"_t",this%igrid_sim%step,"_n",this%counter,".s3D"
         fname = this%budgets_Dir(:len_trim(this%budgets_Dir))//"/"//trim(tempname)
-
         call decomp_2d_write_one(1,field,fname, this%igrid_sim%gpC)
-
-    end subroutine 
     
+    end subroutine 
+
+    ! EYS: subroutine to dump 2d budget fields (xz planes)
+    subroutine dump_budget_field_2d(this, field, fieldID, BudgetID)
+        use decomp_2d_io
+        class(budgets_time_avg), intent(inout) :: this
+        real(rkind), dimension(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)), intent(in) :: field 
+        integer, intent(in) :: fieldID, BudgetID
+        character(len=clen) :: fname, tempname
+
+        write(tempname,"(A3,I2.2,A7,I1.1,A5,I2.2,A2,I6.6,A2,I6.6,A4)") "Run",this%run_id,"_budget",BudgetID,"_term",fieldID,"_t",this%igrid_sim%step,"_n",this%counter,".s2D"
+        fname = this%budgets_Dir(:len_trim(this%budgets_Dir))//"/"//trim(tempname)
+        call decomp_2d_write_plane(1,field, 1, 10, fname, this%igrid_sim%gpC)
+
+    end subroutine
+    ! EYS  
+
+
     subroutine restartBudget(this, rid, tid, cid)
         class(budgets_time_avg), intent(inout) :: this
         integer, intent(in) :: rid, cid, tid
