@@ -58,7 +58,7 @@
            call this%sgsmodel%getRHS_SGS(this%u_rhs, this%v_rhs, this%w_rhs,      this%duidxjC, this%duidxjE, &
                                          this%uhat,  this%vhat,  this%whatC,      this%That,    this%u,       &
                                          this%v,     this%wC,    this%T,          this%newTimeStep,this%dTdxC,   this%dTdyC,   & 
-                                         this%dTdzC, this%dTdxE, this%dTdyE, this%dTdzE)
+                                         this%dTdzC, this%dTdxE, this%dTdyE, this%dTdzE, this%mesh(:,1,1,1), this%dt)   ! (EYS 06202025: added knowledge of dt and streamwise dimension) 
 
            if (this%isStratified .or. this%initspinup) then
               call this%sgsmodel%getRHS_SGS_Scalar(this%T_rhs, this%dTdxC, this%dTdyC, this%dTdzC, this%dTdzE, &
@@ -157,12 +157,12 @@
            call this%sgsmodel%getRHS_SGS(this%usgs, this%vsgs, this%wsgs,      this%duidxjC, this%duidxjE,    &
                                          this%uhat,  this%vhat,  this%whatC,   this%That,    this%u,       &
                                          this%v,     this%wC,    this%T,       this%newTimeStep,this%dTdxC,   this%dTdyC,   & 
-                                         this%dTdzC, this%dTdxE, this%dTdyE, this%dTdzE)
+                                         this%dTdzC, this%dTdxE, this%dTdyE, this%dTdzE, this%mesh(:,1,1,1), this%dt)  ! (EYS 06202025: added knowledge of dt and streamwise dimension) 
          else
            call this%sgsmodel%getRHS_SGS(this%u_rhs, this%v_rhs, this%w_rhs,      this%duidxjC, this%duidxjE, &
                                          this%uhat,  this%vhat,  this%whatC,      this%That,    this%u,       &
                                          this%v,     this%wC,    this%T,       this%newTimeStep,this%dTdxC,   this%dTdyC,   & 
-                                         this%dTdzC, this%dTdxE, this%dTdyE, this%dTdzE)
+                                         this%dTdzC, this%dTdxE, this%dTdyE, this%dTdzE, this%mesh(:,1,1,1), this%dt)  ! (EYS 06202025: added knowledge of dt and streamwise dimension) 
          end if
 
            if (this%isStratified .or. this%initspinup) then

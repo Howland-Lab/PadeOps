@@ -20,6 +20,17 @@ subroutine initWallModel(this, SurfaceFilterFact)
 
    case (2) ! Bou-Zeid Wall model
       allocate(this%filteredSpeedSq(this%gpC%xsz(1),this%gpC%xsz(2),this%gpC%xsz(3)))
+
+      ! (EYS 07142024) START: To allocate resources for temporal filtering
+      allocate(this%WallMFactors(this%gpC%xsz(1),this%gpC%xsz(2)))    
+      allocate(this%WallMEpsilon(this%gpC%xsz(1),this%gpC%xsz(2)))     
+      allocate(this%WallMUmatching(this%gpC%xsz(1),this%gpC%xsz(2)))    
+      allocate(this%WallMVmatching(this%gpC%xsz(1),this%gpC%xsz(2)))    
+      this%WallMUmatching = 0.1d0    
+      this%WallMVmatching = 0.1d0    
+      call this%spectC%ResetSurfaceFilter(SurfaceFilterFact)  
+      call message(2,"Bou-Zeid wall model set up with a filter factor:", SurfaceFilterFact)  
+      ! (EYS 07142024) END
    case default
       call gracefulExit("Invalid choice of Wallmodel.",324)
    end select
@@ -52,8 +63,13 @@ subroutine computeWallStress(this, u, v, T, uhat, vhat, That)
    class(sgs_igrid), intent(inout) :: this
    complex(rkind), dimension(this%sp_gpC%ysz(1),this%sp_gpC%ysz(2),this%sp_gpC%ysz(3)), intent(in) :: uhat, vhat, That
    real(rkind), dimension(this%gpC%xsz(1),this%gpC%xsz(2),this%gpC%xsz(3)), intent(in) :: u, v, T
-    complex(rkind), dimension(:,:,:), pointer :: cbuffz, cbuffy
+   complex(rkind), dimension(:,:,:), pointer :: cbuffz, cbuffy
   
+  ! (EYS 07032024) START: Added for for loop and nondimensional x values
+  integer :: locator_min(1), locator_max(1), k  
+  real(rkind), dimension(this%gpC%xsz(1)), intent(in) :: xline   
+  real(rkind) :: matchingloc, dt  
+  ! (EYS 07032024) END
     
    cbuffz => this%cbuffzC(:,:,:,1)
    cbuffy => this%cbuffyC(:,:,:,1)
@@ -86,20 +102,88 @@ subroutine computeWallStress(this, u, v, T, uhat, vhat, That)
 
         case (2) ! Bou-zeid Wall model 
            this%WallMFactor = -(kappa/(log(this%dz/(two*this%z0)) - this%PsiM))**2 
-           call this%getfilteredSpeedSqAtWall(uhat, vhat)
-           
-           call this%spectC%fft(this%filteredSpeedSq, cbuffy)
-           call transpose_y_to_z(cbuffy, cbuffz, this%sp_gpC)
-           
-           ! tau_13
-           this%tauijWMhat_inZ(:,:,1,1) = (this%WallMFactor*this%umn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex) 
-           call transpose_z_to_y(this%tauijWMhat_inZ(:,:,:,1), this%tauijWMhat_inY(:,:,:,1), this%sp_gpE)
-           call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,1), this%tauijWM(:,:,:,1))
-           
-           ! tau_23
-           this%tauijWMhat_inZ(:,:,1,2) = (this%WallMFactor*this%vmn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex) 
-           call transpose_z_to_y(this%tauijWMhat_inZ(:,:,:,2), this%tauijWMhat_inY(:,:,:,2), this%sp_gpE)
-           call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,2), this%tauijWM(:,:,:,2))
+
+           ! (EYS 07032024) START: Formulate WM epsilon 
+           if (this%TemporalFilter) then
+               this%WallMEpsilon = this%WMEpsilonFact * 2.0d0 * kappa * dt / this%dz
+               ! this%WallMEpsilon = 0.01d0     ! EYS 02192025: constant filter value
+           else 
+               this%WallMEpsilon = 1.0d0
+           end if
+           ! (EYS 07032024) END 
+
+
+           ! (EYS 07142024) START: To add temporal filtering of wall shear stress
+           if (this%Primary_Run) then
+               if (this%z0_field) then
+                   ! Set default to z0 
+                   this%WallMFactors = -(kappa / (log(this%dz / (two * this%z0)) - this%PsiM))**2
+
+                   ! Matching location for computing wall factor
+                   locator_min = minloc(abs(xline - this%z02_startx))
+                   locator_max = minloc(abs(xline - this%z02_endx))
+                   matchingloc = real(this%WM_matchingIndex)-real(one)/real(two)
+
+                   ! (EYS 02012025): Overwrite based on assigned geometry (momentum exchange parameterization based on Li et al, 2020)
+                   ! Note roof momentum exchange coefficient calculated using prescribed z0 = z0roof
+                   ! this%WallMFactors(locator_min(1):locator_max(1),:) = -this%idxPlanArea * (kappa / (log(this%dz / (two * this%z0roof)) - this%PsiM))**2 - (1-this%idxPlanArea) * (kappa / (log((this%dz*matchingloc - this%zd) / this%z02) - this%PsiM))**2
+                  
+                   ! EYS CTR implementation of roughness parameterization (used currently)
+                   this%WallMFactors(locator_min(1):locator_max(1),:) = -(kappa / (log((this%dz*matchingloc - this%zd) / this%z02) - this%PsiM))**2
+  
+                   call this%getfilteredSpeedSqAtWall(uhat, vhat)
+
+                   ! Calculates -ustar**2 
+                   do k = 1, this%gpC%xsz(3)
+                       this%filteredSpeedSq(:,:,k) = this%WallMFactors(:,:) * this%filteredSpeedSq(:,:,k)
+                   end do                    
+
+                   call this%spectC%fft(this%filteredSpeedSq, cbuffy)
+                   call transpose_y_to_z(cbuffy, cbuffz, this%sp_gpC)
+                  
+                   ! tau_13
+                   this%tauijWMhat_inZ(:,:,1,1) = (this%umn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex)
+                   call transpose_z_to_y(this%tauijWMhat_inZ(:,:,:,1), this%tauijWMhat_inY(:,:,:,1), this%sp_gpE)
+                   call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,1), this%tauijWM(:,:,:,1))
+                   ! tau_23
+                   this%tauijWMhat_inZ(:,:,1,2) = (this%vmn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex)
+                   call transpose_z_to_y(this%tauijWMhat_inZ(:,:,:,2), this%tauijWMhat_inY(:,:,:,2), this%sp_gpE)
+                   call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,2), this%tauijWM(:,:,:,2))
+               
+                else
+                    
+                   call this%getfilteredSpeedSqAtWall(uhat, vhat)
+                   call this%spectC%fft(this%filteredSpeedSq, cbuffy)
+                   call transpose_y_to_z(cbuffy, cbuffz, this%sp_gpC)
+
+                    ! tau_13
+                   this%tauijWMhat_inZ(:,:,1,1) = (this%WallMFactor*this%umn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex)
+                   call transpose_z_to_y(this%tauijWMhat_inZ(:,:,:,1), this%tauijWMhat_inY(:,:,:,1), this%sp_gpE)
+                   call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,1), this%tauijWM(:,:,:,1))
+
+                   ! tau_23
+                   this%tauijWMhat_inZ(:,:,1,2) = (this%WallMFactor*this%vmn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex)
+                   call transpose_z_to_y(this%tauijWMhat_inZ(:,:,:,2), this%tauijWMhat_inY(:,:,:,2), this%sp_gpE)
+                   call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,2), this%tauijWM(:,:,:,2))
+                end if
+           else  
+                ! Now the precursor run
+                call this%getfilteredSpeedSqAtWall(uhat, vhat)
+                call this%spectC%fft(this%filteredSpeedSq, cbuffy)
+                call transpose_y_to_z(cbuffy, cbuffz, this%sp_gpC)
+            
+                ! tau_13
+                this%tauijWMhat_inZ(:,:,1,1) = (this%WallMFactor*this%umn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex)
+                call transpose_z_to_y(this%tauijWMhat_inZ(:,:,:,1), this%tauijWMhat_inY(:,:,:,1), this%sp_gpE)
+                call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,1), this%tauijWM(:,:,:,1))
+
+                ! tau_23
+                this%tauijWMhat_inZ(:,:,1,2) = (this%WallMFactor*this%vmn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex)
+                call transpose_z_to_y(this%tauijWMhat_inZ(:,:,:,2), this%tauijWMhat_inY(:,:,:,2), this%sp_gpE)
+                call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,2), this%tauijWM(:,:,:,2)) 
+           end if
+           ! (EYS 07142024) END
+
         end select
    end if 
 end subroutine
@@ -167,19 +251,32 @@ subroutine getfilteredSpeedSqAtWall(this, uhatC, vhatC)
 
     real(rkind), dimension(:,:,:), pointer :: rbuffx1, rbuffx2
     complex(rkind), dimension(:,:,:), pointer :: cbuffy, tauWallH
+    integer :: k   ! (EYS 07142025)
 
     cbuffy => this%cbuffyC(:,:,:,1); tauWallH => this%cbuffzC(:,:,:,1)     
     rbuffx1 => this%filteredSpeedSq; rbuffx2 => this%rbuffxC(:,:,:,1)
 
     call transpose_y_to_z(uhatC,tauWallH,this%sp_gpC)
-    call this%spectC%SurfaceFilter_ip(tauWallH(:,:,1))
+    call this%spectC%SurfaceFilter_ip(tauWallH(:,:,this%WM_matchingindex)) 
     call transpose_z_to_y(tauWallH,cbuffy, this%sp_gpC)
     call this%spectC%ifft(cbuffy,rbuffx1)
 
     call transpose_y_to_z(vhatC,tauWallH,this%sp_gpC)
-    call this%spectC%SurfaceFilter_ip(tauWallH(:,:,1))
+    call this%spectC%SurfaceFilter_ip(tauWallH(:,:,this%WM_matchingindex))
     call transpose_z_to_y(tauWallH,cbuffy, this%sp_gpC)
     call this%spectC%ifft(cbuffy,rbuffx2)
+
+    ! (EYS 07142024) START: Temporal filter operation for matching velocity components
+    if (this%TemporalFilter) then 
+        this%WallMUmatching = (1.d0 - this%WallMEpsilon) * this%WallMUmatching + this%WallMEpsilon * rbuffx1(:,:,this%WM_matchingIndex)
+        this%WallMVmatching = (1.d0 - this%WallMEpsilon) * this%WallMVmatching + this%WallMEpsilon * rbuffx2(:,:,this%WM_matchingIndex)
+        
+        do k = 1, this%gpC%xsz(3)
+            rbuffx1(:,:,k) = this%WallMUmatching 
+            rbuffx2(:,:,k) = this%WallMVmatching 
+        end do                    
+    end if
+    ! (EYS 07142024) END
 
     rbuffx1 = rbuffx1*rbuffx1
     rbuffx2 = rbuffx2*rbuffx2
@@ -306,7 +403,13 @@ subroutine compute_local_wallmodel(this, ux, uy, Tmn, wTh_surf, ustar, Linv, Psi
           wTh_surf = wTh
           T_surf = this%Tsurf
       case(1) ! Homogeneous Neumann BC for temperature
-          ustar = this%Uspmn*kappa/(log(hwm/this%z0))
+          ! (EYS 07142024) START: ustar calculation with displacement height zd
+          if (this%z0_field) then
+              ustar = this%Uspmn*kappa/(log((hwm-this%zd)/this%z02))
+          else
+              ustar = this%Uspmn*kappa/(log(hwm/this%z0))
+          endif
+          ! (EYS 07142024) END
           Linv = zero
           wTh_surf = zero
           PsiM = zero
@@ -407,7 +510,14 @@ subroutine getSurfaceQuantities(this)
           this%ustar = ustar; this%invObLength = Linv; this%wTh_surf = wTh
           this%PsiM = PsiM
       case(1) ! Homogeneous Neumann BC for temperature
-          this%ustar = this%Uspmn*kappa/(log(hwm/this%z0))
+          ! (EYS 07142024) START: ustar calculation with displacement height zd
+          if (this%z0_field) then
+              this%ustar = this%Uspmn*kappa/(log((hwm-this%zd)/this%z02)) 
+          else 
+              this%ustar = this%Uspmn*kappa/(log(hwm/this%z0))
+          endif
+          ! (EYS 07142024) END
+          
           this%invObLength = zero
           this%wTh_surf = zero
           this%PsiM = zero
