@@ -101,77 +101,56 @@ subroutine computeWallStress(this, u, v, T, uhat, vhat, That)
            call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,2), this%tauijWM(:,:,:,2))
 
         case (2) ! Bou-zeid Wall model 
-           this%WallMFactor = -(kappa/(log(this%dz/(two*this%z0)) - this%PsiM))**2 
+            this%WallMFactor = -(kappa/(log(this%dz/(two*this%z0)) - this%PsiM))**2 
 
-           ! (EYS 07032024) START: Formulate WM epsilon 
-           if (this%TemporalFilter) then
-               this%WallMEpsilon = this%WMEpsilonFact * 2.0d0 * kappa * dt / this%dz
-               ! this%WallMEpsilon = 0.01d0     ! EYS 02192025: constant filter value
-           else 
-               this%WallMEpsilon = 1.0d0
-           end if
-           ! (EYS 07032024) END 
+            ! (EYS 07142024) START: To add temporal filtering of wall shear stress
+            if (this%TemporalFilter) then
+                this%WallMEpsilon = this%WMEpsilonFact * 2.0d0 * kappa * dt / this%dz
+                ! this%WallMEpsilon = 0.01d0     ! EYS 02192025: constant filter value
+            else 
+                this%WallMEpsilon = 1.0d0
+            end if
 
+            if (this%z0_field) then
+                ! Set default to z0 
+                this%WallMFactors = -(kappa / (log(this%dz / (two * this%z0)) - this%PsiM))**2
 
-           ! (EYS 07142024) START: To add temporal filtering of wall shear stress
-           if (this%Primary_Run) then
-               if (this%z0_field) then
-                   ! Set default to z0 
-                   this%WallMFactors = -(kappa / (log(this%dz / (two * this%z0)) - this%PsiM))**2
+                ! Matching location for computing wall factor
+                locator_min = minloc(abs(xline - this%z02_startx))
+                locator_max = minloc(abs(xline - this%z02_endx))
+                matchingloc = real(this%WM_matchingIndex)-real(one)/real(two)
 
-                   ! Matching location for computing wall factor
-                   locator_min = minloc(abs(xline - this%z02_startx))
-                   locator_max = minloc(abs(xline - this%z02_endx))
-                   matchingloc = real(this%WM_matchingIndex)-real(one)/real(two)
+                ! (EYS 02012025): Overwrite based on assigned geometry (momentum exchange parameterization based on Li et al, 2020)
+                ! Note roof momentum exchange coefficient calculated using prescribed z0 = z0roof
+                ! this%WallMFactors(locator_min(1):locator_max(1),:) = -this%idxPlanArea * (kappa / (log(this%dz / (two * this%z0roof)) - this%PsiM))**2 - (1-this%idxPlanArea) * (kappa / (log((this%dz*matchingloc - this%zd) / this%z02) - this%PsiM))**2
+                
+                ! EYS CTR implementation of roughness parameterization (used currently)
+                this%WallMFactors(locator_min(1):locator_max(1),:) = -(kappa / (log((this%dz*matchingloc - this%zd) / this%z02) - this%PsiM))**2
 
-                   ! (EYS 02012025): Overwrite based on assigned geometry (momentum exchange parameterization based on Li et al, 2020)
-                   ! Note roof momentum exchange coefficient calculated using prescribed z0 = z0roof
-                   ! this%WallMFactors(locator_min(1):locator_max(1),:) = -this%idxPlanArea * (kappa / (log(this%dz / (two * this%z0roof)) - this%PsiM))**2 - (1-this%idxPlanArea) * (kappa / (log((this%dz*matchingloc - this%zd) / this%z02) - this%PsiM))**2
-                  
-                   ! EYS CTR implementation of roughness parameterization (used currently)
-                   this%WallMFactors(locator_min(1):locator_max(1),:) = -(kappa / (log((this%dz*matchingloc - this%zd) / this%z02) - this%PsiM))**2
-  
-                   call this%getfilteredSpeedSqAtWall(uhat, vhat)
+                call this%getfilteredSpeedSqAtWall(uhat, vhat)
 
-                   ! Calculates -ustar**2 
-                   do k = 1, this%gpC%xsz(3)
-                       this%filteredSpeedSq(:,:,k) = this%WallMFactors(:,:) * this%filteredSpeedSq(:,:,k)
-                   end do                    
+                ! Calculates -ustar**2 
+                do k = 1, this%gpC%xsz(3)
+                    this%filteredSpeedSq(:,:,k) = this%WallMFactors(:,:) * this%filteredSpeedSq(:,:,k)
+                end do                    
 
-                   call this%spectC%fft(this%filteredSpeedSq, cbuffy)
-                   call transpose_y_to_z(cbuffy, cbuffz, this%sp_gpC)
-                  
-                   ! tau_13
-                   this%tauijWMhat_inZ(:,:,1,1) = (this%umn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex)
-                   call transpose_z_to_y(this%tauijWMhat_inZ(:,:,:,1), this%tauijWMhat_inY(:,:,:,1), this%sp_gpE)
-                   call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,1), this%tauijWM(:,:,:,1))
-                   ! tau_23
-                   this%tauijWMhat_inZ(:,:,1,2) = (this%vmn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex)
-                   call transpose_z_to_y(this%tauijWMhat_inZ(:,:,:,2), this%tauijWMhat_inY(:,:,:,2), this%sp_gpE)
-                   call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,2), this%tauijWM(:,:,:,2))
-               
-                else
-                    
-                   call this%getfilteredSpeedSqAtWall(uhat, vhat)
-                   call this%spectC%fft(this%filteredSpeedSq, cbuffy)
-                   call transpose_y_to_z(cbuffy, cbuffz, this%sp_gpC)
-
-                    ! tau_13
-                   this%tauijWMhat_inZ(:,:,1,1) = (this%WallMFactor*this%umn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex)
-                   call transpose_z_to_y(this%tauijWMhat_inZ(:,:,:,1), this%tauijWMhat_inY(:,:,:,1), this%sp_gpE)
-                   call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,1), this%tauijWM(:,:,:,1))
-
-                   ! tau_23
-                   this%tauijWMhat_inZ(:,:,1,2) = (this%WallMFactor*this%vmn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex)
-                   call transpose_z_to_y(this%tauijWMhat_inZ(:,:,:,2), this%tauijWMhat_inY(:,:,:,2), this%sp_gpE)
-                   call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,2), this%tauijWM(:,:,:,2))
-                end if
-           else  
-                ! Now the precursor run
+                call this%spectC%fft(this%filteredSpeedSq, cbuffy)
+                call transpose_y_to_z(cbuffy, cbuffz, this%sp_gpC)
+                
+                ! tau_13
+                this%tauijWMhat_inZ(:,:,1,1) = (this%umn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex)
+                call transpose_z_to_y(this%tauijWMhat_inZ(:,:,:,1), this%tauijWMhat_inY(:,:,:,1), this%sp_gpE)
+                call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,1), this%tauijWM(:,:,:,1))
+                ! tau_23
+                this%tauijWMhat_inZ(:,:,1,2) = (this%vmn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex)
+                call transpose_z_to_y(this%tauijWMhat_inZ(:,:,:,2), this%tauijWMhat_inY(:,:,:,2), this%sp_gpE)
+                call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,2), this%tauijWM(:,:,:,2))
+            
+            else
                 call this%getfilteredSpeedSqAtWall(uhat, vhat)
                 call this%spectC%fft(this%filteredSpeedSq, cbuffy)
                 call transpose_y_to_z(cbuffy, cbuffz, this%sp_gpC)
-            
+
                 ! tau_13
                 this%tauijWMhat_inZ(:,:,1,1) = (this%WallMFactor*this%umn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex)
                 call transpose_z_to_y(this%tauijWMhat_inZ(:,:,:,1), this%tauijWMhat_inY(:,:,:,1), this%sp_gpE)
@@ -180,10 +159,10 @@ subroutine computeWallStress(this, u, v, T, uhat, vhat, That)
                 ! tau_23
                 this%tauijWMhat_inZ(:,:,1,2) = (this%WallMFactor*this%vmn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex)
                 call transpose_z_to_y(this%tauijWMhat_inZ(:,:,:,2), this%tauijWMhat_inY(:,:,:,2), this%sp_gpE)
-                call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,2), this%tauijWM(:,:,:,2)) 
-           end if
-           ! (EYS 07142024) END
-
+                call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,2), this%tauijWM(:,:,:,2))
+            end if
+            ! (EYS 07142024) END
+            
         end select
    end if 
 end subroutine

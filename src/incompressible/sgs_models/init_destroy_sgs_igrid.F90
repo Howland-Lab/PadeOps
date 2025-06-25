@@ -60,6 +60,11 @@ subroutine init(this, gpC, gpE, spectC, spectE, dx, dy, dz, inputfile, zMeshE, z
   integer, intent(in) :: botBC_temp
   logical, intent(in), optional :: initSpinUp
 
+  ! (EYS 07142024) START: surface roughness related variables
+  logical, intent(in) :: z0_field
+  real(rkind), intent(in) :: z0, z02, z02_startx, z02_endx, zd, idxPlanArea, z0roof
+  ! (EYS 07142024) END
+
   ! Input file variables
   logical :: DomainAveraged_DynProc = .false., useWallDamping = .false., useSGSDynamicRestart = .false., useVerticalTfilter = .false.
   integer :: DynamicProcedureType = 0, SGSmodelID = 0, WallModelType = 0, DynProcFreq = 1
@@ -67,9 +72,9 @@ subroutine init(this, gpC, gpE, spectC, spectE, dx, dy, dz, inputfile, zMeshE, z
   real(rkind) :: z0t = 0.001d0
   character(len=clen) :: SGSDynamicRestartFile
   logical :: explicitCalcEdgeEddyViscosity = .false., UseDynamicProcedureScalar = .false., useScalarBounding = .false.
-  logical :: usePrSGS = .false., useFullyLocalWM = .false.  
+  logical :: usePrSGS = .false., useFullyLocalWM = .false., TemporalFilter = .false.
   integer :: ierr, WM_matchingIndex = 1, WallFunctionType = 1 
-  real(rkind) :: lowbound = 0.d0 , highbound = 1.d0 , SurfaceFilterFact = 1.d0 
+  real(rkind) :: lowbound = 0.d0 , highbound = 1.d0 , SurfaceFilterFact = 1.d0, WMEpsilonFact = 0.0d0
 
   namelist /SGS_MODEL/ DynamicProcedureType, SGSmodelID, z0, z0t, &
                  useWallDamping, ncWall, Csgs, WallModelType, usePrSGS, &
@@ -78,7 +83,8 @@ subroutine init(this, gpC, gpE, spectC, spectE, dx, dy, dz, inputfile, zMeshE, z
                  explicitCalcEdgeEddyViscosity, &
                  UseDynamicProcedureScalar, deltaRatio, turbPrandtl, &
                  useScalarBounding, Cy, lowbound, highbound, WM_matchingIndex, & 
-                 WallFunctionType, useFullyLocalWM, SurfaceFilterFact  
+                 WallFunctionType, useFullyLocalWM, SurfaceFilterFact, &
+                 WMEpsilonFact, TemporalFilter, z0_field, z02, z02_startx, z02_endx, zd, idxPlanArea, z0roof
 
   open(unit=123, file=trim(inputfile), form='FORMATTED', iostat=ierr)
   read(unit=123, NML=SGS_MODEL)
@@ -158,11 +164,23 @@ subroutine init(this, gpC, gpE, spectC, spectE, dx, dy, dz, inputfile, zMeshE, z
   this%UseDynamicProcedureScalar = UseDynamicProcedureScalar
   this%explicitCalcEdgeEddyViscosity = explicitCalcEdgeEddyViscosity
   this%mid = SGSmodelID
-  this%z0  = z0
-  this%z0t = z0t
   this%DynamicProcedureType = DynamicProcedureType
   this%DynProcFreq = DynProcFreq
   this%useVerticalTfilter = useVerticalTfilter
+
+  ! (EYS 07142024) START: Add variables related to surface roughness and roughness patch
+  this%z0_field = z0_field
+  this%z0  = z0    ! background surface roughness
+  this%z02 = z02   ! patch of surface roughness
+  this%z0t = z0t
+  this%z02_startx = z02_startx
+  this%z02_endx = z02_endx
+  this%zd = zd
+  this%WMEpsilonFact = WMEpsilonFact
+  this%TemporalFilter = TemporalFilter
+  this%idxPlanArea = idxPlanArea
+  this%z0roof = z0roof
+  ! (EYS 07142024) END
   
   this%isInviscid = isInviscid
 
