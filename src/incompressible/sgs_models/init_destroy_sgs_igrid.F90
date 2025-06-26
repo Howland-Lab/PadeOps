@@ -60,21 +60,21 @@ subroutine init(this, gpC, gpE, spectC, spectE, dx, dy, dz, inputfile, zMeshE, z
   integer, intent(in) :: botBC_temp
   logical, intent(in), optional :: initSpinUp
 
-  ! (EYS 07142024) START: surface roughness related variables
-  logical, intent(in) :: z0_field
-  real(rkind), intent(in) :: z0, z02, z02_startx, z02_endx, zd, idxPlanArea, z0roof
-  ! (EYS 07142024) END
-
   ! Input file variables
   logical :: DomainAveraged_DynProc = .false., useWallDamping = .false., useSGSDynamicRestart = .false., useVerticalTfilter = .false.
   integer :: DynamicProcedureType = 0, SGSmodelID = 0, WallModelType = 0, DynProcFreq = 1
-  real(rkind) :: ncWall = 1.d0, Csgs = 0.17d0, z0 = 0.01d0, deltaRatio = 2.d0, turbPrandtl = 0.4d0, Cy = 100.d0 
+  real(rkind) :: ncWall = 1.d0, Csgs = 0.17d0, deltaRatio = 2.d0, turbPrandtl = 0.4d0, Cy = 100.d0 
   real(rkind) :: z0t = 0.001d0
   character(len=clen) :: SGSDynamicRestartFile
   logical :: explicitCalcEdgeEddyViscosity = .false., UseDynamicProcedureScalar = .false., useScalarBounding = .false.
   logical :: usePrSGS = .false., useFullyLocalWM = .false., TemporalFilter = .false.
   integer :: ierr, WM_matchingIndex = 1, WallFunctionType = 1 
   real(rkind) :: lowbound = 0.d0 , highbound = 1.d0 , SurfaceFilterFact = 1.d0, WMEpsilonFact = 0.0d0
+
+  ! (EYS 07142024) START: surface roughness related variables
+  logical :: z0_field = .false.
+  real(rkind) :: z0 = 0.00025d0, z02 = 0.00025d0, z02_startx = 0.d0, z02_endx = 0.d0, zd = 0.d0, idxPlanArea = 0.d0, z0roof = 0.d0
+  ! (EYS 07142024) END
 
   namelist /SGS_MODEL/ DynamicProcedureType, SGSmodelID, z0, z0t, &
                  useWallDamping, ncWall, Csgs, WallModelType, usePrSGS, &

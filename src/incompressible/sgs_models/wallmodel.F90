@@ -59,17 +59,17 @@ subroutine initWallModel(this, SurfaceFilterFact)
 end subroutine
 
 
-subroutine computeWallStress(this, u, v, T, uhat, vhat, That)
+subroutine computeWallStress(this, u, v, T, uhat, vhat, That, xline, dt)
    class(sgs_igrid), intent(inout) :: this
    complex(rkind), dimension(this%sp_gpC%ysz(1),this%sp_gpC%ysz(2),this%sp_gpC%ysz(3)), intent(in) :: uhat, vhat, That
    real(rkind), dimension(this%gpC%xsz(1),this%gpC%xsz(2),this%gpC%xsz(3)), intent(in) :: u, v, T
    complex(rkind), dimension(:,:,:), pointer :: cbuffz, cbuffy
   
-  ! (EYS 07032024) START: Added for for loop and nondimensional x values
-  integer :: locator_min(1), locator_max(1), k  
-  real(rkind), dimension(this%gpC%xsz(1)), intent(in) :: xline   
-  real(rkind) :: matchingloc, dt  
-  ! (EYS 07032024) END
+   ! (EYS 07032024) START: Added for for loop and nondimensional x values
+   integer :: locator_min(1), locator_max(1), k  
+   real(rkind), dimension(this%gpC%xsz(1)), intent(in) :: xline   
+   real(rkind) :: matchingloc, dt  
+   ! (EYS 07032024) END
     
    cbuffz => this%cbuffzC(:,:,:,1)
    cbuffy => this%cbuffyC(:,:,:,1)

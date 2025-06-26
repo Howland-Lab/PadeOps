@@ -1,6 +1,6 @@
 module gabls_igrid_parameters
 
-      ! TAKE CARE OF TIME NON-DIMENSIONALIZATION IN THIS MODULE
+    ! TAKE CARE OF TIME NON-DIMENSIONALIZATION IN THIS MODULE
 
     use exits, only: message
     use kind_parameters,  only: rkind
@@ -39,13 +39,11 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     real(rkind), dimension(:,:,:), allocatable :: ybuffC, ybuffE, zbuffC, zbuffE, ztmp
     integer :: nz, nzE, k
     real(rkind) :: sig
-    real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, dTsurf_dt = -0.05d0, z0init = 1.d-4, frameAngle = -26.d0 
+    real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, dTsurf_dt = -0.05d0, z0init = 1.d-4, frameAngle = 0.d0 
     real(rkind), dimension(:,:,:), allocatable :: randArr, Tpurt, eta
+    logical :: int_variability = .FALSE.
     
-    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle 
-    !real(rkind)  :: beta, sigma, phi_ref
-    !integer :: z_ref
-    !namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle!, beta, sigma, phi_ref, z_ref
+    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, int_variability
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -78,10 +76,24 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     end where
     T = T + 0.0001d0*ztmp
 
+
     ! Add random numbers
-    allocate(randArr(size(T,1),size(T,2),size(T,3)))
-    call gaussian_random(randArr,zero,one,seedu + 10*nrank)
-    !randArr = cos(4.d0*2.d0*pi*x)*sin(4.d0*2.d0*pi*y)
+    ! EYS code for generating a random seed each time
+    if (int_variability) then
+        call date_and_time(date,time,zone,values)
+        read (unit=time,fmt=*) mp
+        p = int(1000*mp)
+        call message("Adding perturbation")
+        write (str, *) p
+        call message(str)
+        allocate(randArr(size(T,1),size(T,2),size(T,3)))
+        call gaussian_random(randArr,zero,one,p + 10*nrank)
+    else
+        allocate(randArr(size(T,1),size(T,2),size(T,3)))
+        call gaussian_random(randArr,zero,one,seedu + 10*nrank)
+    end if
+
+    ! Adding perturbations  
     do k = 1,size(u,3)
         sig = 0.08
         Tpurt(:,:,k) = sig*randArr(:,:,k)
@@ -126,8 +138,10 @@ subroutine setInhomogeneousNeumannBC_Temp(inputfile, wTh_surf)
     character(len=*),                intent(in)    :: inputfile
     real(rkind), intent(out) :: wTh_surf
     integer :: ioUnit 
-    real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, z0init = 1.d-4, dTsurf_dt
-    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init  
+    real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, z0init = 1.d-4, dTsurf_dt, frameAngle = 0.d0
+    logical :: int_variability = .FALSE.
+    
+    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, int_variability
      
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -146,10 +160,9 @@ subroutine setDirichletBC_Temp(inputfile, Tsurf, dTsurf_dt)
     character(len=*),                intent(in)    :: inputfile
     integer :: ioUnit 
     real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, z0init = 1.d-4, frameAngle = 0.d0
-    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle  
-    !real(rkind)  :: beta, sigma, phi_ref
-    !integer :: z_ref
-    !namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle!, beta, sigma, phi_ref, z_ref    
+    logical :: int_variability = .FALSE.
+    
+    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, int_variability
  
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -220,9 +233,9 @@ subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
     character(len=*),                intent(in)    :: inputfile
     integer :: ix1, ixn, iy1, iyn, iz1, izn
     real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, dTsurf_dt = -0.05d0, z0init = 1.d-4, frameAngle = 0.d0
-    !real(rkind)  :: beta, sigma, phi_ref
-    !integer :: z_ref 
-    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle 
+    logical :: int_variability = .FALSE.
+    
+    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, int_variability
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -270,10 +283,9 @@ subroutine set_Reference_Temperature(inputfile, Thetaref)
     real(rkind), intent(out) :: Thetaref
     integer :: ioUnit 
     real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, dTsurf_dt = -0.05d0, z0init = 2.5d-4, frameAngle = 0.d0 
-    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle  
-    !real(rkind)  :: beta, sigma, phi_ref
-    !integer :: z_ref
-    !namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle!, beta, sigma, phi_ref, z_ref     
+    logical :: int_variability = .FALSE.
+    
+    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, int_variability
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
