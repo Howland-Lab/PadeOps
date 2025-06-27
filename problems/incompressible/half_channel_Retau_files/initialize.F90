@@ -31,8 +31,10 @@ subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
     integer :: ix1, ixn, iy1, iyn, iz1, izn
     real(rkind)  :: Lx = one, Ly = one, Lz = one
     logical :: initPurturbations = .false. 
-    namelist /PBLINPUT/ Lx, Ly, Lz, z0init, initPurturbations
+    logical :: int_variability = .FALSE.   ! EYS
 
+    namelist /PBLINPUT/ Lx, Ly, Lz, z0init, initPurturbations, int_variability
+    
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
     read(unit=ioUnit, NML=PBLINPUT)
@@ -95,7 +97,18 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     real(rkind) :: zpeak = 0.2d0, noiseAmp = 1.d-2
     real(rkind)  :: Lx = one, Ly = one, Lz = one
     logical :: initPurturbations = .true. 
-    namelist /PBLINPUT/ Lx, Ly, Lz, z0init, initPurturbations
+
+    ! EYS added variables for randomness in seed at startup
+    logical :: int_variability = .FALSE.
+    integer :: p
+    character(8) :: date
+    character(10) :: time
+    character(5) :: zone
+    integer,dimension(8) :: values
+    real :: mp
+    character(len=20) :: str
+
+    namelist /PBLINPUT/ Lx, Ly, Lz, z0init, initPurturbations, int_variability        ! EYS
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -124,10 +137,21 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     wC= zero  
    
     allocate(randArr(size(wC,1),size(wC,2),size(wC,3)))
-    
-    call gaussian_random(randArr,zero,one,seedu + 100*nrank)
+
+    ! EYS code for generating a random seed each time
+    if (int_variability) then
+        call date_and_time(date,time,zone,values)
+        read (unit=time,fmt=*) mp
+        p = int(1000*mp)
+        call message("Adding perturbation")
+        write (str, *) p
+        call message(str)
+        call gaussian_random(randArr,zero,one,p + 100*nrank)
+    else
+        call gaussian_random(randArr,zero,one,seedu + 100*nrank)
+    end if
     u  = u + noiseAmp*randArr
-    
+
     call gaussian_random(randArr,zero,one,seedv + 100*nrank)
     v  = v + noiseAmp*randArr
 
@@ -215,7 +239,8 @@ subroutine setDirichletBC_Temp(inputfile, Tsurf, dTsurf_dt)
     real(rkind) :: ThetaRef, Lx, Ly, Lz, z0init
     integer :: iounit
     logical :: initPurturbations = .false. 
-    namelist /PBLINPUT/ Lx, Ly, Lz, z0init, initPurturbations
+    logical :: int_variability = .FALSE.
+    namelist /PBLINPUT/ Lx, Ly, Lz, z0init, initPurturbations, int_variability    
     
     Tsurf = zero; dTsurf_dt = zero; ThetaRef = one
     
@@ -237,7 +262,8 @@ subroutine set_Reference_Temperature(inputfile, Tref)
     real(rkind) :: Lx, Ly, Lz, z0init
     integer :: iounit
     logical :: initPurturbations = .false. 
-    namelist /PBLINPUT/ Lx, Ly, Lz, z0init, initPurturbations
+    logical :: int_variability = .FALSE.
+    namelist /PBLINPUT/ Lx, Ly, Lz, z0init, initPurturbations, int_variability
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
