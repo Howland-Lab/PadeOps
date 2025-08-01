@@ -128,7 +128,7 @@
           else
                call this%WindTurbineArr%getForceRHS(this%dt, this%u, this%v, this%wC,&
                                     !this%uturb, this%v_rhs, this%w_rhs, this%newTimestep, this%inst_horz_avg_turb)
-                                    this%uturb, this%vturb, this%wturb, this%newTimestep, this%inst_horz_avg_turb budgetCall = .true.)
+                                    this%uturb, this%vturb, this%wturb, this%newTimestep, this%inst_horz_avg_turb, budgetCall = .true.)
           end if
           this%u_rhs = this%u_rhs + this%uturb
           this%v_rhs = this%v_rhs + this%vturb

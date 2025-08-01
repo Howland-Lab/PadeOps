@@ -569,6 +569,7 @@ subroutine getForceRHS(this, dt, u, v, wC, urhs, vrhs, wrhs, newTimeStep, inst_h
     ! Lookup table stuff
     real(rkind) :: alpha_input
     integer :: alpha_index
+    logical :: callTimeAdvance
 
     if (newTimeStep) then
          this%fx = zero; this%fy = zero; this%fz = zero
@@ -774,10 +775,13 @@ subroutine getForceRHS(this, dt, u, v, wC, urhs, vrhs, wrhs, newTimeStep, inst_h
                end if
                this%step=this%step+1
            case (5)
-               if (.not. present(budgetCall)) budgetCall = .false.
+               ! time should not advance if getForceRHS is being called for budget calculations
+               callTimeAdvance = .true.
+               if (present(budgetCall)) callTimeAdvance = (.not. budgetCall)
+               ! needed calculations for each turbine
                do i = 1, this%nTurbines
                     ! TODO move outside switch/case
-                    if (budgetCall) .and. (this%useDynamicTurbine) then  
+                    if ((callTimeAdvance) .and. (this%useDynamicTurbine)) then  
                         call this%dynamicArray(i)%time_advance(dt)
                     endif
 
