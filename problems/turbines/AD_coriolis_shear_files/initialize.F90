@@ -3,6 +3,7 @@ module AD_Coriolis_parameters
     use exits, only: message
     use kind_parameters,  only: rkind
     use constants, only: kappa, pi
+    use basic_io, only: read_2d_ascii
     implicit none
     integer :: seedu = 321341
     integer :: seedv = 423424
@@ -16,7 +17,7 @@ contains
 
     subroutine init_fringe_targets(inputfile, mesh)
         use exits, only: message
-        use kind_parameters,    only: rkind
+        use kind_parameters,    only: rkind, clen
         use constants,          only: zero, one, two, pi, half
         use gridtools,          only: alloc_buffs
         use random,             only: gaussian_random
@@ -31,10 +32,10 @@ contains
         real(rkind) :: InflowProfileAmplit, InflowProfileThick, zmid=-1
         integer :: ioUnit
         integer :: InflowProfileType
-        logical :: useGeostrophicForcing
+        character(len=clen) :: fname_inflow
 
         namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, zmid, &
-            InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw
+            InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw, fname_inflow
 
         ioUnit = 11
         open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -50,15 +51,15 @@ contains
             zMid = Lz / two
         end if
         z => mesh(:,:,:,3)
-        call get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, zMid, InflowProfileType, yaw, utarget, vtarget)
+        call get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, zMid, InflowProfileType, yaw, utarget, vtarget, fname_inflow)
 
         ! The velocity profile in z needs to go to slip wall at the top
         ! Both u and v need slip conditions
 
     end subroutine
 
-    subroutine get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, zMid, InflowProfileType, yaw, u, v)
-        use kind_parameters, only: rkind
+    subroutine get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, zMid, InflowProfileType, yaw, u, v, fname_inflow)
+        use kind_parameters, only: rkind, clen
         use constants,       only: zero, one, two, pi, half
 
         implicit none
@@ -70,8 +71,20 @@ contains
         real(rkind) :: a_max, g_min, g_max
         real(rkind), dimension(size(u,1), size(u,2), size(u,3)) :: alpha, g
         real(rkind) :: buffer=8.0d-1  ! buffer value = 1 - umin
+        character(len=clen) :: fname_inflow
+        real(rkind), dimension(:,:), allocatable :: inflow_arr
+        real(rkind), dimension(size(z,3)) :: z1d, u1d, v1d
 
         select case(InflowProfileType)
+          case(-1)
+            ! read inflow from ASCII files - look for inflow_data.txt with columns
+            ! z | u | v | k
+            call read_2d_ascii(inflow_arr, trim(fname_inflow))
+            z1d = z(1,1,:)
+            u1d = interp1d(z1d, inflow_arr(:,1), inflow_arr(:,2))
+            v1d = interp1d(z1d, inflow_arr(:,1), inflow_arr(:,3))
+            u = spread(spread(u1d, dim=1, ncopies=size(z, 1)), dim=2, ncopies=size(z, 2))
+            v = spread(spread(v1d, dim=1, ncopies=size(z, 1)), dim=2, ncopies=size(z, 2))
           case(0)
             u = uInflow
             v = zero
@@ -145,11 +158,38 @@ contains
 
     end subroutine
 
+! interpolation function
+    function interp1d(x, xp, yp) result(y)
+        implicit none
+        real(rkind), intent(in) :: x(:)             ! query points, arbitrary dimensions
+        real(rkind), intent(in) :: xp(:), yp(:)     ! x, y coordinates of data points (x must be sorted)
+        real(rkind) :: y(size(x))
+        integer :: i, j
+
+        do i = 1, size(x)
+            ! check if out of bounds - if so, then clip to boundary values
+            if (x(i) <= xp(1)) then
+                y(i) = yp(1)
+            else if (x(i) >= xp(size(xp))) then
+                y(i) = yp(size(yp))
+            else
+                ! find interval xp(j) <= x(i) < xp(j+1)
+                do j = 1, size(xp) - 1
+                    if (x(i) >= xp(j) .and. x(i) < xp(j+1)) then
+                        y(i) = yp(j) + ( (yp(j+1) - yp(j)) / (xp(j+1) - xp(j)) ) * (x(i) - xp(j))
+                        exit
+                    end if
+                end do
+            end if
+        end do
+
+    end function interp1d
+
 end module
 
 subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
     use AD_Coriolis_parameters
-    use kind_parameters,  only: rkind
+    use kind_parameters,  only: rkind, clen
     use constants,        only: one,two
     use decomp_2d,        only: decomp_info
     implicit none
@@ -163,9 +203,10 @@ subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
     real(rkind)  :: Lx = one, Ly = one, Lz = one, yaw
     real(rkind) :: uInflow, vInflow, zmid
     real(rkind) :: InflowProfileAmplit, InflowProfileThick
+    character(len=clen) :: fname_inflow
     integer :: InflowProfileType
     namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, zmid, &
-        InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw
+        InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw, fname_inflow
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -207,7 +248,7 @@ end subroutine
 
 subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     use AD_Coriolis_parameters
-    use kind_parameters,    only: rkind
+    use kind_parameters,    only: rkind, clen
     use constants,          only: zero, one, two, pi, half
     use gridtools,          only: alloc_buffs
     use random,             only: gaussian_random
@@ -225,13 +266,14 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     real(rkind), dimension(:,:,:), pointer :: u, v, w, wC, x, y, z
     real(rkind), dimension(:,:,:), allocatable :: randArr, ybuffC, ybuffE, zbuffC, zbuffE
     integer :: nz, nzE
-    real(rkind)  :: Lx = one, Ly = one, Lz = one, G_alpha, yaw
+    real(rkind)  :: Lx = one, Ly = one, Lz = one, yaw
     real(rkind) :: uInflow, vInflow
     real(rkind) :: InflowProfileAmplit, InflowProfileThick, zmid=-1
     integer :: InflowProfileType
+    character(len=clen) :: fname_inflow
 
     namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, zmid, &
-        InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw
+        InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw, fname_inflow
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -254,7 +296,7 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     end if
 
     ! initialize inflow profile
-    call get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, zMid, InflowProfileType, yaw, u, v)
+    call get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, zMid, InflowProfileType, yaw, u, v, fname_inflow)
 
     !allocate(randArr(size(u,1),size(u,2),size(u,3)))
     !call gaussian_random(randArr,-one,one,seedu + 10*nrank)
