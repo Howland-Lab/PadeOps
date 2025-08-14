@@ -2,14 +2,13 @@
 
 module load cmake
 module load intel impi
-module load fftw3/3.3.10
 
 CWD=`pwd`
 export COMPILER_ID=Intel
 export FC=mpiifort
 export CC=mpiicc
 export CXX=mpiicpc
-export FFTW_PATH=$TACC_FFTW3_DIR
+export FFTW_PATH=${CWD}/dependencies/fftw-3.3.10
 export DECOMP_PATH=${CWD}/dependencies/2decomp_fft
 export VTK_IO_PATH=${CWD}/dependencies/Lib_VTK_IO/build
 export HDF5_PATH=${CWD}/dependencies/hdf5-1.14.3/build
