@@ -550,7 +550,7 @@ subroutine halo_communication(this, u, v, wC)
 
 end subroutine
 
-subroutine getForceRHS(this, dt, u, v, wC, urhs, vrhs, wrhs, newTimeStep, inst_horz_avg, uturb, vturb, wturb)
+subroutine getForceRHS(this, dt, u, v, wC, urhs, vrhs, wrhs, newTimeStep, inst_horz_avg, uturb, vturb, wturb, budgetCall)
     class(TurbineArray), intent(inout), target :: this
     real(rkind),                                                                         intent(in) :: dt
     real(rkind),    dimension(this%gpC%xsz(1),   this%gpC%xsz(2),   this%gpC%xsz(3)),    intent(in) :: u, v, wC
@@ -560,6 +560,7 @@ subroutine getForceRHS(this, dt, u, v, wC, urhs, vrhs, wrhs, newTimeStep, inst_h
     real(rkind),    dimension(:),                                                        intent(out)   :: inst_horz_avg
     complex(rkind), dimension(this%sp_gpC%ysz(1),this%sp_gpC%ysz(2),this%sp_gpC%ysz(3)), intent(inout), optional :: uturb, vturb
     complex(rkind), dimension(this%sp_gpE%ysz(1),this%sp_gpE%ysz(2),this%sp_gpE%ysz(3)), intent(inout), optional :: wturb
+    logical,                                                                             intent(in), optional :: budgetCall
     integer :: i, tavg, temp
     character(len=clen) :: tempname, tempname2, fname
     real(rkind) :: alpha_m, tmp, dirStd = 0.d0
@@ -568,6 +569,7 @@ subroutine getForceRHS(this, dt, u, v, wC, urhs, vrhs, wrhs, newTimeStep, inst_h
     ! Lookup table stuff
     real(rkind) :: alpha_input
     integer :: alpha_index
+    logical :: callTimeAdvance
 
     if (newTimeStep) then
          this%fx = zero; this%fy = zero; this%fz = zero
@@ -773,9 +775,13 @@ subroutine getForceRHS(this, dt, u, v, wC, urhs, vrhs, wrhs, newTimeStep, inst_h
                end if
                this%step=this%step+1
            case (5)
+               ! time should not advance if getForceRHS is being called for budget calculations
+               callTimeAdvance = .true.
+               if (present(budgetCall)) callTimeAdvance = (.not. budgetCall)
+               ! needed calculations for each turbine
                do i = 1, this%nTurbines
                     ! TODO move outside switch/case
-                    if (this%useDynamicTurbine) then  
+                    if ((callTimeAdvance) .and. (this%useDynamicTurbine)) then  
                         call this%dynamicArray(i)%time_advance(dt)
                     endif
 

@@ -124,11 +124,11 @@
        if ((this%useWindTurbines) .and. associated(this%uturb)) then
           if (copyTurbRHS) then
            call this%WindTurbineArr%getForceRHS(this%dt, this%u, this%v, this%wC, this%uturb, this%vturb, this%wturb, &
-                 & this%newTimestep, this%inst_horz_avg_turb, uturb=this%urhs_turbine, vturb=this%vrhs_turbine, wturb=this%wrhs_turbine) 
+                 & this%newTimestep, this%inst_horz_avg_turb, uturb=this%urhs_turbine, vturb=this%vrhs_turbine, wturb=this%wrhs_turbine, budgetCall = .true.) 
           else
                call this%WindTurbineArr%getForceRHS(this%dt, this%u, this%v, this%wC,&
                                     !this%uturb, this%v_rhs, this%w_rhs, this%newTimestep, this%inst_horz_avg_turb)
-                                    this%uturb, this%vturb, this%wturb, this%newTimestep, this%inst_horz_avg_turb)
+                                    this%uturb, this%vturb, this%wturb, this%newTimestep, this%inst_horz_avg_turb, budgetCall = .true.)
           end if
           this%u_rhs = this%u_rhs + this%uturb
           this%v_rhs = this%v_rhs + this%vturb
