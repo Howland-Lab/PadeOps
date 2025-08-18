@@ -3,11 +3,9 @@ module HIT_shear_parameters
     use exits, only: message
     use kind_parameters,  only: rkind
     use constants, only: kappa, zero
-    use basic_io, only: read_2d_ascii, write_2d_ascii
     implicit none
 
-    ! I realize it is probably bad practice to store information in the shared
-    ! module parameters, but it is the least invasive way I've found to modify the code.
+    ! I realize it is probably bad practice to store information here, but it is the easiest way I've found
     ! -KSH 10/02/2024
 
     integer :: simulationID = 0
@@ -19,41 +17,29 @@ module HIT_shear_parameters
 contains
 
 ! build the velocity profiles
-    subroutine get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, zMid, InflowProfileType, yaw, u, v, fname_inflow)
-        use kind_parameters, only: rkind, clen
+    subroutine get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, zMid, InflowProfileType, yaw, u, v)
+        use kind_parameters, only: rkind
         use constants,       only: zero, one, two, pi, half
         use exits,           only: gracefulExit
 
         implicit none
         real(rkind), dimension(:,:,:), intent(inout) :: u, v
         real(rkind), dimension(:,:,:), intent(in) :: z
-        real(rkind), dimension(size(z,3)) :: z1d, u1d, v1d
         real(rkind), intent(in) :: InflowProfileAmplit, InflowProfileThick, zMid, uInflow, vInflow, yaw
         integer, intent(in) :: InflowProfileType
         integer:: i
         real(rkind) :: a_max, g_min, g_max
         real(rkind), dimension(size(u,1), size(u,2), size(u,3)) :: alpha, g
         real(rkind) :: buffer=8.0d-1  ! buffer value = 1 - umin
-        character(len=clen) :: fname_inflow
-        real(rkind), dimension(:,:), allocatable :: inflow_arr
 
         select case(InflowProfileType)
-          case(-1)
-            ! read inflow from ASCII files - look for inflow_data.txt with columns
-            ! z | u | v | k
-            call read_2d_ascii(inflow_arr, trim(fname_inflow))
-            z1d = z(1,1,:)
-            u1d = interp1d(z1d, inflow_arr(:,1), inflow_arr(:,2))
-            v1d = interp1d(z1d, inflow_arr(:,1), inflow_arr(:,3))
-            u = spread(spread(u1d, dim=1, ncopies=size(z, 1)), dim=2, ncopies=size(z, 2))
-            v = spread(spread(v1d, dim=1, ncopies=size(z, 1)), dim=2, ncopies=size(z, 2))
           case(0)
             u = uInflow
             v = zero
-          case(1)  ! tanh veer only
+          case(1)  ! tanh shear and veer
             u = uInflow
             v = uInflow * buffer * tanh(vinflow * InflowProfileAmplit * (z-zMid) / buffer)
-          case(2)  ! tanh shear and veer
+          case(2)
             u = uInflow*(one  + buffer * tanh(InflowProfileAmplit * (z-zMid) / buffer))
             v = uInflow * buffer * tanh(vinflow * InflowProfileAmplit * (z-zMid) / buffer)
           case(3)  ! veer only, linear |u|
@@ -127,33 +113,6 @@ contains
         wtarget_1d = zero
     end subroutine
 
-! interpolation function
-    function interp1d(x, xp, yp) result(y)
-        implicit none
-        real(rkind), intent(in) :: x(:)             ! query points, arbitrary dimensions
-        real(rkind), intent(in) :: xp(:), yp(:)     ! x, y coordinates of data points (x must be sorted)
-        real(rkind) :: y(size(x))
-        integer :: i, j
-
-        do i = 1, size(x)
-            ! check if out of bounds - if so, then clip to boundary values
-            if (x(i) <= xp(1)) then
-                y(i) = yp(1)
-            else if (x(i) >= xp(size(xp))) then
-                y(i) = yp(size(yp))
-            else
-                ! find interval xp(j) <= x(i) < xp(j+1)
-                do j = 1, size(xp) - 1
-                    if (x(i) >= xp(j) .and. x(i) < xp(j+1)) then
-                        y(i) = yp(j) + ( (yp(j+1) - yp(j)) / (xp(j+1) - xp(j)) ) * (x(i) - xp(j))
-                        exit
-                    end if
-                end do
-            end if
-        end do
-
-    end function interp1d
-
 ! fringe function
     pure subroutine Sfunc(x, val)
         real(rkind), dimension(:,:,:), intent(in) :: x
@@ -173,7 +132,7 @@ contains
 ! initialize fringe targets with (laminar) flow
     subroutine init_fringe_targets(inputfile, mesh)
         use exits, only: message
-        use kind_parameters,    only: rkind, clen
+        use kind_parameters,    only: rkind
         use constants,          only: zero, one, two, pi, half
         use random,             only: gaussian_random
 
@@ -185,10 +144,9 @@ contains
         real(rkind) :: Lx, Ly, Lz, uInflow = one, vInflow = zero, yaw = zero
         real(rkind) :: InflowProfileAmplit = one, InflowProfileThick = zero, zmid=-1
         integer :: InflowProfileType = 1
-        character(len=clen) :: fname_inflow
 
         namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, zmid, &
-            InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw, fname_inflow
+            InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw
 
         ioUnit = 11
         open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -201,8 +159,8 @@ contains
             zMid = Lz / two
         end if
         z => mesh(:,:,:,3)
-        call get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, zMid, InflowProfileType, yaw, utarget0, vtarget0, fname_inflow)
-        call get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z_global, zMid, InflowProfileType, yaw, utarget_1d, vtarget_1d, fname_inflow)
+        call get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, zMid, InflowProfileType, yaw, utarget0, vtarget0)
+        call get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z_global, zMid, InflowProfileType, yaw, utarget_1d, vtarget_1d)
 
         InflowSpeed = uInflow  ! set the "linear advection" velocity
         if ((InflowProfileType .ne. 0) .and. (advect_shear)) then
@@ -237,14 +195,14 @@ subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
     real(rkind) :: InflowProfileAmplit, InflowProfileThick, zmid=-1
     integer :: InflowProfileType
     ! HIT stuff
-    character(len=clen) :: ufname, vfname, wfname, fname_inflow
+    character(len=clen) :: ufname, vfname, wfname
     real(rkind) :: TI, uadv, kleft, kright, u_init! Lx, Ly, Lz,  - already assigned above
     integer :: inittype
     logical :: BandpassFilterFields
 
     ! AD Coriolis input NML:
     namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, zmid, &
-        InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw, fname_inflow
+        InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw
     ! HIT periodic input NML:
     namelist /HIT_PeriodicINPUT/ ufname, vfname, wfname, TI, uadv, kleft, kright, BandpassFilterFields, Lx, Ly, Lz, initType, u_init
 
@@ -308,7 +266,7 @@ end subroutine
 
 subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     use HIT_shear_parameters
-    use kind_parameters,    only: rkind, clen
+    use kind_parameters,    only: rkind
     use constants,          only: zero, one, two, pi, half
     use gridtools,          only: alloc_buffs
     use random,             only: gaussian_random
@@ -328,10 +286,9 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     real(rkind) :: Lx, Ly, Lz, uInflow = one, vInflow = zero, yaw = zero
     real(rkind) :: InflowProfileAmplit = zero, InflowProfileThick = zero, zmid=-1
     integer :: InflowProfileType = 0
-    character(len=clen) :: fname_inflow
 
     namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, zmid, &
-        InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw, fname_inflow
+        InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw
 
     if (simulationID == 1) then ! for adsim only
 
@@ -355,7 +312,7 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
         end if
 
         ! initialize velocity fields
-        call get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, zMid, InflowProfileType, yaw, u, v, fname_inflow)
+        call get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, zMid, InflowProfileType, yaw, u, v)
         wC= zero
         w = zero
 

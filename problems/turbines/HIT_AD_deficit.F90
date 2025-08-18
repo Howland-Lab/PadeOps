@@ -95,7 +95,9 @@ program HIT_deficit
     call hit%start_io(.true.)
     call hit%printDivergence()
     call message("Initialized CONCURRENT HIT simulation")
-    if (freeze_HIT) call message(1, "HIT targets are FROZEN")
+    if (freeze_HIT) then
+        call message(1, "HIT targets are FROZEN")
+    end if
 
     ! For anisotropic PRIMARY and EMPTY domains, we will need to declare an anisotropy factor in x
     aniso_x = nint(adsim%dx / hit%dx)
@@ -163,7 +165,7 @@ program HIT_deficit
 
     ! phaseshift turbulent fringe targets using the laminar fringe targets
     if (control_TI) call update_TI_fact(emptysim, .true.)  ! update TI based on the EMPTY simulation
-    call do_phaseshifting()
+    call do_phaseshifting() !hit, adsim, utarget, vtarget, wtarget)
 
     ! initialize budgets
     call budg_tavg%init(AD_Inputfile, adsim)               !<-- Budget class initialization
@@ -260,7 +262,7 @@ program HIT_deficit
 
     deallocate(hit, adsim)
 
-    ! deallocate fringe targets
+! deallocate fringe targets
     deallocate(utarget0, vtarget0, wtarget0)
     deallocate(utarget, vtarget, wtarget)
     deallocate(utarget_1d, vtarget_1d)
@@ -281,7 +283,6 @@ contains
             x_shift_z = adsim%tsim * utarget_1d(1, 1,:)
             y_shift_z = adsim%tsim * vtarget_1d(1, 1,:)
 
-            ! if sheared, then advect the HIT flow with different freestream velocity as a function of z
             call hit%spectC%bandpassFilter_and_phaseshift_z(hit%whatC, hit%rbuffxC(:,:,:,1), x_shift_z, y_shift_z)
             call hit%interpolate_cellField_to_edgeField(hit%rbuffxC(:,:,:,1), hit%rbuffxE(:,:,:,1),0,0)
             call hit%spectC%bandpassFilter_and_phaseshift_z(hit%uhat, hit%rbuffxC(:,:,:,1), x_shift_z, y_shift_z)
