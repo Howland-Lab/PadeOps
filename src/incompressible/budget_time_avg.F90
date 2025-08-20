@@ -630,11 +630,16 @@ contains
         ! STEP 2: Get Reynolds stresses (IMPORTANT: need to correct for fluctuation before dumping)
         this%budget_0(:,:,:,4) = this%budget_0(:,:,:,4) + this%igrid_sim%u*this%igrid_sim%u
         this%budget_0(:,:,:,5) = this%budget_0(:,:,:,5) + this%igrid_sim%u*this%igrid_sim%v
-        this%budget_0(:,:,:,6) = this%budget_0(:,:,:,6) + this%igrid_sim%u*this%igrid_sim%wC
+        ! compute u'w' on edge cells for implicit dealiasing
+        this%igrid_sim%rbuffxE(:,:,:,1) = this%igrid_sim%uE * this%igrid_sim%w
+        call this%interp_Edge2Cell(this%igrid_sim%rbuffxE(:,:,:,1), this%igrid_sim%rbuffxC(:,:,:,1))
+        this%budget_0(:,:,:,6) = this%budget_0(:,:,:,6) + this%igrid_sim%rbuffxC(:,:,:,1)
         this%budget_0(:,:,:,7) = this%budget_0(:,:,:,7) + this%igrid_sim%v*this%igrid_sim%v
-        this%budget_0(:,:,:,8) = this%budget_0(:,:,:,8) + this%igrid_sim%v*this%igrid_sim%wC
-        this%budget_0(:,:,:,9) = this%budget_0(:,:,:,9) + this%igrid_sim%wC*this%igrid_sim%wC
-
+        ! compute v'w' on edge cells for implicit dealiasing
+        this%igrid_sim%rbuffxE(:,:,:,1) = this%igrid_sim%vE * this%igrid_sim%w
+        call this%interp_Edge2Cell(this%igrid_sim%rbuffxE(:,:,:,1), this%igrid_sim%rbuffxC(:,:,:,1))
+        this%budget_0(:,:,:,8) = this%budget_0(:,:,:,8) + this%igrid_sim%rbuffxC(:,:,:,1)
+        this%budget_0(:,:,:,9) = this%budget_0(:,:,:,9) + this%igrid_sim%wC*this%igrid_sim%wC        
         ! STEP 3: Pressure
         this%budget_0(:,:,:,10) = this%budget_0(:,:,:,10) + this%igrid_sim%pressure
 
@@ -672,7 +677,10 @@ contains
         if (this%isStratified) then
             this%budget_0(:,:,:,27) = this%budget_0(:,:,:,27) + this%igrid_sim%u*this%igrid_sim%T
             this%budget_0(:,:,:,28) = this%budget_0(:,:,:,28) + this%igrid_sim%v*this%igrid_sim%T
-            this%budget_0(:,:,:,29) = this%budget_0(:,:,:,29) + this%igrid_sim%wC*this%igrid_sim%T
+            ! compute w'T' on edge cells for implicit dealiasing
+            this%igrid_sim%rbuffxE(:,:,:,1) = this%igrid_sim%TE * this%igrid_sim%w
+            call this%interp_Edge2Cell(this%igrid_sim%rbuffxE(:,:,:,1), this%igrid_sim%rbuffxC(:,:,:,1))
+            this%budget_0(:,:,:,29) = this%budget_0(:,:,:,29) + this%igrid_sim%rbuffxC(:,:,:,1)
             this%budget_0(:,:,:,30) = this%budget_0(:,:,:,30) + this%igrid_sim%T*this%igrid_sim%T
         end if
 
