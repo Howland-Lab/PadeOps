@@ -36,24 +36,19 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     real(rkind), dimension(:,:,:,:), intent(inout), target :: fieldsE
     integer :: ioUnit
     real(rkind), dimension(:,:,:), pointer :: u, v, w, wC, T, x, y, z
-    real(rkind), dimension(:,:,:), allocatable :: ybuffC, ybuffE, zbuffC, zbuffE, ztmp
+    real(rkind), dimension(:,:,:), allocatable :: ybuffC, ybuffE, zbuffC, zbuffE
     integer :: nz, nzE, k
-    real(rkind) :: sig
+    real(rkind) :: sig, dz
     real(rkind), dimension(:,:,:), allocatable :: randArr, Tpurt, eta
     real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, dTsurf_dt = -0.05d0, &
                     z0init = 1.d-4, frameAngle = zero, dTdz = 3.d-3, z_Tref = zero, T_inv = zero
     
     namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, dTdz, z_Tref, T_inv
-    !namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, dTdz, z_Tref
-    !real(rkind)  :: beta, sigma, phi_ref
-    !integer :: z_ref
-    !namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle!, beta, sigma, phi_ref, z_ref
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
     read(unit=ioUnit, NML=PROBLEM_INPUT)
-    close(ioUnit)    
-
+    close(ioUnit)
 
     !!!!!!!!!!!!!!!!!!!!! DON'T CHANGE THE POINTERS / ALLOCATIONS !!!!!!!!!!!!!!!!!!!!!!
     u  => fieldsC(:,:,:,1); v  => fieldsC(:,:,:,2); wC => fieldsC(:,:,:,3)
@@ -63,7 +58,6 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     !allocate(randArr(size(T,1),size(T,2),size(T,3)))
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-
     u = one
     v = zero
     wC = zero
@@ -71,18 +65,16 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     u = u * cos(frameAngle * pi / 180.d0)
     v = v * sin(frameAngle * pi / 180.d0) 
 
-    allocate(ztmp(decompC%xsz(1),decompC%xsz(2),decompC%xsz(3)))
-    allocate(Tpurt(decompC%xsz(1),decompC%xsz(2),decompC%xsz(3)))
-    ztmp = z*xDim
+    ! initialize initial temperature profile
     T = dTdz*(z-z_Tref) + Tsurf0 + T_inv
-    !T = 0.003d0*(ztmp - 700.d0) + 300.d0
     where(z < z_Tref)
         T = Tsurf0  ! artificial abl height if z_ref > 0
     end where
     !T = T + 0.0001d0*ztmp
 
-    ! Add random numbers
+    ! Add random numbers to temperature field below z_Tref
     allocate(randArr(size(T,1),size(T,2),size(T,3)))
+    allocate(Tpurt(decompC%xsz(1),decompC%xsz(2),decompC%xsz(3)))
     call gaussian_random(randArr,zero,one,seedu + 10*nrank)
     !randArr = cos(4.d0*2.d0*pi*x)*sin(4.d0*2.d0*pi*y)
     do k = 1,size(u,3)
@@ -91,12 +83,13 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     end do
     deallocate(randArr)
 
-    where (ztmp > 100.d0)
-        Tpurt = zero
+    dz = z(1,1,2) - z(1,1,1)
+    where (z > (z_Tref / two + dz))  ! even when z_Tref = 0, adds perturbations
+        Tpurt = zero  ! zero out perturbations
     end where
     T = T + Tpurt
 
-    deallocate(ztmp, Tpurt)
+    deallocate(Tpurt)
 
     !!!!!!!!!!!!!!!!!!!!! DON'T CHANGE ANYTHING UNDER THIS !!!!!!!!!!!!!!!!!!!!!!
     ! Interpolate wC to w
@@ -155,13 +148,7 @@ subroutine setDirichletBC_Temp(inputfile, Tsurf, dTsurf_dt)
                     z0init = 1.d-4, frameAngle = zero, dTdz = 3.d-3, z_Tref = zero, T_inv = zero
     
     namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, dTdz, z_Tref, T_inv
-    !real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, z0init = 1.d-4, frameAngle = 0.d0, dTdz = 3.d-3, z_Tref = zero
-    !namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, dTdz
-    !namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, dTdz, z_Tref
-    !real(rkind)  :: beta, sigma, phi_ref
-    !integer :: z_ref
-    !namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle!, beta, sigma, phi_ref, z_ref    
- 
+
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
     read(unit=ioUnit, NML=PROBLEM_INPUT)
@@ -194,7 +181,7 @@ subroutine hook_probes(inputfile, probe_locs)
     use kind_parameters,    only: rkind
     real(rkind), dimension(:,:), allocatable, intent(inout) :: probe_locs
     character(len=*),                intent(in)    :: inputfile
-    integer, parameter :: nprobes = 2
+    integer, parameter :: nprobes = 6
     
     ! IMPORTANT : Convention is to allocate probe_locs(3,nprobes)
     ! Example: If you have at least 3 probes:
@@ -207,8 +194,12 @@ subroutine hook_probes(inputfile, probe_locs)
     ! Example code: The following allocates 2 probes at (0.1,0.1,0.1) and
     ! (0.2,0.2,0.2)  
     allocate(probe_locs(3,nprobes))
-    probe_locs(1,1) = 0.1d0; probe_locs(2,1) = 0.1d0; probe_locs(3,1) = 0.1d0;
-    probe_locs(1,2) = 0.2d0; probe_locs(2,2) = 0.2d0; probe_locs(3,2) = 0.2d0;
+    probe_locs(1,1) = 0.0d0; probe_locs(2,1) = 0.0d0; probe_locs(3,1) = 0.2d0;
+    probe_locs(1,2) = 0.0d0; probe_locs(2,2) = 0.0d0; probe_locs(3,2) = 0.5d0;
+    probe_locs(1,3) = 0.0d0; probe_locs(2,3) = 0.0d0; probe_locs(3,3) = 1.0d0;
+    probe_locs(1,4) = 0.0d0; probe_locs(2,4) = 4.0d0; probe_locs(3,4) = 0.2d0;
+    probe_locs(1,5) = 0.0d0; probe_locs(2,5) = 4.0d0; probe_locs(3,5) = 0.5d0;
+    probe_locs(1,6) = 0.0d0; probe_locs(2,6) = 4.0d0; probe_locs(3,6) = 1.0d0;
 
 end subroutine
 
@@ -230,11 +221,6 @@ subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
     integer :: i,j,k, ioUnit
     character(len=*),                intent(in)    :: inputfile
     integer :: ix1, ixn, iy1, iyn, iz1, izn
-    !real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, dTsurf_dt = -0.05d0, z0init = 1.d-4, frameAngle = 0.d0, dTdz = 3.d-3, z_Tref = zero
-    !real(rkind)  :: beta, sigma, phi_ref
-    !integer :: z_ref 
-    !namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, dTdz
-    !namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, dTdz, z_Tref
     real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, dTsurf_dt = -0.05d0, &
                     z0init = 1.d-4, frameAngle = zero, dTdz = 3.d-3, z_Tref = zero, T_inv = zero
     
@@ -289,12 +275,6 @@ subroutine set_Reference_Temperature(inputfile, Thetaref)
                     z0init = 1.d-4, frameAngle = zero, dTdz = 3.d-3, z_Tref = zero, T_inv = zero
     
     namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, dTdz, z_Tref, T_inv
-    !real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, dTsurf_dt = -0.05d0, z0init = 2.5d-4, frameAngle = 0.d0, dTdz = 3.d-3, z_Tref = zero
-    !namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, dTdz, z_Tref
-    !namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, dTdz
-    !real(rkind)  :: beta, sigma, phi_ref
-    !integer :: z_ref
-    !namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle!, beta, sigma, phi_ref, z_ref     
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
