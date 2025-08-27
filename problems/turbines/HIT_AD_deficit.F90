@@ -38,6 +38,7 @@ program HIT_deficit
     real(rkind), dimension(:,:,:), allocatable :: utarget, vtarget, wtarget
     real(rkind) :: dt1 = one, dt2 = one, dt3 = one, dt = one
     real(rkind) :: k_bandpass_left = 10.d0, k_bandpass_right = 64.d0, TI_xloc = 0
+    real(rkind) :: TI_target = -1, TI_fact = -1, KIinv_TI = 0.5d0, Kp_TI = 1.d0, integral_err = zero
     type(fof), dimension(:), allocatable :: filt
     integer, dimension(:), allocatable :: pid
     integer :: fid, nfilters = 2, tid_FIL_FullField = 75, tid_FIL_Planes = 4, TI_xid
@@ -47,7 +48,7 @@ program HIT_deficit
 
     namelist /concurrent/ HIT_InputFile, AD_InputFile, Empty_InputFile, InflowSpeed, &
         k_bandpass_left, k_bandpass_right, & 
-        TI_target, TI_xloc, TI_fact, freeze_HIT, advect_shear
+        TI_target, TI_xloc, TI_fact, freeze_HIT, advect_shear, KIinv_TI, Kp_TI
     namelist /FILTER_INFO/ applyfilters, nfilters, fof_dir, tid_FIL_FullField, tid_FIL_Planes, filoutdir
 
     call MPI_Init(ierr)
@@ -115,6 +116,9 @@ program HIT_deficit
         TI_xid = minloc(abs(adsim%mesh(:,1,1,1) - TI_xloc), 1)  ! xid corresponding to TI sampling location
         control_TI = .true.
         call message(0, "TI controller activated")
+        call message(1, "TI controller parameters")
+        call message(2, "Kp", Kp_TI)
+        call message(2, "KIinv", KIinv_TI)
         call message(1, "tracking x-location:", adsim%mesh(TI_xid,1,1,1))
         call message(1, "target TI: ", TI_target)
     else if (TI_fact >= 0) then
@@ -314,7 +318,7 @@ contains
 
         class(igrid), allocatable, target, intent(in) :: sim
         real(rkind), dimension(sim%gpC%xsz(2), sim%gpC%xsz(3)) :: buff1
-        real(rkind) :: TI_inst, tke_avg
+        real(rkind) :: TI_inst, tke_avg, error
         logical, intent(in) :: first_timestep
 
         if (TI_target < 0) then
@@ -336,7 +340,9 @@ contains
                 TI_fact = sqrt(three / two / hit%getMeanKE()) * TI_target
             end if
         else
-            TI_fact = max(zero, TI_fact + ((TI_target - TI_inst) * sim.dt / Tp_TI))
+            error = TI_target - TI_inst
+            integral_err = integral_err + (error * sim.dt / KIinv_TI)
+            TI_fact = max(zero, Kp_TI * error + integral_err)
         end if
 
         if (debug_TI_gain) then
