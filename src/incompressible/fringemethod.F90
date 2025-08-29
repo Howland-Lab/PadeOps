@@ -11,16 +11,17 @@ module fringeMethod
       private
       logical, public                                       :: TargetsAssociated = .false. 
       real(rkind), public, dimension(:,:,:), pointer        :: u_target, v_target, w_target, T_target, F_target
+      real(rkind), public, dimension(:,:,:), allocatable    :: u_for_shifts, v_for_shifts, w_for_shifts, T_for_shifts, F_for_shifts
+      complex(rkind), dimension(:,:,:), pointer        :: uhat, vhat, what, That
       real(rkind), dimension(:,:,:), allocatable    :: Fringe_kernel_cells, Fringe_kernel_edges
-      real(rkind)                                   :: Fringe_Lambda_x
       type(spectral),    pointer                    :: spectC, spectE
       type(decomp_info), pointer                    :: gpC, gpE, sp_gpC, sp_gpE
       real(rkind),    dimension(:,:,:,:), pointer   :: rbuffxC, rbuffxE
       complex(rkind), dimension(:,:,:,:), pointer   :: cbuffyC, cbuffyE
-      real(rkind)                                   :: LambdaFact, LambdaFactPotTemp
+      real(rkind)                                   :: LambdaFact, LambdaFactPotTemp, xshift=0, yshift=0
       integer :: myFringeID = 1
-      logical :: useTwoFringex = .false. 
-      logical, public :: useFringeAsSponge_Scalar = .true. 
+      logical :: useTwoFringex = .false., T_linked_for_shifts = .false.
+      logical, public :: useFringeAsSponge_Scalar = .true., do_shifts = .false.
       logical :: firstCallComplete = .false.
       logical :: firstCallCompleteScalar = .false.
       contains
@@ -34,6 +35,9 @@ module fringeMethod
          procedure :: associateFringeTarget_scalar
          procedure :: getFringeFraction
          procedure :: getLambdaFact
+         procedure :: link_igrid_pointers
+         procedure :: update_fringe_shifts
+         procedure :: phaseshift
    end type
     
 contains
@@ -75,6 +79,10 @@ contains
 
 
       if (this%targetsAssociated) then
+         if (this%do_shifts) then
+            call this%update_fringe_shifts()
+         end if
+
          ! u velocity source term 
          this%rbuffxC(:,:,:,1) = (this%Lambdafact/dt)*(this%Fringe_kernel_cells)*(this%u_target - uC)
          call this%spectC%fft(this%rbuffxC(:,:,:,1), this%cbuffyC(:,:,:,1))      
@@ -156,6 +164,16 @@ contains
       deallocate(this%Fringe_kernel_cells)
       deallocate(this%Fringe_kernel_edges)
       this%TargetsAssociated = .false.
+
+      nullify(this%uhat, this%vhat, this%what, this%u_target, this%v_target, this%w_target)
+
+      if (this%do_shifts) then
+         deallocate(this%u_for_shifts, this%v_for_shifts, this%w_for_shifts)
+         if (this%T_linked_for_shifts) then
+            deallocate(this%T_for_shifts)
+            nullify(this%That, this%T_target)
+         end if
+      end if
    end subroutine
 
    subroutine associateFringeTarget_scalar(this, Ftarget)
@@ -189,8 +207,9 @@ contains
    subroutine init(this, inputfile, dx, x, dy, y, spectC, spectE, gpC, gpE, rbuffxC, rbuffxE, cbuffyC, cbuffyE, fringeID)
       use reductions, only: p_minval, p_maxval
       use exits, only: message_min_max
-       use decomp_2d_io
+      use decomp_2d_io
       use mpi
+      use constants, only : zero
       class(fringe), intent(inout) :: this
       character(len=clen), intent(in) :: inputfile 
       type(decomp_info), intent(in), target :: gpC, gpE
@@ -211,13 +230,16 @@ contains
       real(rkind) :: Fringe2_delta_st_x = 1.d0, Fringe2_delta_en_x = 1.d0
       real(rkind) :: Fringe1_xst = 0.75d0, Fringe1_xen = 1.d0
       real(rkind) :: Fringe2_xst = 0.75d0, Fringe2_xen = 1.d0
-      
+      real(rkind) :: xshift = zero, yshift = zero
+
       integer :: ioUnit = 10, i, j, k, nx, ierr
       real(rkind), dimension(:), allocatable :: x1, x2, Fringe_func, S1, S2, y1, y2
-      logical :: Apply_x_fringe = .true., Apply_y_fringe = .false.
+      logical :: Apply_x_fringe = .true., Apply_y_fringe = .false., do_shifts = .false.
       namelist /FRINGE/ Apply_x_fringe, Apply_y_fringe, Fringe_xst, Fringe_xen, Fringe_delta_st_x, Fringe_delta_en_x, &
-                        Fringe_delta_st_y, Fringe_delta_en_y, LambdaFact, LambdaFactPotTemp, LambdaFact2, Fringe_yen, Fringe_yst, Fringe1_delta_st_x, &
-                        Fringe2_delta_st_x, Fringe1_delta_en_x, Fringe2_delta_en_x, Fringe1_xst, Fringe2_xst, Fringe1_xen, Fringe2_xen
+                        Fringe_delta_st_y, Fringe_delta_en_y, LambdaFact, Fringe_yen, Fringe_yst, LambdaFactPotTemp, LambdaFact2, &
+                        Fringe1_delta_st_x, Fringe1_delta_en_x, Fringe1_xst, Fringe1_xen, &  ! consider switching to using Fringe_xst, etc. instead of Fringe1_xst
+                        Fringe2_delta_st_x, Fringe2_delta_en_x, Fringe2_xst, Fringe2_xen, &
+                        do_shifts, xshift, yshift
     
       if (present(fringeID)) then
          this%myFringeID = fringeID
@@ -240,6 +262,15 @@ contains
       this%rbuffxE => rbuffxE
       this%cbuffyC => cbuffyC 
       this%cbuffyE => cbuffyE
+      this%do_shifts = do_shifts  ! apply shifted boundary conditions - Munters, Meneveau, Meyers (2016)
+      this%xshift = xshift        ! amount to shift x-boundary conditions (non-dim to L, not Lx)
+      this%yshift = yshift        ! amount to shift y-boundary conditions (non-dim to L, not Ly)
+
+      if (this%do_shifts) then
+         call message(1, "Applying shifted boundary conditions to fringe targets")
+         call message(2, "x-shift", this%xshift)
+         call message(2, "y-shift", this%yshift)
+      end if
 
       this%useFringeAsSponge_Scalar = .true. 
       
@@ -359,6 +390,23 @@ contains
    end subroutine
 
 
+   subroutine link_igrid_pointers(this, uhat, vhat, what, That)
+      class(fringe), intent(inout) :: this
+      complex(rkind), dimension(this%gpC%ysz(1),this%gpC%ysz(2),this%gpC%ysz(3)), intent(in), target           :: uhat, vhat
+      complex(rkind), dimension(this%gpE%ysz(1),this%gpE%ysz(2),this%gpE%ysz(3)), intent(in), target           :: what
+      complex(rkind), dimension(this%gpC%ysz(1),this%gpC%ysz(2),this%gpC%ysz(3)), intent(in), optional, target :: That
+
+      this%uhat => uhat
+      this%vhat => vhat
+      this%what => what
+      if (present(That)) then
+         this%That => That
+         this%T_linked_for_shifts = .true.
+      end if
+
+   end subroutine
+
+
    pure subroutine S_fringe(x, output)
       real(rkind), dimension(:), intent(in)    :: x
       real(rkind), dimension(:), intent(out)   :: output
@@ -396,6 +444,38 @@ contains
       real(rkind), intent(out) :: output
 
       output = this%LambdaFact
+   end subroutine
+
+
+   subroutine update_fringe_shifts(this)
+      class(fringe), intent(inout) :: this
+      ! Perform lateral shifting here
+      call this%phaseshift(this%uhat, this%u_for_shifts, this%xshift, this%yshift)
+      call this%phaseshift(this%vhat, this%v_for_shifts, this%xshift, this%yshift)
+      call this%phaseshift(this%what, this%w_for_shifts, this%xshift, this%yshift)
+      call this%phaseshift(this%That, this%T_for_shifts, this%xshift, this%yshift)
+   end subroutine
+
+
+   subroutine phaseshift(this, uhat, uFilt, xshift, yshift)
+      use constants, only: imi
+      class(fringe), intent(inout) :: this
+      complex(rkind), dimension(this%sp_gpC%ysz(1),this%sp_gpC%ysz(2), this%sp_gpC%ysz(3)), intent(in) :: uhat
+      complex(rkind), dimension(size(uhat,1),size(uhat,2),size(uhat,3)) :: tmp
+      real(rkind),    dimension(this%spectC%physdecomp%xsz(1),this%spectC%physdecomp%xsz(2), this%spectC%physdecomp%xsz(3)), intent(out) :: uFilt
+      real(rkind), intent(in) :: xshift, yshift
+      integer :: i,j,k
+
+      tmp = uhat
+      do k = 1,size(tmp,3)             ! loop through all z-levels
+         do j = 1,size(tmp,2)          ! loop through all y-wavenumbers
+               do i = 1,size(tmp,1)    ! loop through all x-wavenumbers
+                  tmp(i,j,k) = uhat(i,j,k)*exp(-imi*(this%spectC%k1(i,1,1)*xshift+this%spectC%k2(1,j,1)*yshift))
+               end do
+         end do
+      end do
+      call this%spectC%ifft(tmp, uFilt)  ! inverse FFT back to real space
+
    end subroutine
 
 end module 
