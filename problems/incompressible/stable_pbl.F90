@@ -8,7 +8,7 @@ program stable_pbl
     use mpi
     use kind_parameters,  only: clen
     use IncompressibleGrid, only: igrid
-    use temporalhook, only: doTemporalStuff, initialize_controller_location
+    use temporalhook, only: doTemporalStuff
     use timer, only: tic, toc
     use budgets_xy_avg_mod, only: budgets_xy_avg
     use budgets_time_avg_mod, only: budgets_time_avg
