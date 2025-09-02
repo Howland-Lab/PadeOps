@@ -235,6 +235,7 @@ module budgets_time_avg_mod
         procedure, private :: interp_Edge2Cell
         procedure, private :: interp_Cell2Edge
         procedure, private :: multiply_CellFieldsOnEdges
+        procedure, private :: multiply_Edges_interp_cell
     end type 
 
 
@@ -631,14 +632,10 @@ contains
         this%budget_0(:,:,:,4) = this%budget_0(:,:,:,4) + this%igrid_sim%u*this%igrid_sim%u
         this%budget_0(:,:,:,5) = this%budget_0(:,:,:,5) + this%igrid_sim%u*this%igrid_sim%v
         ! compute u'w' on edge cells for implicit dealiasing
-        this%igrid_sim%rbuffxE(:,:,:,1) = this%igrid_sim%uE * this%igrid_sim%w
-        call this%interp_Edge2Cell(this%igrid_sim%rbuffxE(:,:,:,1), this%igrid_sim%rbuffxC(:,:,:,1))
-        this%budget_0(:,:,:,6) = this%budget_0(:,:,:,6) + this%igrid_sim%rbuffxC(:,:,:,1)
+        this%budget_0(:,:,:,6) = this%budget_0(:,:,:,6) + this%multiply_Edges_interp_cell(this%igrid_sim%uE, this%igrid_sim%w)
         this%budget_0(:,:,:,7) = this%budget_0(:,:,:,7) + this%igrid_sim%v*this%igrid_sim%v
         ! compute v'w' on edge cells for implicit dealiasing
-        this%igrid_sim%rbuffxE(:,:,:,1) = this%igrid_sim%vE * this%igrid_sim%w
-        call this%interp_Edge2Cell(this%igrid_sim%rbuffxE(:,:,:,1), this%igrid_sim%rbuffxC(:,:,:,1))
-        this%budget_0(:,:,:,8) = this%budget_0(:,:,:,8) + this%igrid_sim%rbuffxC(:,:,:,1)
+        this%budget_0(:,:,:,8) = this%budget_0(:,:,:,8) + this%multiply_Edges_interp_cell(this%igrid_sim%vE, this%igrid_sim%w)
         this%budget_0(:,:,:,9) = this%budget_0(:,:,:,9) + this%igrid_sim%wC*this%igrid_sim%wC        
         ! STEP 3: Pressure
         this%budget_0(:,:,:,10) = this%budget_0(:,:,:,10) + this%igrid_sim%pressure
@@ -678,9 +675,7 @@ contains
             this%budget_0(:,:,:,27) = this%budget_0(:,:,:,27) + this%igrid_sim%u*this%igrid_sim%T
             this%budget_0(:,:,:,28) = this%budget_0(:,:,:,28) + this%igrid_sim%v*this%igrid_sim%T
             ! compute w'T' on edge cells for implicit dealiasing
-            this%igrid_sim%rbuffxE(:,:,:,1) = this%igrid_sim%TE * this%igrid_sim%w
-            call this%interp_Edge2Cell(this%igrid_sim%rbuffxE(:,:,:,1), this%igrid_sim%rbuffxC(:,:,:,1))
-            this%budget_0(:,:,:,29) = this%budget_0(:,:,:,29) + this%igrid_sim%rbuffxC(:,:,:,1)
+            this%budget_0(:,:,:,29) = this%budget_0(:,:,:,29) +  this%multiply_Edges_interp_cell(this%igrid_sim%TE, this%igrid_sim%w)
             this%budget_0(:,:,:,30) = this%budget_0(:,:,:,30) + this%igrid_sim%T*this%igrid_sim%T
         end if
 
@@ -2601,4 +2596,14 @@ subroutine DumpBudget4_23(this)
         call transpose_y_to_x(this%igrid_sim%rbuffyC(:,:,:,1),fmultC,this%igrid_sim%gpC)
 
     end subroutine 
+
+    ! multiply on edge cells and interpolate to cell centers to reduce aliasing issues
+    function multiply_Edges_interp_cell(this, f1E, f2E) result(fmultC)
+        class(budgets_time_avg), intent(inout) :: this
+        real(rkind), dimension(this%igrid_sim%gpE%xsz(1),this%igrid_sim%gpE%xsz(2),this%igrid_sim%gpE%xsz(3)), intent(in) :: f1E,f2E
+        real(rkind), dimension(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)) :: fmultC
+
+        call this%interp_Edge2Cell(f1E * f2E, fmultC)
+    end function
+
 end module 
