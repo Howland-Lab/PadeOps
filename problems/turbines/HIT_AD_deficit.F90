@@ -38,7 +38,7 @@ program HIT_deficit
     real(rkind), dimension(:,:,:), allocatable :: utarget, vtarget, wtarget
     real(rkind) :: dt1 = one, dt2 = one, dt3 = one, dt = one
     real(rkind) :: k_bandpass_left = 10.d0, k_bandpass_right = 64.d0, TI_xloc = 0
-    real(rkind) :: TI_target = -1, TI_fact = -1, KIinv_TI = 0.5d0, Kp_TI = 1.d0, integral_err = zero
+    real(rkind) :: TI_target = -1, TI_fact = -1, KIinv_TI = 0.5d0, Kp_TI = 1.d0, integral_err = zero, time_stop_TIcont = -1
     type(fof), dimension(:), allocatable :: filt
     integer, dimension(:), allocatable :: pid
     integer :: fid, nfilters = 2, tid_FIL_FullField = 75, tid_FIL_Planes = 4, TI_xid
@@ -48,7 +48,7 @@ program HIT_deficit
 
     namelist /concurrent/ HIT_InputFile, AD_InputFile, Empty_InputFile, InflowSpeed, &
         k_bandpass_left, k_bandpass_right, & 
-        TI_target, TI_xloc, TI_fact, freeze_HIT, advect_shear, KIinv_TI, Kp_TI
+        TI_target, TI_xloc, TI_fact, freeze_HIT, advect_shear, KIinv_TI, Kp_TI, time_stop_TIcont
     namelist /FILTER_INFO/ applyfilters, nfilters, fof_dir, tid_FIL_FullField, tid_FIL_Planes, filoutdir
 
     call MPI_Init(ierr)
@@ -332,6 +332,7 @@ contains
 
         if (first_timestep) then
             ! try to start with a reasonable guess for the gain variable
+            !!! BETTER SOLUTION FOR RESTARTS: JUST WRITE TI_FACT TO A FILE !!!
             if (TI_inst .ge. 1e-6) then  
                 ! If TI_inst is not machine zero, then this is probably from restart files
                 TI_fact = sqrt(three / two / hit%getMeanKE()) * TI_inst
@@ -339,6 +340,8 @@ contains
                 ! If TI_inst is basically zero, then set the "guess" for TI_fact based on TI_target
                 TI_fact = sqrt(three / two / hit%getMeanKE()) * TI_target
             end if
+        else if (time_stop_TIcont > 0 .and. sim%tsim > time_stop_TIcont) then
+            continue  !!! do not update the controller anymore !!! (but still print debug messages)
         else
             error = TI_target - TI_inst
             integral_err = integral_err + (error * sim.dt / KIinv_TI)
