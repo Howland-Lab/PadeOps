@@ -55,7 +55,16 @@ contains
             call message("==========================================================")
             call toc()
             call tic()
-        end if 
+
+            if (p_maxval(maxval(igp%u))>4.) then  ! dump fields if the simulation has blown up
+                call message(1, "this step has blown up", igp%tsim)
+                call igp%dumpFullField(igp%u,"uVel")
+                call igp%dumpFullField(igp%v,"vVel")
+                call igp%dumpFullField(igp%wC,"wVel")
+                call igp%dumpFullField(igp%T, "potT")
+                call GracefulExit("u-velocity has blown up",1)
+            end if
+        end if
 
     end subroutine
 
