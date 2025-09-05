@@ -2092,11 +2092,11 @@ module budgets_time_avg_deficit_mod
          if(this%do_budgets) then
       !       deallocate(this%uc, this%vc, this%wc, this%usgs, this%vsgs, this%wsgs, this%px, this%py, this%pz, this%uturb)  
              deallocate(this%budget_0, this%budget_1)
-             deallocate(this%runningSum_sc)
+             ! deallocate(this%runningSum_sc)  ! KSH 2025-03-22: Scalars are never allocated?  TODO
          end if
-         if(this%useWindTurbines) then
-             deallocate(this%runningSum_sc_turb)
-             deallocate(this%runningSum_turb)
+         if(this%useWindTurbines) then  ! remove this block
+             ! deallocate(this%runningSum_sc_turb)
+             ! deallocate(this%runningSum_turb)  ! KSH 2025-06-01: useWindTurbines never used? (assumed .TRUE.) TODO
          endif
  
      end subroutine 
