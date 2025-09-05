@@ -120,10 +120,6 @@ subroutine computeWallStress(this, u, v, T, uhat, vhat, That, xline, dt)
                 locator_max = minloc(abs(xline - this%z02_endx))
                 matchingloc = real(this%WM_matchingIndex)-real(one)/real(two)
 
-                ! (EYS 02012025): Overwrite based on assigned geometry (momentum exchange parameterization based on Li et al, 2020)
-                ! Note roof momentum exchange coefficient calculated using prescribed z0 = z0roof
-                ! this%WallMFactors(locator_min(1):locator_max(1),:) = -this%idxPlanArea * (kappa / (log(this%dz / (two * this%z0roof)) - this%PsiM))**2 - (1-this%idxPlanArea) * (kappa / (log((this%dz*matchingloc - this%zd) / this%z02) - this%PsiM))**2
-                
                 ! EYS CTR implementation of roughness parameterization (used currently)
                 this%WallMFactors(locator_min(1):locator_max(1),:) = -(kappa / (log((this%dz*matchingloc - this%zd) / this%z02) - this%PsiM))**2
 
@@ -162,7 +158,6 @@ subroutine computeWallStress(this, u, v, T, uhat, vhat, That, xline, dt)
                 call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,2), this%tauijWM(:,:,:,2))
             end if
             ! (EYS 07142024) END
-            
         end select
    end if 
 end subroutine
