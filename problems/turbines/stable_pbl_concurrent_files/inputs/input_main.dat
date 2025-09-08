@@ -1,0 +1,7 @@
+&CONCURRENT
+primary_inputfile   	= "/scratch/08445/tg877441/test_sbl_concurrent/input_primary.dat"
+precursor_inputfile 	= "/scratch/08445/tg877441/test_sbl_concurrent/input_precursor.dat"
+synchronize_RK_fringe 	= .true.            ! Synchronize time-stepping? 
+do_deficit_budgets      = .false.           ! turns on time-averaged deficit budgets (namelist in PRIMARY inputfile)
+/
+
