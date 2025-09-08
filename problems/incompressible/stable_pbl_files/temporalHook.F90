@@ -49,6 +49,11 @@ contains
                   call message(1,"Maximum beta_dynamic:", igp%sgsModel%getMax_DynPrandtl())
                 end if 
             end if 
+            if (igp%useControl) then
+                call message(1, "Current angle controller Phi:", igp%angCont_yaw%getPhi())
+                call message(1, "Frame angle:" , igp%frameAngle)
+                call message(1, "Current wind angle:", igp%angCont_yaw%getPhiHub())
+            end if
             if (igp%useCFL) then
                 call message(1,"Current dt:",igp%dt)
             end if
