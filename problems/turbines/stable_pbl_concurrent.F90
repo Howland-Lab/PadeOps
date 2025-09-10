@@ -38,7 +38,7 @@ program stable_pbl_concurrent
 
     ! INITIALIZE PRIMARY SIMULATION
     call primary%init(primary_inputFile, .true.)
-    call primary%start_io(.true.)
+    call primary%start_io(.false.)     ! do not dump IO fields on init (avoid overwriting turbine data)
     call primary%printDivergence()
 
     ! INITIALIZE PRECURSOR SIMULATION
