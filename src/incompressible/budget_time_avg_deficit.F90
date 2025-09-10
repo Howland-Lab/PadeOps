@@ -251,6 +251,7 @@ module budgets_time_avg_deficit_mod
          procedure, private :: interp_Edge2Cell
          procedure, private :: interp_Cell2Edge
          procedure, private :: multiply_CellFieldsOnEdges
+         procedure, private :: multiply_edges_interp_cell
      end type 
  
  
@@ -555,20 +556,26 @@ module budgets_time_avg_deficit_mod
          ! STEP 3: Get Reynolds stresses (IMPORTANT: need to correct for fluctuation before dumping)
          this%budget_0(:,:,:,5) = this%budget_0(:,:,:,5) + (this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u) * (this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u)
          this%budget_0(:,:,:,6) = this%budget_0(:,:,:,6) + (this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u) * (this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v)
-         this%budget_0(:,:,:,7) = this%budget_0(:,:,:,7) + (this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u) * (this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)
+        !  this%budget_0(:,:,:,7) = this%budget_0(:,:,:,7) + (this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u) * (this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)
+         this%budget_0(:,:,:,7) = this%budget_0(:,:,:,7) + this%multiply_Edges_interp_cell(this%prim_budget%igrid_sim%uE - this%pre_budget%igrid_sim%uE, this%prim_budget%igrid_sim%w - this%pre_budget%igrid_sim%w)
          this%budget_0(:,:,:,8) = this%budget_0(:,:,:,8) + (this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v) * (this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v)
-         this%budget_0(:,:,:,9) = this%budget_0(:,:,:,9) + (this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC) * (this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v)
+        !  this%budget_0(:,:,:,9) = this%budget_0(:,:,:,9) + (this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC) * (this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v)
+         this%budget_0(:,:,:,9) = this%budget_0(:,:,:,9) + this%multiply_Edges_interp_cell(this%prim_budget%igrid_sim%vE - this%pre_budget%igrid_sim%vE, this%prim_budget%igrid_sim%w - this%pre_budget%igrid_sim%w)
          this%budget_0(:,:,:,10) = this%budget_0(:,:,:,10) + (this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC) * (this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)
          
          ! STEP 4: Get mixed Reynolds stresses
          this%budget_0(:,:,:,11) = this%budget_0(:,:,:,11) + (this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u) * (this%pre_budget%igrid_sim%u) 
          this%budget_0(:,:,:,12) = this%budget_0(:,:,:,12) + (this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u) * (this%pre_budget%igrid_sim%v)
          this%budget_0(:,:,:,13) = this%budget_0(:,:,:,13) + (this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v) * (this%pre_budget%igrid_sim%u)
-         this%budget_0(:,:,:,14) = this%budget_0(:,:,:,14) + (this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u) * (this%pre_budget%igrid_sim%wC)
-         this%budget_0(:,:,:,15) = this%budget_0(:,:,:,15) + (this%pre_budget%igrid_sim%u) * (this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)
+        !  this%budget_0(:,:,:,14) = this%budget_0(:,:,:,14) + (this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u) * (this%pre_budget%igrid_sim%wC)
+         this%budget_0(:,:,:,14) = this%budget_0(:,:,:,14) + this%multiply_Edges_interp_cell(this%prim_budget%igrid_sim%uE - this%pre_budget%igrid_sim%uE, this%pre_budget%igrid_sim%w)
+        !  this%budget_0(:,:,:,15) = this%budget_0(:,:,:,15) + (this%pre_budget%igrid_sim%u) * (this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)
+         this%budget_0(:,:,:,15) = this%budget_0(:,:,:,15) + this%multiply_Edges_interp_cell(this%pre_budget%igrid_sim%uE, this%prim_budget%igrid_sim%w - this%pre_budget%igrid_sim%w)
          this%budget_0(:,:,:,16) = this%budget_0(:,:,:,16) + (this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v) * (this%pre_budget%igrid_sim%v)
-         this%budget_0(:,:,:,17) = this%budget_0(:,:,:,17) + (this%pre_budget%igrid_sim%wC) * (this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v)
-         this%budget_0(:,:,:,18) = this%budget_0(:,:,:,18) + (this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC) * (this%pre_budget%igrid_sim%v)
+        !  this%budget_0(:,:,:,17) = this%budget_0(:,:,:,17) + (this%pre_budget%igrid_sim%wC) * (this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v)
+         this%budget_0(:,:,:,17) = this%budget_0(:,:,:,17) + this%multiply_Edges_interp_cell(this%prim_budget%igrid_sim%vE - this%pre_budget%igrid_sim%vE, this%pre_budget%igrid_sim%w)
+        !  this%budget_0(:,:,:,18) = this%budget_0(:,:,:,18) + (this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC) * (this%pre_budget%igrid_sim%v)
+         this%budget_0(:,:,:,18) = this%budget_0(:,:,:,18) + this%multiply_Edges_interp_cell(this%pre_budget%igrid_sim%vE, this%prim_budget%igrid_sim%w - this%pre_budget%igrid_sim%w)
          this%budget_0(:,:,:,19) = this%budget_0(:,:,:,19) + (this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC) * (this%pre_budget%igrid_sim%wC)
          
          ! STEP 5: SGS stresses (also viscous stress if finite reynolds number is being used)
@@ -583,8 +590,11 @@ module budgets_time_avg_deficit_mod
                                         *(this%prim_budget%igrid_sim%T - this%pre_budget%igrid_sim%T)
             this%budget_0(:,:,:,28) = this%budget_0(:,:,:,28) + (this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v) &
                                         *(this%prim_budget%igrid_sim%T - this%pre_budget%igrid_sim%T)
-            this%budget_0(:,:,:,29) = this%budget_0(:,:,:,29) + (this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC) &
-                                        *(this%prim_budget%igrid_sim%T - this%pre_budget%igrid_sim%T)
+            ! this%budget_0(:,:,:,29) = this%budget_0(:,:,:,29) + (this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC) &
+            !                             *(this%prim_budget%igrid_sim%T - this%pre_budget%igrid_sim%T)
+            this%budget_0(:,:,:,29) = this%budget_0(:,:,:,29) + &
+                this%multiply_Edges_interp_cell(this%prim_budget%igrid_sim%TE - this%pre_budget%igrid_sim%TE, this%prim_budget%igrid_sim%w - this%pre_budget%igrid_sim%w)
+
             this%budget_0(:,:,:,30) = this%budget_0(:,:,:,30) + (this%prim_budget%igrid_sim%T - this%pre_budget%igrid_sim%T) &
                                         *(this%prim_budget%igrid_sim%T - this%pre_budget%igrid_sim%T)
         end if 
@@ -2221,4 +2231,13 @@ module budgets_time_avg_deficit_mod
          call transpose_y_to_x(this%prim_budget%igrid_sim%rbuffyC(:,:,:,1),fmultC,this%prim_budget%igrid_sim%gpC)
  
      end subroutine 
+
+    ! multiply on edge cells and interpolate to cell centers to reduce aliasing issues
+    function multiply_Edges_interp_cell(this, f1E, f2E) result(fmultC)
+        class(budgets_time_avg_deficit), intent(inout) :: this
+        real(rkind), dimension(this%prim_budget%igrid_sim%gpE%xsz(1),this%prim_budget%igrid_sim%gpE%xsz(2),this%prim_budget%igrid_sim%gpE%xsz(3)), intent(in) :: f1E,f2E
+        real(rkind), dimension(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3)) :: fmultC
+
+        call this%interp_Edge2Cell(f1E * f2E, fmultC)
+    end function
  end module 
