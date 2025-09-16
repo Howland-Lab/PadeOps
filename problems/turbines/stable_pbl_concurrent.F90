@@ -36,6 +36,8 @@ program stable_pbl_concurrent
     read(unit=ioUnit, NML=concurrent)
     close(ioUnit)
 
+    call compute_xdim_udim(primary_inputfile)       !<-- Reads the \PHYSICS\ namelist to compute (xdim, udim) from (Ro, Fr)
+
     ! INITIALIZE PRIMARY SIMULATION
     call primary%init(primary_inputFile, .true.)
     call primary%start_io(.false.)     ! do not dump IO fields on init (avoid overwriting turbine data)

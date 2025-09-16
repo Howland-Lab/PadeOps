@@ -36,6 +36,8 @@ contains
             call message(1,"u_star:",gp%sgsmodel%get_ustar())
             call message(1,"Inv. Ob. Len:",gp%sgsmodel%get_InvObLength())
             call message(1,"Surface Flux (K*nd velocity):",gp%wTh_surf)
+            call message(1,"T_surf:",gp%sgsmodel%get_T_surf())
+            call message(1,"wTh_surf:",gp%sgsmodel%get_wTh_surf())
             call message_min_max(1,"Bounds for u:", p_minval(minval(gp%u)), p_maxval(maxval(gp%u)))
             call message_min_max(1,"Bounds for v:", p_minval(minval(gp%v)), p_maxval(maxval(gp%v)))
             call message_min_max(1,"Bounds for w:", p_minval(minval(gp%w)), p_maxval(maxval(gp%w)))

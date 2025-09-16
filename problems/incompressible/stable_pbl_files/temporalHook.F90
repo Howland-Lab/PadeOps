@@ -35,6 +35,7 @@ contains
             call message(1,"Inv. Ob. Length:",igp%sgsmodel%get_InvObLength())
             call message(1,"T_surf:",igp%sgsmodel%get_T_surf())
             call message(1,"wTh_surf:",igp%sgsmodel%get_wTh_surf())
+            call message(1,"Surface Flux (K*nd velocity):",gp%wTh_surf)
             if (igp%useSGS) then
                 maxnusgs = p_maxval(igp%nu_SGS)
                 maxkappasgs = p_maxval(igp%kappaSGS)
