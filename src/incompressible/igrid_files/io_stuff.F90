@@ -477,7 +477,7 @@
        class(igrid), intent(inout) :: this
        integer, intent(in) :: tid, rid
        character(len=clen) :: tempname, fname
-       integer :: ierr, fid 
+       integer :: ierr, fid, io_status
 
        write(tempname,"(A7,A4,I2.2,A3,I6.6)") "RESTART", "_Run",rid, "_u.",tid
        fname = this%InputDir(:len_trim(this%InputDir))//"/"//trim(tempname)
@@ -497,18 +497,24 @@
            call decomp_2d_read_one(1,this%T,fname, this%gpC)
        end if 
 
+       ! read RESTART File if nrank == 0
        if (nrank == 0) then
            write(tempname,"(A7,A4,I2.2,A6,I6.6)") "RESTART", "_Run",rid, "_info.",tid
            fname = this%InputDir(:len_trim(this%InputDir))//"/"//trim(tempname)
            fid = 10
            open(unit=fid,file=trim(fname),status="old",action="read")
-           read (fid, "(100g15.5)")  this%tsim
+           read (fid, "(100g15.5)", iostat=io_status)  this%tsim
            if (this%useControl) then
-              read(fid,"(100g15.5)") this%restartPhi
+              read(fid,"(100g15.5)", iostat=io_status) this%restartPhi
+              if (io_status < 0) then
+                 ! end of file found, no second line input
+                 call message(0, "useControl is .TRUE., but no RESTARTPHI found in the RESTART file")
+                 call message(1, "using G_ALPHA from the input file for RESTARTPHI: G_ALPHA", this%g_alpha)
+                 this%restartPhi = this%g_alpha
+              end if
            end if
            close(fid)
        end if 
-
        call mpi_barrier(mpi_comm_world, ierr)
        call mpi_bcast(this%tsim,1,mpirkind,0,mpi_comm_world,ierr)
        call mpi_barrier(mpi_comm_world, ierr)
