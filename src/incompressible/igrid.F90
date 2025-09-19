@@ -268,6 +268,8 @@ module IncompressibleGrid
         ! Control
         logical                            :: useControl = .false.
         type(angCont), allocatable, public :: angCont_yaw
+        type(angCont), pointer :: angCont_yaw_dummy => NULL()
+        logical :: dummy_contoller = .false.
         real(rkind) :: angleHubHeight, totalAngle, wFilt, restartPhi, deltaGalpha, angleTrigger
         integer :: zHubIndex = 16
 
@@ -1313,7 +1315,7 @@ contains
               allocate(this%angCont_yaw)
               call this%angCont_yaw%init(inputfile, this%spectC, this%spectE, this%gpC, this%gpE, & 
                        this%rbuffxC, this%rbuffxE, this%cbuffyC, this%cbuffyE, & 
-                       this%rbuffyC, this%rbuffzC, this%restartPhi) 
+                       this%rbuffyC, this%rbuffzC, this%restartPhi, this%dummy_contoller) 
        end if
        this%angleHubHeight = 1.d0      
        this%totalAngle = 0.d0

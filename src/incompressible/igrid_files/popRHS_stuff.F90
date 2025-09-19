@@ -280,8 +280,26 @@
 
        ! Step 9: Frame rotatio PI controller to fix yaw angle at a given height
        if (this%useControl .AND. abs(180.d0/pi*this%angleHubHeight)>0.0d0) then
-           call this%angCont_yaw%update_RHS_control(this%dt, this%u_rhs, this%v_rhs, &
-                         this%w_rhs, this%u, this%v, this%newTimeStep, this%angleHubHeight, this%wFilt, this%deltaGalpha, this%zHubIndex, this%angleTrigger)
+            if (this%dummy_contoller) then
+                ! Copy some values from the other controller as they will not be
+                ! calculated when updating the RHS
+                ! TODO: A copy procedure would make this cleaner
+                this%angCont_yaw%phi_n = this%angCont_yaw_dummy%phi_n
+                this%angCont_yaw%phi = this%angCont_yaw_dummy%phi
+                this%angCont_yaw%wFilt = this%angCont_yaw_dummy%wFilt
+                this%angCont_yaw%wFilt_n = this%angCont_yaw_dummy%wFilt_n  
+
+                ! Do the same for igrid attributes
+                this%angleHubHeight = this%angCont_yaw_dummy%phi_n
+                this%wFilt = this%angCont_yaw_dummy%wFilt_n 
+                this%deltaGalpha = this%angCont_yaw_dummy%deltaGalpha
+                this%zHubIndex = this%angCont_yaw_dummy%z_ref
+                this%angleTrigger = this%angCont_yaw_dummy%angleTrigger
+            end if
+            call this%angCont_yaw%update_RHS_control(this%dt, this%u_rhs, this%v_rhs, &
+                this%w_rhs, this%u, this%v, this%newTimeStep, this%angleHubHeight,  &
+                this%wFilt, this%deltaGalpha, this%zHubIndex, this%angleTrigger, &
+                this%dummy_contoller)
            this%totalAngle = this%totalAngle + this%angleHubHeight
            this%angleHubHeight = 1.d0  ! HOTFIX - do not use angleHubHeight for the hub height wind angle
        end if 

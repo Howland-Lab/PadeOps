@@ -12,7 +12,7 @@ program stable_pbl_concurrent
     use timer, only: tic, toc
     use budgets_time_avg_mod, only: budgets_time_avg
     use budgets_time_avg_deficit_mod, only: budgets_time_avg_deficit
-    use exits, only: message
+    use exits, only: message, gracefulExit
 
     implicit none
 
@@ -51,6 +51,20 @@ program stable_pbl_concurrent
     if (primary%usefringe) then
         call primary%fringe_x%associateFringeTargets(precursor%u, precursor%v, precursor%wC, precursor%T)
         call primary%fringe_x%associateFringeTarget_scalar(precursor%T)
+    end if
+
+    if (primary%useControl .AND. primary%dummy_contoller)then
+        if(.NOT. precursor%useControl)then
+            call gracefulExit("Primary has a dummy controller, but precursor does not have a controller at all. Exiting.", 44)
+        elseif(precursor%dummy_contoller) then
+            call gracefulExit("Both Primary and Precursor have dummy controllers. Exiting.", 44)
+        else
+            if(.NOT. allocated(precursor%angCont_yaw))then
+                call gracefulExit("Precursor does not have an active controller, and Primary has a dummy controller. Exiting.", 44)
+            end if
+            ! Point to the precursor's controller
+            primary%angCont_yaw_dummy => precursor%angCont_yaw
+        end if
     end if
 
     call budg_tavg%init(primary_inputfile, primary)             !<-- Budget class initialization
