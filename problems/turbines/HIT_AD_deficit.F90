@@ -43,12 +43,12 @@ program HIT_deficit
     integer, dimension(:), allocatable :: pid
     integer :: fid, nfilters = 2, tid_FIL_FullField = 75, tid_FIL_Planes = 4, TI_xid
     integer :: aniso_x = 1
-    logical :: applyFilters = .false., freeze_HIT = .false., control_TI = .false.
+    logical :: applyFilters = .false., freeze_HIT = .false., control_TI = .false., TI_at_rotor = .true.
     logical, parameter :: synchronize_RK_substeps = .true.
 
     namelist /concurrent/ HIT_InputFile, AD_InputFile, Empty_InputFile, InflowSpeed, &
         k_bandpass_left, k_bandpass_right, & 
-        TI_target, TI_xloc, TI_fact, freeze_HIT, advect_shear, KIinv_TI, Kp_TI, time_stop_TIcont
+        TI_target, TI_xloc, TI_fact, freeze_HIT, advect_shear, KIinv_TI, Kp_TI, time_stop_TIcont, TI_at_rotor
     namelist /FILTER_INFO/ applyfilters, nfilters, fof_dir, tid_FIL_FullField, tid_FIL_Planes, filoutdir
 
     call MPI_Init(ierr)
@@ -121,6 +121,7 @@ program HIT_deficit
         call message(2, "KIinv", KIinv_TI)
         call message(1, "tracking x-location:", adsim%mesh(TI_xid,1,1,1))
         call message(1, "target TI: ", TI_target)
+        if (TI_at_rotor) call message(1, "zmid_for_TI (+/- 0.5):", zmid_for_TI)
     else if (TI_fact >= 0) then
         call message(0, "TI controller not used")
         call message(1, "Using fixed TI gain/loss: ", TI_fact)
@@ -315,10 +316,12 @@ contains
         use constants, only          : zero, one, two, three
         use reductions, only         : p_sum
         use exits, only              : message
+        use HIT_shear_parameters, only: zmid_for_TI
 
         class(igrid), allocatable, target, intent(in) :: sim
         real(rkind), dimension(sim%gpC%xsz(2), sim%gpC%xsz(3)) :: buff1
         real(rkind) :: TI_inst, tke_avg, error
+        integer :: nz_norm = 1
         logical, intent(in) :: first_timestep
 
         if (TI_target < 0) then
@@ -327,7 +330,15 @@ contains
 
         ! need to compute TKE, TI
         buff1 = 0.5 * ((sim%u(TI_xid,:,:)-utarget0(TI_xid,:,:))**2 + (sim%v(TI_xid,:,:)-vtarget0(TI_xid,:,:))**2 + (sim%wC(TI_xid,:,:))**2)  ! TKE
-        tke_avg = p_sum(buff1) / (sim%ny*sim%nz)
+        if (TI_at_rotor) then
+            where (abs(sim%mesh(TI_xid,:,:,3) - zmid_for_TI) > 0.5)
+                buff1 = zero  ! mask points outside of the rotor region
+            end where
+            nz_norm = 1 / sim%dz  ! number of points inside masked region
+        else
+            nz_norm = sim%nz
+        end if
+        tke_avg = p_sum(buff1) / (sim%ny*nz_norm)
         TI_inst = sqrt(two / three * tke_avg) / InflowSpeed
 
         if (first_timestep) then

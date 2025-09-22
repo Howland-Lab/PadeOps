@@ -11,7 +11,7 @@ module HIT_shear_parameters
     integer :: simulationID = 0
     integer :: nxADSim, nyADSim, nzADSim, nxHITSim, nyHITSim, nzHITSim, nxfringe
     real(rkind), dimension(:,:,:), allocatable :: utarget0, vtarget0, wtarget0   ! u, v, w laminar fringe targets
-    real(rkind) :: InflowSpeed = 1.d0, TI_target = -1, TI_fact = -1, Kp_TI = 0.1d0
+    real(rkind) :: InflowSpeed = 1.d0, TI_target = -1, TI_fact = -1, Kp_TI = 0.1d0, zmid_for_TI = 1.d0
     real(rkind), dimension(:,:,:), allocatable :: z_global, utarget_1d, vtarget_1d, wtarget_1d  ! global z-axis of shape (1,1,nz)
     logical :: inflow_varies_in_z = .false., debug_TI_gain = .true., advect_shear = .false.
 contains
@@ -158,6 +158,8 @@ contains
         if (zmid < 0) then
             zMid = Lz / two
         end if
+        zmid_for_TI = zmid  ! store for TI calc in deficit module
+        
         z => mesh(:,:,:,3)
         call get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z, zMid, InflowProfileType, yaw, utarget0, vtarget0)
         call get_u(uInflow, vInflow, InflowProfileAmplit, InflowProfileThick, z_global, zMid, InflowProfileType, yaw, utarget_1d, vtarget_1d)
