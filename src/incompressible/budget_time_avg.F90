@@ -11,7 +11,22 @@ module budgets_time_avg_mod
    implicit none 
 
    private
-   public :: budgets_time_avg
+   public :: time_budget_config, budgets_time_avg
+
+    ! default values for BUDGET_TIME_AVG namelist
+    type :: time_budget_config
+        logical :: do_budgets = .false.
+        integer :: budgetType = 1
+        character(len=clen) :: budgets_dir = "NULL"
+        character(len=clen) :: restart_dir = "NULL"
+        logical :: restart_budgets = .false. 
+        integer :: restart_tid = 0, restart_rid = 0, restart_counter = 0
+        integer :: tidx_compute = 1000000, tidx_dump = 1000000, tidx_budget_start = -100
+        real(rkind) :: time_budget_start = -1.0d0
+
+    contains
+        procedure :: update_budget_config_from_namelist
+    end type time_budget_config
 
    ! BUDGET TYPE: 
    ! BUDGET_0: 6 Reynolds stress terms + 3 temp fluxes + meanU + meanV + meanT
@@ -19,7 +34,6 @@ module budgets_time_avg_mod
    ! BUDGET_2: MKE budget (Budget0 and Budget1 also computed) 
    ! BUDGET 3: TKE budget (Budget 0, 1 and 2 also included)
    ! BUDGET 4: Reynolds stress budget
-
 
    ! BUDGET_0 term indices:
    ! 1:  <U> 
@@ -186,7 +200,7 @@ module budgets_time_avg_mod
         logical :: splitPressureDNS
 
     contains
-        procedure           :: init        
+        procedure           :: init
         procedure           :: destroy
         procedure           :: ResetBudget
         procedure           :: DoBudgets
@@ -238,45 +252,73 @@ module budgets_time_avg_mod
     end type 
 
 
-contains 
+contains
 
-    subroutine init(this, inputfile, igrid_sim) 
-        class(budgets_time_avg), intent(inout) :: this
-        character(len=*), intent(in) :: inputfile 
-        type(igrid), intent(inout), target :: igrid_sim 
-        
-        character(len=clen) :: budgets_dir = "NULL"
-        character(len=clen) :: restart_dir = "NULL"
-        integer :: ioUnit, ierr,  budgetType = 1, restart_tid = 0, restart_rid = 0, restart_counter = 0
-        logical :: restart_budgets = .false. 
-        integer :: tidx_compute = 1000000, tidx_dump = 1000000, tidx_budget_start = -100
-        real(rkind) :: time_budget_start = -1.0d0
-        logical :: do_budgets = .false. 
-        namelist /BUDGET_TIME_AVG/ budgetType, budgets_dir, restart_budgets, restart_dir, restart_rid, restart_tid, restart_counter, tidx_dump, tidx_compute, do_budgets, tidx_budget_start, time_budget_start
-        
-        restart_dir = "NULL"
+    subroutine update_budget_config_from_namelist(cfg, inputfile)
+        type(time_budget_config), intent(inout) :: cfg
+        character(len=*), intent(in) :: inputfile
 
-        ! STEP 1: Read in inputs, link pointers and allocate budget vectors
+        integer :: ioUnit, ierr
+        ! Define namelist variables have read the namelist into the config object (cfg) if they exist - else keep defaults!
+        namelist /BUDGET_TIME_AVG/ cfg%do_budgets, cfg%budgetType, cfg%budgets_dir, cfg%restart_dir, &
+                                   cfg%restart_budgets, cfg%restart_tid, cfg%restart_rid, cfg%restart_counter, &
+                                   cfg%tidx_compute, cfg%tidx_dump, cfg%tidx_budget_start, cfg%time_budget_start
+        ! Read in name list values
         ioUnit = 534
         open(unit=ioUnit, file=trim(inputfile), form='FORMATTED', iostat=ierr)
         read(unit=ioUnit, NML=BUDGET_TIME_AVG)
         close(ioUnit)
+    end subroutine update_budget_config_from_namelist
+
+    subroutine init(this, inputfile, igrid_sim, cfg) 
+        class(budgets_time_avg), intent(inout) :: this
+        character(len=*), intent(in) :: inputfile 
+        type(igrid), intent(inout), target :: igrid_sim
+        type(time_budget_config), intent(in), optional :: cfg
+
+        ! Start with default config values
+        type(time_budget_config) :: local_cfg
+        local_cfg = time_budget_config()
+
+        ! Replace with provided config - assumes already updated from namelist
+        if (present(cfg)) then
+            local_cfg = cfg
+        else ! Else update default config from namelist
+            call update_budget_config_from_namelist(local_cfg, inputfile)
+        end if
+        
+        ! character(len=clen) :: budgets_dir = "NULL"
+        ! character(len=clen) :: restart_dir = "NULL"
+        ! integer :: ioUnit, ierr,  budgetType = 1, restart_tid = 0, restart_rid = 0, restart_counter = 0
+        ! logical :: restart_budgets = .false. 
+        ! integer :: tidx_compute = 1000000, tidx_dump = 1000000, tidx_budget_start = -100
+        ! real(rkind) :: time_budget_start = -1.0d0
+        ! logical :: do_budgets = .false. 
+        ! namelist /BUDGET_TIME_AVG/ budgetType, budgets_dir, restart_budgets, restart_dir, restart_rid, restart_tid, restart_counter, tidx_dump, tidx_compute, do_budgets, tidx_budget_start, time_budget_start
+        
+        ! restart_dir = "NULL"
+
+        ! ! STEP 1: Read in inputs, link pointers and allocate budget vectors
+        ! ioUnit = 534
+        ! open(unit=ioUnit, file=trim(inputfile), form='FORMATTED', iostat=ierr)
+        ! read(unit=ioUnit, NML=BUDGET_TIME_AVG)
+        ! close(ioUnit)
+
 
         this%igrid_sim => igrid_sim 
         this%run_id = igrid_sim%runid
         this%nz = igrid_sim%nz
-        this%do_budgets = do_budgets
-        this%tidx_dump = tidx_dump
-        this%tidx_compute = tidx_compute
-        this%tidx_budget_start = tidx_budget_start  
-        this%time_budget_start = time_budget_start  
+        this%do_budgets = local_cfg%do_budgets
+        this%tidx_dump = local_cfg%tidx_dump
+        this%tidx_compute = local_cfg%tidx_compute
+        this%tidx_budget_start = local_cfg%tidx_budget_start  
+        this%time_budget_start = local_cfg%time_budget_start  
         this%useWindTurbines = igrid_sim%useWindTurbines
         this%isStratified    = igrid_sim%isStratified
         this%useCoriolis    = igrid_sim%useCoriolis
         this%forceDump = .false.
 
-        this%budgets_dir = budgets_dir
-        this%budgetType = budgetType
+        this%budgetType = local_cfg%budgetType
 
         this%splitPressureDNS = this%igrid_sim%computeDNSPressure
 
@@ -323,18 +365,20 @@ contains
             end if 
                 
             
-            if ((trim(budgets_dir) .eq. "null") .or.(trim(budgets_dir) .eq. "NULL")) then
+            if ((trim(local_cfg%budgets_dir) .eq. "null") .or. (trim(local_cfg%budgets_dir) .eq. "NULL")) then
                 this%budgets_dir = igrid_sim%outputDir
+            else
+                this%budgets_dir = local_cfg%budgets_dir
             end if 
             
-            if ((trim(restart_dir) .eq. "null") .or.(trim(restart_dir) .eq. "NULL")) then
-                restart_dir = this%budgets_dir
+            if ((trim(local_cfg%restart_dir) .eq. "null") .or.(trim(local_cfg%restart_dir) .eq. "NULL")) then
+                local_cfg%restart_dir = this%budgets_dir
             end if 
 
-            if (restart_budgets) then
+            if (local_cfg%restart_budgets) then
                call message(0, "budget_time_avg: Initializing budget restart")
-               this%counter = restart_counter
-               call this%RestartBudget(restart_dir, restart_rid, restart_tid, restart_counter)
+               this%counter = local_cfg%restart_counter
+               call this%RestartBudget(local_cfg%restart_dir, local_cfg%restart_rid, local_cfg%restart_tid, local_cfg%restart_counter)
                call message(1, "budget_time_avg: Budget restarts initialized")
             else
                 call this%resetBudget()
