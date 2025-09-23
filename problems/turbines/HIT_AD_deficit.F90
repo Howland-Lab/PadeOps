@@ -39,16 +39,18 @@ program HIT_deficit
     real(rkind) :: dt1 = one, dt2 = one, dt3 = one, dt = one
     real(rkind) :: k_bandpass_left = 10.d0, k_bandpass_right = 64.d0, TI_xloc = 0
     real(rkind) :: TI_target = -1, TI_fact = -1, KIinv_TI = 0.5d0, Kp_TI = 1.d0, integral_err = zero, time_stop_TIcont = -1
+
     type(fof), dimension(:), allocatable :: filt
     integer, dimension(:), allocatable :: pid
     integer :: fid, nfilters = 2, tid_FIL_FullField = 75, tid_FIL_Planes = 4, TI_xid
     integer :: aniso_x = 1
-    logical :: applyFilters = .false., freeze_HIT = .false., control_TI = .false., TI_at_rotor = .true.
+    logical :: applyFilters = .false., freeze_HIT = .false., control_TI = .false., TI_at_rotor = .true., isStratified = .false.
     logical, parameter :: synchronize_RK_substeps = .true.
 
     namelist /concurrent/ HIT_InputFile, AD_InputFile, Empty_InputFile, InflowSpeed, &
         k_bandpass_left, k_bandpass_right, & 
-        TI_target, TI_xloc, TI_fact, freeze_HIT, advect_shear, KIinv_TI, Kp_TI, time_stop_TIcont, TI_at_rotor
+        TI_target, TI_xloc, TI_fact, freeze_HIT, advect_shear, KIinv_TI, Kp_TI, time_stop_TIcont, TI_at_rotor, &
+        isStratified
     namelist /FILTER_INFO/ applyfilters, nfilters, fof_dir, tid_FIL_FullField, tid_FIL_Planes, filoutdir
 
     call MPI_Init(ierr)
@@ -69,10 +71,12 @@ program HIT_deficit
         allocate(igrid :: hit)
     end if
 
+    call get_is_stratified(AD_inputfile)  ! whether to load T field in initialization - glean from &PHYSICS
+
     ! initialize igrid objects
     simulationID = 1
     call adsim%init(AD_InputFile, .true.)  ! initialize decomposition
-    call adsim%start_io(.false.)  ! don't start IO
+    call adsim%start_io(.true.)  ! don't start IO
     call adsim%printDivergence()
 
     call mpi_barrier(mpi_comm_world, ierr)
@@ -85,9 +89,7 @@ program HIT_deficit
     call message("Initialized EMPTY PRECURSOR simulation")
 
     ! check to make sure the simulations have the same grid, required for deficit budgets
-    if (.not. all(adsim%mesh == emptysim%mesh)) then
-        call GracefulExit("EMPTY and AD simulations mesh dimensions must match", 234)
-    end if
+    if (.not. all(adsim%mesh == emptysim%mesh)) call GracefulExit("EMPTY and AD simulations mesh dimensions must match", 234)
     call mpi_barrier(mpi_comm_world, ierr)
 
     simulationID = 2  ! HIT box
@@ -134,6 +136,7 @@ program HIT_deficit
     allocate(utarget0(adsim%gpC%xsz(1), adsim%gpC%xsz(2), adsim%gpC%xsz(3)))
     allocate(vtarget0(adsim%gpC%xsz(1), adsim%gpC%xsz(2), adsim%gpC%xsz(3)))
     allocate(wtarget0(adsim%gpE%xsz(1), adsim%gpE%xsz(2), adsim%gpE%xsz(3)))
+    if (adsim%isStratified) allocate(Ttarget0(adsim%gpC%xsz(1), adsim%gpC%xsz(2), adsim%gpC%xsz(3)))
     call init_fringe_targets(AD_inputfile, adsim%mesh)  ! populates utarget0, vtarget0, wtarget0
 
     ! allocate moving (turbulent) targets
@@ -153,17 +156,23 @@ program HIT_deficit
     if (adsim%usedoublefringex) then
         call message(0, "Setting double fringe targets")
         ! first fringe is re-laminarization
-        call adsim%fringe_x1%associateFringeTargets(utarget0, vtarget0, wtarget0)
-        call emptysim%fringe_x1%associateFringeTargets(utarget0, vtarget0, wtarget0)
+        call adsim%fringe_x1%associateFringeTargets(utarget0, vtarget0, wtarget0, Ttarget0)
+        call adsim%fringe_x1%associateFringeTarget_scalar(Ttarget0)
+        call emptysim%fringe_x1%associateFringeTargets(utarget0, vtarget0, wtarget0, Ttarget0)
+        call emptysim%fringe_x1%associateFringeTarget_scalar(Ttarget0)
 
         ! second fringe is turbulent
-        call adsim%fringe_x2%associateFringeTargets(utarget, vtarget, wtarget)
-        call emptysim%fringe_x2%associateFringeTargets(utarget, vtarget, wtarget)
+        call adsim%fringe_x2%associateFringeTargets(utarget, vtarget, wtarget, Ttarget0)
+        call adsim%fringe_x2%associateFringeTarget_scalar(Ttarget0)
+        call emptysim%fringe_x2%associateFringeTargets(utarget, vtarget, wtarget, Ttarget0)
+        call emptysim%fringe_x2%associateFringeTarget_scalar(Ttarget0)
     else
         call message(0, "Setting fringe targets")
         ! first (only) fringe is turbulent
-        call adsim%fringe_x%associateFringeTargets(utarget, vtarget, wtarget)
-        call emptysim%fringe_x%associateFringeTargets(utarget, vtarget, wtarget)
+        call adsim%fringe_x%associateFringeTargets(utarget, vtarget, wtarget, Ttarget0)
+        call adsim%fringe_x%associateFringeTarget_scalar(Ttarget0)
+        call emptysim%fringe_x%associateFringeTargets(utarget, vtarget, wtarget, Ttarget0)
+        call emptysim%fringe_x%associateFringeTarget_scalar(Ttarget0)
     end if
 
     ! phaseshift turbulent fringe targets using the laminar fringe targets
@@ -270,6 +279,7 @@ program HIT_deficit
     deallocate(utarget, vtarget, wtarget)
     deallocate(utarget_1d, vtarget_1d)
     deallocate(z_global)
+    if (adsim%isStratified) deallocate(Ttarget0)
 
     call MPI_Finalize(ierr)
 

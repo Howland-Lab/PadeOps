@@ -12,10 +12,11 @@ module HIT_shear_parameters
 
     integer :: simulationID = 0
     integer :: nxADSim, nyADSim, nzADSim, nxHITSim, nyHITSim, nzHITSim, nxfringe
-    real(rkind), dimension(:,:,:), allocatable :: utarget0, vtarget0, wtarget0   ! u, v, w laminar fringe targets
+    real(rkind), dimension(:,:,:), allocatable :: utarget0, vtarget0, wtarget0, Ttarget0   ! u, v, w, T laminar fringe targets
     real(rkind) :: InflowSpeed = 1.d0, zmid_for_TI
     real(rkind), dimension(:,:,:), allocatable :: z_global, utarget_1d, vtarget_1d, wtarget_1d  ! global z-axis of shape (1,1,nz)
-    logical :: inflow_varies_in_z = .false., debug_TI_gain = .true., advect_shear = .false.
+    logical :: inflow_varies_in_z = .false., debug_TI_gain = .true., advect_shear = .false., load_T_field = .false.
+    real(rkind) :: Tsurf0 = 0.d0
 contains
 
 ! build the velocity profiles
@@ -40,7 +41,7 @@ contains
         select case(InflowProfileType)
           case(-1)
             ! read inflow from ASCII files - look for inflow_data.txt with columns
-            ! z | u | v | k
+            ! z | u | v | T
             call read_2d_ascii(inflow_arr, trim(fname_inflow))
             z1d = z(1,1,:)
             u1d = interp1d(z1d, inflow_arr(:,1), inflow_arr(:,2))
@@ -110,6 +111,38 @@ contains
             u = uInflow*cos(yaw*pi/180.d0)
             v = -uInflow*sin(yaw*pi/180.d0)
         end select
+    end subroutine
+
+! build the velocity profiles
+    subroutine get_T(InflowProfileType, z, T, fname_inflow)
+        use kind_parameters, only: rkind, clen
+        use constants,       only: zero, one, two, pi, half
+        use exits,           only: gracefulExit
+
+        implicit none
+        real(rkind), dimension(:,:,:), intent(inout) :: T
+        real(rkind), dimension(:,:,:), intent(in) :: z
+        real(rkind), dimension(size(z,3)) :: z1d, T1d
+        real(rkind), dimension(1) :: tmp
+        integer, intent(in) :: InflowProfileType
+        integer:: i
+        character(len=clen) :: fname_inflow
+        real(rkind), dimension(:,:), allocatable :: inflow_arr  ! used for reading inputs
+
+        select case(InflowProfileType)
+          case(-1)
+            ! read inflow from ASCII files - look for inflow_data.txt with columns
+            ! z | u | v | T
+            call read_2d_ascii(inflow_arr, trim(fname_inflow))
+            z1d = z(1,1,:)
+            T1d = interp1d(z1d, inflow_arr(:,1), inflow_arr(:,4))
+            T = spread(spread(T1d, dim=1, ncopies=size(z, 1)), dim=2, ncopies=size(z, 2))
+            tmp = interp1d((/0.d0/), inflow_arr(:,1), inflow_arr(:,4))  ! save surface temperature
+            Tsurf0 = tmp(1)
+          case default
+            call GracefulExit("Only inflow type -1 (read from file) is implemented for T", 999)
+        end select
+
     end subroutine
 
 ! makes global fringe targets necessary for do_phaseshifting (spectral z-decomp workaround)
@@ -212,8 +245,58 @@ contains
             advect_shear = .false.
         endif
 
+        if (load_T_field) then
+            Ttarget0 = zero
+            call get_T(InflowProfileType, z, Ttarget0, fname_inflow)
+        end if
+
         ! The velocity profile in z needs to go to slip wall at the top
         ! Both u and v need slip conditions
+    end 
+    
+    pure function to_lower(str) result(lowered)
+        character(len=*), intent(in) :: str
+        character(len=len(str))      :: lowered
+        integer :: i, code
+
+        do i = 1, len(str)
+            code = iachar(str(i:i))
+            if (code >= iachar('A') .and. code <= iachar('Z')) then
+                lowered(i:i) = achar(code + 32)  ! ASCII shift
+            else
+                lowered(i:i) = str(i:i)
+            end if
+        end do
+    end function to_lower
+
+    subroutine get_is_stratified(inputfile)
+        use kind_parameters, only: rkind, clen
+        character(len=*),                intent(in)    :: inputfile
+        character(len=:), allocatable :: buffer
+        character(len=clen) :: line
+        logical :: isStratified = .false.
+        integer :: iunit
+
+        namelist /PHYSICS/isStratified  ! ignore all other variables
+
+        ! All this work is just so we don't need to read ALL of the &PHYSICS namelist... 
+        buffer = "&PHYSICS" // new_line('a')
+        open(unit=10, file=trim(inputfile), form='formatted')
+        do
+            read(10,'(A)', iostat=iunit) line
+            if (iunit /= 0) exit
+            ! find lines beginning with "Fr " or "Ro ": 
+            if (index(to_lower(adjustl(line)), "isstratified") == 1) then
+                ! strip comments: 
+                if (index(line, "!") > 0) line = line(:index(line, "!")-1)
+                buffer = buffer // trim(adjustl(line)) // new_line('a')
+            end if
+        end do
+        buffer = buffer // "/" // new_line('a')
+        close(10)
+
+        read(buffer, NML=PHYSICS)
+        load_T_field = isStratified
     end subroutine
 
 end module  ! end module functions
@@ -323,7 +406,7 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     real(rkind), dimension(:,:,:,:), intent(in), target    :: mesh
     real(rkind), dimension(:,:,:,:), intent(inout), target :: fieldsC
     real(rkind), dimension(:,:,:,:), intent(inout), target :: fieldsE
-    real(rkind), dimension(:,:,:), pointer :: u, v, w, wC, x, y, z
+    real(rkind), dimension(:,:,:), pointer :: u, v, w, wC, T, x, y, z
     integer :: ioUnit
 
     real(rkind) :: Lx, Ly, Lz, uInflow = one, vInflow = zero, yaw = zero
@@ -363,6 +446,17 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
         call message_min_max(1,"Bounds for u:", p_minval(minval(u)), p_maxval(maxval(u)))
         call message_min_max(1,"Bounds for v:", p_minval(minval(v)), p_maxval(maxval(v)))
         call message_min_max(1,"Bounds for w:", p_minval(minval(w)), p_maxval(maxval(w)))
+
+        ! initialize temperature field if stratified (for non-HIT simulation)
+        if (load_T_field) then
+            T  => fieldsC(:,:,:,7)
+            call get_T(InflowProfileType, z, T, fname_inflow)
+            call message_min_max(1,"Bounds for T:", p_minval(minval(T)), p_maxval(maxval(T)))
+            nullify(T)
+        else
+            call message(0, 'GAHHHH WHY ARE WE NOT ENTERING THE PREVIOUS IF STATEMENT???')
+            ! call message(0, load_T_field)
+        end if
 
 
         nullify(u,v,w,x,y,z)
@@ -430,16 +524,16 @@ end subroutine
 subroutine setDirichletBC_Temp(inputfile, Tsurf, dTsurf_dt)
     use kind_parameters,    only: rkind
     use constants,          only: zero, one
+    use HIT_shear_parameters, only: Tsurf0
     implicit none
 
     character(len=*),                intent(in)    :: inputfile
     real(rkind), intent(out) :: Tsurf, dTsurf_dt
-    real(rkind) :: ThetaRef, Lx, Ly, Lz, uInflow = 1.d0
+    ! real(rkind) :: Lx, Ly, Lz, uInflow = 1.d0
     ! integer :: iounit
     ! namelist /HIT_AD_interactINPUT/ Lx, Ly, Lz, uInflow
 
-    Tsurf = zero; dTsurf_dt = zero; ThetaRef = one
-
+    Tsurf = Tsurf0; dTsurf_dt = zero;
 
     ! ioUnit = 11
     ! open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -450,13 +544,13 @@ subroutine setDirichletBC_Temp(inputfile, Tsurf, dTsurf_dt)
 end subroutine
 
 
-subroutine set_Reference_Temperature(inputfile, Tref)
+subroutine set_Reference_Temperature(inputfile, Tref_)
     use kind_parameters,    only: rkind
     implicit none
     character(len=*),                intent(in)    :: inputfile
-    real(rkind), intent(out) :: Tref
-    real(rkind) :: Lx, Ly, Lz, uInflow = 1.d0
-    ! integer :: iounit
+    real(rkind), intent(out) :: Tref_
+    real(rkind) :: Tref = 300.d0  ! set default value here
+    integer :: iounit
 
     ! namelist /HIT_AD_interactINPUT/ Lx, Ly, Lz, uInflow
 
@@ -465,9 +559,7 @@ subroutine set_Reference_Temperature(inputfile, Tref)
     ! read(unit=ioUnit, NML=HIT_AD_interactINPUT)
     ! close(ioUnit)
 
-    Tref = 0.d0
-
-    ! Do nothing really since this is an unstratified simulation
+    tref_ = Tref
 
 end subroutine
 
