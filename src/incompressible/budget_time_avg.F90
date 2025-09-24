@@ -15,6 +15,7 @@ module budgets_time_avg_mod
 
     ! default values for BUDGET_TIME_AVG namelist
     type :: time_budget_config
+        private
         logical :: do_budgets = .false.
         integer :: budgetType = 1
         character(len=clen) :: budgets_dir = "NULL"
@@ -23,7 +24,6 @@ module budgets_time_avg_mod
         integer :: restart_tid = 0, restart_rid = 0, restart_counter = 0
         integer :: tidx_compute = 1000000, tidx_dump = 1000000, tidx_budget_start = -100
         real(rkind) :: time_budget_start = -1.0d0
-
     contains
         procedure :: update_budget_config_from_namelist
     end type time_budget_config
@@ -204,6 +204,10 @@ module budgets_time_avg_mod
         procedure           :: destroy
         procedure           :: ResetBudget
         procedure           :: DoBudgets
+
+        procedure, public :: get_run_id
+        procedure, public :: get_counter
+        procedure, public :: get_budgets_dir
         
         procedure, private  :: updateBudget
         procedure, private  :: DumpBudget
@@ -249,26 +253,59 @@ module budgets_time_avg_mod
         procedure, private :: interp_Edge2Cell
         procedure, private :: interp_Cell2Edge
         procedure, private :: multiply_CellFieldsOnEdges
-    end type 
+    end type budgets_time_avg
 
 
 contains
-
-    subroutine update_budget_config_from_namelist(cfg, inputfile)
-        type(time_budget_config), intent(inout) :: cfg
+    subroutine update_budget_config_from_namelist(this, inputfile)
+        class(time_budget_config), intent(inout) :: this
         character(len=*), intent(in) :: inputfile
 
-        integer :: ioUnit, ierr
-        ! Define namelist variables have read the namelist into the config object (cfg) if they exist - else keep defaults!
-        namelist /BUDGET_TIME_AVG/ cfg%do_budgets, cfg%budgetType, cfg%budgets_dir, cfg%restart_dir, &
-                                   cfg%restart_budgets, cfg%restart_tid, cfg%restart_rid, cfg%restart_counter, &
-                                   cfg%tidx_compute, cfg%tidx_dump, cfg%tidx_budget_start, cfg%time_budget_start
-        ! Read in name list values
+        logical :: do_budgets, restart_budgets
+        character(len=clen) :: budgets_dir, restart_dir
+        integer :: ioUnit, ierr, budgetType, restart_tid, restart_rid, restart_counter, tidx_compute, tidx_dump, tidx_budget_start
+        real(rkind) :: time_budget_start
+        ! define namelist variables have read the namelist into the config object (this) if they exist - else keep defaults!
+        namelist /BUDGET_TIME_AVG/ do_budgets, budgetType, budgets_dir, restart_dir, &
+                                   restart_budgets, restart_tid, restart_rid, restart_counter, &
+                                   tidx_compute, tidx_dump, tidx_budget_start, time_budget_start
+        ! read in namelist values
         ioUnit = 534
         open(unit=ioUnit, file=trim(inputfile), form='FORMATTED', iostat=ierr)
         read(unit=ioUnit, NML=BUDGET_TIME_AVG)
         close(ioUnit)
+
+        this%do_budgets = do_budgets
+        this%budgetType = budgetType
+        this%budgets_dir = budgets_dir
+        this%restart_dir = restart_dir
+        this%restart_budgets = restart_budgets
+        this%restart_tid = restart_tid
+        this%restart_rid = restart_rid
+        this%restart_counter = restart_counter
+        this%tidx_compute = tidx_compute
+        this%tidx_dump = tidx_dump
+        this%tidx_budget_start = tidx_budget_start
+        this%time_budget_start = time_budget_start
     end subroutine update_budget_config_from_namelist
+
+    function get_run_id(this) result(val)
+        class(budgets_time_avg), intent(in) :: this
+        integer :: val
+        val = this%run_id
+    end function get_run_id
+
+    function get_counter(this) result(val)
+        class(budgets_time_avg), intent(in) :: this
+        integer :: val
+        val = this%counter
+    end function get_counter
+
+    function get_budgets_dir(this) result(val)
+        class(budgets_time_avg), intent(in) :: this
+        character(len=clen) :: val
+        val = this%budgets_dir
+    end function get_budgets_dir
 
     subroutine init(this, inputfile, igrid_sim, cfg) 
         class(budgets_time_avg), intent(inout) :: this
@@ -278,12 +315,12 @@ contains
 
         ! Start with default config values
         type(time_budget_config) :: local_cfg
-        local_cfg = time_budget_config()
 
         ! Replace with provided config - assumes already updated from namelist
         if (present(cfg)) then
             local_cfg = cfg
         else ! Else update default config from namelist
+            local_cfg = time_budget_config()
             call update_budget_config_from_namelist(local_cfg, inputfile)
         end if
         
@@ -433,7 +470,7 @@ contains
 
         end if
 
-    end subroutine 
+    end subroutine init
 
 
     subroutine doBudgets(this, forceDump)
@@ -2637,4 +2674,4 @@ subroutine DumpBudget4_23(this)
         call transpose_y_to_x(this%igrid_sim%rbuffyC(:,:,:,1),fmultC,this%igrid_sim%gpC)
 
     end subroutine 
-end module 
+end module budgets_time_avg_mod
