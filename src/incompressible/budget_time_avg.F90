@@ -2552,7 +2552,7 @@ subroutine DumpBudget4_23(this)
             endif
         end if
 
-    end subroutine 
+    end subroutine destroy
 
     ! ----------------------private derivative operators ------------------------
     subroutine ddx_R2R(this, f, dfdx)

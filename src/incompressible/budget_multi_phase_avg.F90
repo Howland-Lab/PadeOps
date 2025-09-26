@@ -18,7 +18,9 @@ module budgets_multi_phase_avg_mod
         real(rkind) :: tol
     contains
         procedure :: init
-        procedure :: doBudgets ! call doBudgets for each phase budget
+        procedure :: doBudgets
+        procedure :: destroy
+
     end type budgets_multi_phase_avg
 
 contains
@@ -29,14 +31,14 @@ contains
         type(igrid), intent(inout), target :: igrid_sim
         ! values from namelist
         integer :: ioUnit, ierr
-        integer:: i, nphases
+        integer:: i, j, nphases
         logical :: do_budgets = .false. 
         real(rkind), allocatable :: phases(:)
         real(rkind) :: tol = 0.1d0
         type(time_budget_config) :: cfg
 
         ! ensure using a dynamic turbine or else phase averaging doesn't make much sense
-        if(.not. igrid_sim%WindTurbineArr%useDynamicTurbine) then
+        if (.not. igrid_sim%WindTurbineArr%useDynamicTurbine) then
             call GracefulExit("Turbine isn't dynamic - right now phase averaging depends on turbine postions/speed.", 100)
         endif
 
@@ -57,6 +59,14 @@ contains
         this%do_budgets = do_budgets
         this%tol = tol
 
+        do i = 1, nphases
+            do j = 1, nphases
+                if ((.not. (i .eq. j)) .and. (phase_overlaps(this%phases(i), this%phases(j), this%tol))) then
+                    call GracefulExit("Phases overlap with given tolerance! This will cause double counting!", 101)
+                end if
+            end do
+        end do
+
         ! get default time budget config values and update from the namelist
         cfg = time_budget_config()
         call cfg%update_budget_config_from_namelist(inputfile)
@@ -70,15 +80,47 @@ contains
         end do
     end subroutine init
 
+    ! check if two phases overlap with given tolerance
+    pure function phase_overlaps(p1, p2, tol) result(overlaps)
+        real(rkind), intent(in) :: p1, p2, tol
+        real(rkind) :: min_phase, max_phase
+        logical :: overlaps
+        ! find min and max extent of p1, adjusting for wrapping around at 0 and 1
+        min_phase = p1 - tol
+        max_phase = p1 + tol
+        if (min_phase < 0.0_rkind) min_phase = min_phase + 1.0_rkind
+        if (max_phase > 1.0_rkind) max_phase = max_phase - 1.0_rkind
+        ! check if phases overlap (accounting for wrap around if needed in the first branch)
+        overlaps = .FALSE.
+        if (min_phase > max_phase) then
+             if (.not. ((p2 > max_phase) .and. (p2 < min_phase))) then
+                overlaps = .TRUE.
+             end if
+        else if ((p2 > min_phase) .and. (p2 < max_phase)) then
+            overlaps = .TRUE.
+        endif
+    end function phase_overlaps
+
     subroutine doBudgets(this, forceDump)
         class(budgets_multi_phase_avg), intent(inout) :: this
         logical, intent(in), optional :: forceDump
         integer:: i
 
-        do i = 1, size(this%phases)
-            call this%phase_budgets(i)%doBudgets(forceDump)
-        end do
+        if (this%do_budgets)  then
+            do i = 1, size(this%phases)
+                call this%phase_budgets(i)%doBudgets(forceDump)
+            end do
+        end if 
 
     end subroutine doBudgets
+
+    subroutine destroy(this)
+        class(budgets_multi_phase_avg), intent(inout) :: this
+        integer :: i
+
+        do i = 1, size(this%phases)
+            call this%phase_budgets(i)%destroy()
+        end do
+    end subroutine destroy
 
 end module budgets_multi_phase_avg_mod

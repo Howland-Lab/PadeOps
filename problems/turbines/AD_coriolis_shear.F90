@@ -11,14 +11,16 @@ program AD_Coriolis_shear
     use timer, only: tic, toc
     use exits, only: message
     use AD_Coriolis_parameters 
-    use budgets_time_avg_mod, only: budgets_time_avg  
+    use budgets_time_avg_mod, only: budgets_time_avg
+    use budgets_multi_phase_avg_mod, only: budgets_multi_phase_avg
 
     implicit none
 
     type(igrid), allocatable, target :: igp
     character(len=clen) :: inputfile
     integer :: ierr
-    type(budgets_time_avg) :: budg_tavg
+    type(budgets_time_avg) :: budg_time_avg
+    type(budgets_multi_phase_avg) :: budg_multi_phase_avg
 
     call MPI_Init(ierr)                                                 !<-- Begin MPI
 
@@ -31,7 +33,8 @@ program AD_Coriolis_shear
     call igp%printDivergence()
  
     ! Budgets
-    call budg_tavg%init(inputfile, igp)   !<-- Budget class initialization 
+    call budg_time_avg%init(inputfile, igp)   !<-- Budget class initialization
+    call budg_multi_phase_avg%init(inputfile, igp)   !<-- Budget class initialization 
     
     ! Fringe associations for non-periodic BCs in x
     call igp%fringe_x%allocateTargetArray_Cells(utarget)                !<-- Allocate target array of appropriate size
@@ -49,12 +52,14 @@ program AD_Coriolis_shear
     do while (igp%tsim < igp%tstop) 
        
        call igp%timeAdvance()                                           !<-- Time stepping scheme + Pressure Proj. (see igrid.F90)
-       call budg_tavg%doBudgets()       
+       call budg_time_avg%doBudgets()
+       call budg_multi_phase_avg%doBudgets()
        call doTemporalStuff(igp)                                        !<-- Go to the temporal hook (see temporalHook.F90)
        
     end do 
     
-    call budg_tavg%destroy()           !<-- release memory taken by the budget class 
+    call budg_time_avg%destroy()           !<-- release memory taken by the budget class
+    call budg_multi_phase_avg%destroy()
  
     call igp%finalize_io()                                              !<-- Close the header file (wrap up i/o)
 
