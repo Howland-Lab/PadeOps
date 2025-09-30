@@ -2,7 +2,7 @@ module budgets_multi_phase_avg_mod
     ! general imports used within function
     use kind_parameters, only: rkind
     use incompressibleGrid, only: igrid  
-    use exits, only: GracefulExit
+    use exits, only: GracefulExit, message
     ! import time-average type to act as parent to phase-average type
     use budgets_phase_avg_mod
     use budgets_time_avg_mod, only: time_budget_config
@@ -10,12 +10,21 @@ module budgets_multi_phase_avg_mod
     implicit none 
     private
     public :: budgets_multi_phase_avg
+    ! need to declare namelist variables at a module-level due to reading in a list
+    ! this causes memory weirdness that can otherwise cause a seg-fault
+    logical :: do_budgets
+    integer :: nphases
+    real(rkind) :: tol
+    integer, parameter :: max_phases = 16 ! maximum number of phases a user could request
+    real(rkind) :: phases(max_phases)
+    namelist /BUDGET_MULTI_PHASE_AVG/ do_budgets, nphases, tol, phases
 
     type :: budgets_multi_phase_avg
         logical :: do_budgets
         real(rkind), allocatable :: phases(:)
         type(budgets_phase_avg), allocatable :: phase_budgets(:)
         real(rkind) :: tol
+        integer :: nphases
     contains
         procedure :: init
         procedure :: doBudgets
@@ -31,36 +40,32 @@ contains
         type(igrid), intent(inout), target :: igrid_sim
         ! values from namelist
         integer :: ioUnit, ierr
-        integer:: i, j, nphases
-        logical :: do_budgets = .false. 
-        real(rkind), allocatable :: phases(:)
-        real(rkind) :: tol = 0.1d0
+        integer:: i, j
         type(time_budget_config) :: cfg
 
-        ! ensure using a dynamic turbine or else phase averaging doesn't make much sense
+        ! ensure using a dynamic turbine or else phase averaging doesn't make much sense (right now anyways)
         if (.not. igrid_sim%WindTurbineArr%useDynamicTurbine) then
             call GracefulExit("Turbine isn't dynamic - right now phase averaging depends on turbine postions/speed.", 100)
         endif
 
-        ! would be good to move all of this to a phase_budget_config once things work
-        namelist /BUDGET_MULTI_PHASE_AVG/ do_budgets, phases, tol
+        ! read in namelist variables (declared above in module)
         ioUnit = 534
         open(unit=ioUnit, file=trim(inputfile), form='FORMATTED', iostat=ierr)
         read(unit=ioUnit, NML=BUDGET_MULTI_PHASE_AVG)
         close(ioUnit)
 
-        if (.not. allocated(phases)) then
-            call GracefulExit("Phases array was not read from namelist!", 101)
-        endif
-
-        nphases = size(phases)
-        allocate(this%phases(nphases))
-        this%phases = phases
+        ! save namelist variables to budgets_multi_phase_avg object
         this%do_budgets = do_budgets
+        this%nphases = nphases
+        this%phases = phases
         this%tol = tol
 
-        do i = 1, nphases
-            do j = 1, nphases
+        ! check to make sure that variables make sense and phases don't overlap
+        if (this%do_budgets .and. (this%nphases == 0)) then
+            call GracefulExit("Phase-averaged budgets turned on, but phases array is empty!", 101)
+        endif
+        do i = 1, this%nphases
+            do j = 1, this%nphases
                 if ((.not. (i .eq. j)) .and. (phase_overlaps(this%phases(i), this%phases(j), this%tol))) then
                     call GracefulExit("Phases overlap with given tolerance! This will cause double counting!", 101)
                 end if
@@ -71,11 +76,9 @@ contains
         cfg = time_budget_config()
         call cfg%update_budget_config_from_namelist(inputfile)
 
-        allocate(this%phase_budgets(nphases))
-        do i = 1, nphases
-            ! each time the phase -> time budget constructor is called, the namelist is read in.
-            ! this can and should be fixed... perhapes all of the values from the time budget need
-            ! to be in the multi-phase cosntructor list???? perhapes we can read both in here???
+        ! create one phase-average budget per requested phase (children of time-average budgets)
+        allocate(this%phase_budgets(this%nphases))
+        do i = 1, this%nphases
             call this%phase_budgets(i)%phase_avg_init(inputfile, igrid_sim, this%phases(i), tol, cfg)
         end do
     end subroutine init
@@ -105,9 +108,9 @@ contains
         class(budgets_multi_phase_avg), intent(inout) :: this
         logical, intent(in), optional :: forceDump
         integer:: i
-
+        ! call doBudgets for each phase budget
         if (this%do_budgets)  then
-            do i = 1, size(this%phases)
+            do i = 1, this%nphases
                 call this%phase_budgets(i)%doBudgets(forceDump)
             end do
         end if 
@@ -117,8 +120,8 @@ contains
     subroutine destroy(this)
         class(budgets_multi_phase_avg), intent(inout) :: this
         integer :: i
-
-        do i = 1, size(this%phases)
+        ! destroy each phase budgets
+        do i = 1, this%nphases
             call this%phase_budgets(i)%destroy()
         end do
     end subroutine destroy

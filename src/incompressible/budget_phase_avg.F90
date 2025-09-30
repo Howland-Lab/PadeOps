@@ -56,17 +56,19 @@ contains
     subroutine doBudgets(this, forceDump)
         class(budgets_phase_avg), intent(inout) :: this
         logical, intent(in), optional :: forceDump
-
         real(rkind) :: delx, uturb, surge_amp, surge_freq
         real(rkind) :: sim_curr_phase
-
+        ! get needed arguments from first wind turbine (assumes all turbines move the same)
         delx = this%igrid_sim%WindTurbineArr%dynamicArray(1)%delx
         uturb = this%igrid_sim%WindTurbineArr%dynamicArray(1)%ut
         surge_amp = this%igrid_sim%WindTurbineArr%dynamicArray(1)%surge_amplitude
         surge_freq = this%igrid_sim%WindTurbineArr%dynamicArray(1)%surge_freq
         ! TODO: right now this only uses surge!!! update to allow pitch later
         ! only do the budget if timestep is correct phase of turbine motion
+
+        ! compute the phase of the first turbine
         sim_curr_phase = compute_phase(delx, uturb, surge_amp, surge_freq, this%tol)
+        ! if current phase, then call time-average doBudgets on current budget
         if (abs(sim_curr_phase - this%phase) < this%tol) then
             call this%budgets_time_avg%doBudgets(forceDump)
         end if
@@ -79,12 +81,11 @@ contains
         integer, intent(in) :: fieldID, BudgetID
         character(len=clen) :: fname, tempname 
         character(len=clen) :: budgets_dir
-
+        ! write budget to file that includes the phase
         budgets_dir = this%get_budgets_dir()
         write(tempname,"(A3,I2.2,A7,I1.1,A5,I2.2,A2,I6.6,A2,I6.6,A6,I3.3,A4)") "Run", this%get_run_id(), "_budget", BudgetID, &
             "_term", fieldID, "_t", this%igrid_sim%step,"_n", this%get_counter(),"_phase", this%iphase,".s3D"
         fname = budgets_dir(:len_trim(budgets_dir))//"/"//trim(tempname)
-
         call decomp_2d_write_one(1,field,fname, this%igrid_sim%gpC)
     end subroutine dump_budget_field
 
