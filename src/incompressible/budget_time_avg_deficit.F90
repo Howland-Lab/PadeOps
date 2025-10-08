@@ -304,58 +304,61 @@ module budgets_time_avg_deficit_mod
          this%HaveScalars = this%prim_budget%igrid_sim%useScalars
   
          if(this%do_budgets) then 
-            if((this%tidx_budget_start > 0) .and. (this%time_budget_start > 0.0d0)) then
-                call GracefulExit("Both tidx_budget_start and time_budget_start in budget_time_avg are positive. Turn one negative", 100)
-            endif
-             !if (this%isStratified) then
-             ! Always assume that you are stratified
- 
-                 if (this%HaveScalars) then
-                     allocate(this%budget_0(this%nx,this%ny,this%nz,30+2*this%prim_budget%igrid_sim%n_scalars))
-                 else
-                     allocate(this%budget_0(this%nx,this%ny,this%nz,30))
-                 end if
-                 allocate(this%budget_2(this%nx,this%ny,this%nz,19))
-                 allocate(this%budget_1(this%nx,this%ny,this%nz,34))
-             !else
-             !    allocate(this%budget_0(this%nx,this%ny,this%nz,25))
-             !    allocate(this%budget_2(this%nx,this%ny,this%nz,07))
-             !    allocate(this%budget_1(this%nx,this%ny,this%nz,10))
-             !end if
-             allocate(this%budget_3(this%nx,this%ny,this%nz,22))
-             allocate(this%budget_4_11(this%nx,this%ny,this%nz,10))
-             allocate(this%budget_4_22(this%nx,this%ny,this%nz,10))
-             allocate(this%budget_4_13(this%nx,this%ny,this%nz,10))
-             allocate(this%budget_4_23(this%nx,this%ny,this%nz,10))
-             allocate(this%budget_4_33(this%nx,this%ny,this%nz,10))
- 
-             if ((trim(budgets_dir) .eq. "null") .or.(trim(budgets_dir) .eq. "NULL")) then 
+            ! allocate budget 0 -> minimum needed!
+            if (this%HaveScalars) then
+                allocate(this%budget_0(this%nx,this%ny,this%nz,30+2*this%prim_budget%igrid_sim%n_scalars))
+            else
+                allocate(this%budget_0(this%nx,this%ny,this%nz,30))
+            end if
+            ! allocate budget 1
+            if (this%budgetType > 0) then
+                allocate(this%budget_1(this%nx,this%ny,this%nz,34))
+            end if
+            ! allocate budget 2
+            if (this%budgetType > 1) then
+                allocate(this%budget_2(this%nx,this%ny,this%nz,19))
+            end if
+            ! allocate budget 3
+            if (this%budgetType > 2) then
+                allocate(this%budget_3(this%nx,this%ny,this%nz,22))
+            end if
+            ! allocate budget 4
+            if (this%budgetType > 3) then
+                allocate(this%budget_4_11(this%nx,this%ny,this%nz,10))
+                allocate(this%budget_4_22(this%nx,this%ny,this%nz,10))
+                allocate(this%budget_4_13(this%nx,this%ny,this%nz,10))
+                allocate(this%budget_4_23(this%nx,this%ny,this%nz,10))
+                allocate(this%budget_4_33(this%nx,this%ny,this%nz,10))
+            end if
+
+            ! set buget output directory if not provided
+            if ((trim(budgets_dir) .eq. "null") .or.(trim(budgets_dir) .eq. "NULL")) then 
                 this%budgets_dir = this%prim_budget%igrid_sim%outputDir
-             end if 
+            end if 
 
-
+            ! set buget restart directory if not provided
             if ((trim(restart_dir) .eq. "null") .or.(trim(restart_dir) .eq. "NULL")) then
                 restart_dir = this%budgets_dir
             end if 
 
- 
-             if (restart_budgets) then
-                 call message(0,"Budget deficit restart")
-                 call this%RestartBudget(restart_dir, restart_rid, restart_tid, restart_counter)
-             else
-                 call this%resetBudget()
-             end if
- 
-             ! ! STEP 4: For horizontally-averaged surface quantities (called Scalar here), and turbine statistics
-             ! allocate(this%inst_horz_avg(5)) ! [ustar, uw, vw, Linv, wT]
-             ! allocate(this%runningSum_sc(5))
-             ! this%runningSum_sc = zero
-             ! if(this%useWindTurbines) then
-             !     allocate(this%runningSum_sc_turb(8*this%prim_budget%igrid_sim%WindTurbineArr%nTurbines))
-             !     allocate(this%runningSum_turb   (8*this%prim_budget%igrid_sim%WindTurbineArr%nTurbines))
-             !     this%runningSum_sc_turb = zero
-             !     this%runningSum_turb = zero
-             ! endif
+            ! if restarting bugets
+            if (restart_budgets) then
+                call message(0,"Budget deficit restart")
+                call this%RestartBudget(restart_dir, restart_rid, restart_tid, restart_counter)
+            else
+                call this%resetBudget()
+            end if
+
+            ! ! STEP 4: For horizontally-averaged surface quantities (called Scalar here), and turbine statistics
+            ! allocate(this%inst_horz_avg(5)) ! [ustar, uw, vw, Linv, wT]
+            ! allocate(this%runningSum_sc(5))
+            ! this%runningSum_sc = zero
+            ! if(this%useWindTurbines) then
+            !     allocate(this%runningSum_sc_turb(8*this%prim_budget%igrid_sim%WindTurbineArr%nTurbines))
+            !     allocate(this%runningSum_turb   (8*this%prim_budget%igrid_sim%WindTurbineArr%nTurbines))
+            !     this%runningSum_sc_turb = zero
+            !     this%runningSum_turb = zero
+            ! endif
  
          end if
  

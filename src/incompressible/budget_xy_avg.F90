@@ -203,22 +203,31 @@ contains
         this%avgFact = 1.d0/(real(igrid_sim%nx,rkind)*real(igrid_sim%ny,rkind))
 
         if(this%do_budgets) then
-            if((this%tidx_budget_start > 0) .and. (this%time_budget_start > 0.0d0)) then
-                call GracefulExit("Both tidx_budget_start and time_budget_start in budget_xy_avg are positive. Turn one negative", 100)
-            endif
-            allocate(this%Budget_0s(this%nz,21))
-            allocate(this%Budget_0(this%nz,21))
+          ! allocate budget 0 -> minimum needed!
+          allocate(this%Budget_0s(this%nz,21))
+          allocate(this%Budget_0(this%nz,21))
+          ! allocate budget 1
+          if (this%budgetType > 0) then
             allocate(this%Budget_1(this%nz,14))
             allocate(this%Budget_1s(this%nz,14))
+          end if
+          ! allocate budget 2
+          if (this%budgetType > 1) then
             allocate(this%Budget_2(this%nz,7))
+          end if 
+          ! allocate budget 3
+          if (this%budgetType > 2) then
             allocate(this%Budget_3(this%nz,8))
             allocate(this%Budget_3s(this%nz,8))
-            
+          end if
+          ! allocate budget 4
+          if (this%budgetType > 3) then
             allocate(this%Budget_4s(this%nz,9))
             allocate(this%Budget_4_13(this%nz,9))
             allocate(this%Budget_4_23(this%nz,9))
             allocate(this%Budget_4_33(this%nz,9))
             allocate(this%Budget_4_11(this%nz,9))
+          end if
 
             if ((trim(budgets_dir) .eq. "null") .or.(trim(budgets_dir) .eq. "NULL")) then
                 this%budgets_dir = igrid_sim%outputDir
