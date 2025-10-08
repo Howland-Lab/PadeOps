@@ -59,28 +59,28 @@ contains
         this%nphases = nphases
         this%phases = phases
         this%tol = tol
-
-        ! check to make sure that variables make sense and phases don't overlap
-        if (this%do_budgets .and. (this%nphases == 0)) then
-            call GracefulExit("Phase-averaged budgets turned on, but phases array is empty!", 101)
-        endif
-        do i = 1, this%nphases
-            do j = 1, this%nphases
-                if ((.not. (i .eq. j)) .and. (phase_overlaps(this%phases(i), this%phases(j), this%tol))) then
-                    call GracefulExit("Phases overlap with given tolerance! This will cause double counting!", 101)
-                end if
+        if this%do_budgets then
+            ! check to ensure users have provided phases
+            if (this%nphases == 0) then
+                call GracefulExit("Phase-averaged budgets turned on, but phases array is empty!", 101)
+            endif
+            ! check to ensure that given phases don't overlap
+            do i = 1, this%nphases
+                do j = 1, this%nphases
+                    if ((.not. (i .eq. j)) .and. (phase_overlaps(this%phases(i), this%phases(j), this%tol))) then
+                        call GracefulExit("Phases overlap with given tolerance! This will cause double counting!", 101)
+                    end if
+                end do
             end do
-        end do
-
-        ! get default time budget config values and update from the namelist
-        cfg = time_budget_config()
-        call cfg%update_budget_config_from_namelist(inputfile)
-
-        ! create one phase-average budget per requested phase (children of time-average budgets)
-        allocate(this%phase_budgets(this%nphases))
-        do i = 1, this%nphases
-            call this%phase_budgets(i)%phase_avg_init(inputfile, igrid_sim, this%phases(i), tol, cfg)
-        end do
+            ! get default time budget config values and update from the namelist
+            cfg = time_budget_config()
+            call cfg%update_budget_config_from_namelist(inputfile)
+            ! create one phase-average budget per requested phase (children of time-average budgets)
+            allocate(this%phase_budgets(this%nphases))
+            do i = 1, this%nphases
+                call this%phase_budgets(i)%phase_avg_init(inputfile, igrid_sim, this%phases(i), tol, cfg)
+            end do
+        end if
     end subroutine init
 
     ! check if two phases overlap with given tolerance
