@@ -153,7 +153,7 @@ program tileFields
     integer :: ioUnit, nx, ny, nz, ierr, inputFile_TID, inputFile_RID, outputFile_TID, outputFile_RID
     integer :: ntile_x=2, ntile_y=1, ntile_z=1, nxf, nyf, nzf
     integer :: i, io_status
-    logical :: tileInZ = .false., isStratified = .false., periodicInZ = .false.
+    logical :: tileInZ = .false., isStratified = .false., periodicInZ = .false., add_pfact_here = .false.
     type(decomp_info) :: gpC, gpE, gpC_upX, gpC_upXY, gpC_upXYZ, gpE_upX, gpE_upXY, gpE_upXYZ
     real(rkind), dimension(:,:,:), allocatable :: f, fxup_inX, fxup_inY, fxyup_inY
     real(rkind), dimension(:,:,:), allocatable :: fxyup_inZ, fxyup_inX, fxyzup_inZ, fxyzup_inY, fxyzup_inX
@@ -237,6 +237,14 @@ program tileFields
         call transpose_x_to_y(fxup_inX,fxup_inY,gpC_upX)
         call tile_y(fxup_inY,fxyup_inY)
 
+        if (isStratified) then
+            add_pfact_here = (trim(keys(i)) == "_T.") .and. (pfact > 0)
+            call message(0, 'Adding perturbations in the temperature field with magnitude', pfact)
+        else
+            add_pfact_here = (trim(keys(i)) == "_u.") .and. (pfact > 0)
+            call message(0, 'Adding perturbations in the u-velocity field with magnitude', pfact)
+        endif
+
         if (tileInZ) then
             if (periodicInZ) then
                 ! only tile in z if periodic
@@ -246,8 +254,7 @@ program tileFields
                 call tile_z(fxyup_inZ, fxyzup_inZ)
 
                 ! add pseudo-random perturbations to break peridicity
-                if ((trim(keys(i)) == "_T.") .and. (pfact > 0)) then
-                    call message(0, 'Adding perturbations in the temperature field with magnitude', pfact)
+                if (add_pfact_here) then
                     call add_perturbations(fxyzup_inZ, pfact, nrank)
                 endif
 
@@ -261,8 +268,7 @@ program tileFields
 
         else
             ! still check if pfact > 0 (pseudo-random perturbations)
-            if ((trim(keys(i)) == "_T.") .and. (pfact > 0)) then
-                call message(0, 'Adding perturbations in the temperature field with magnitude', pfact)
+            if (add_pfact_here) then
                 call add_perturbations(fxyup_inY, pfact, nrank)
             endif
 

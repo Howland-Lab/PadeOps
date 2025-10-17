@@ -253,6 +253,7 @@ module budgets_time_avg_mod
         procedure, private :: interp_Edge2Cell
         procedure, private :: interp_Cell2Edge
         procedure, private :: multiply_CellFieldsOnEdges
+        procedure, private :: multiply_Edges_interp_cell
     end type budgets_time_avg
 
 
@@ -365,36 +366,41 @@ contains
             call GracefulExit("Both tidx_budget_start and time_budget_start in budget_time_avg are positive. Turn one negative", 100)
         endif
 
-        if(this%do_budgets) then 
-            !if (this%isStratified) then
-            ! Always assume that you are stratified
-
-                if (this%HaveScalars) then
-                    allocate(this%budget_0(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),31+2*this%igrid_sim%n_scalars))
-                else
-                    allocate(this%budget_0(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),31))
-                end if
-                allocate(this%budget_2(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
+        if(this%do_budgets) then
+            ! allocate budget 0 -> minimum needed!
+            if (this%HaveScalars) then
+                allocate(this%budget_0(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),31+2*this%igrid_sim%n_scalars))
+            else
+                allocate(this%budget_0(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),31))
+            end if
+            ! allocate budget 1
+            if (this%budgetType > 0) then
                 allocate(this%budget_1(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),16))
-            !else
-            !    allocate(this%budget_0(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),25))
-            !    allocate(this%budget_2(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),07))
-            !    allocate(this%budget_1(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
-            !end if
-            allocate(this%budget_3(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),08))
-            allocate(this%budget_4_11(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
-            allocate(this%budget_4_22(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
-            allocate(this%budget_4_13(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
-            allocate(this%budget_4_23(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
-            allocate(this%budget_4_33(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
-
+            end if
+            ! allocate budget 2
+            if (this%budgetType > 1) then
+                allocate(this%budget_2(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
+            end if
+            ! allocate budget 3
             if (this%budgetType > 2) then
-                allocate(this%tke(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
-                allocate(this%tke_old(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
+                allocate(this%budget_3(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),08))
+            end if
+            ! allocate budget 4
+            if (this%budgetType > 3) then
+                allocate(this%budget_4_11(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
+                allocate(this%budget_4_22(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
+                allocate(this%budget_4_13(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
+                allocate(this%budget_4_23(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
+                allocate(this%budget_4_33(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
+            end if
+            ! allocate additional fields needed for budget 3 and above!
+            if (this%budgetType > 2) then
+                ! allocate(this%tke(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
+                ! allocate(this%tke_old(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
                                 
-                allocate(this%u_old(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
-                allocate(this%v_old(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
-                allocate(this%wC_old(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
+                ! allocate(this%u_old(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
+                ! allocate(this%v_old(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
+                ! allocate(this%wC_old(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
                 
                 allocate(this%dUdt(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
                 allocate(this%dVdt(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
@@ -421,7 +427,7 @@ contains
                 call this%resetBudget()
             end if
 
-            ! STEP 2: Allocate memory (massive amount of memory needed)
+            ! STEP 2: Allocate memory (large amount of memory needed)
             call igrid_sim%spectC%alloc_r2c_out(this%uc)
             call igrid_sim%spectC%alloc_r2c_out(this%usgs)
             call igrid_sim%spectC%alloc_r2c_out(this%px)
@@ -450,15 +456,13 @@ contains
             call igrid_sim%spectE%alloc_r2c_out(this%wcor)
             call igrid_sim%spectE%alloc_r2c_out(this%wb)
 
-            ! STEP 3: Now instrument igrid 
+            ! STEP 3: Now instrument igrid -> links pointers in the grid object to arrays created for budget
             call igrid_sim%instrumentForBudgets_TimeAvg(this%uc, this%vc, this%wc, this%usgs, this%vsgs, this%wsgs, &
                      & this%px, this%py, this%pz, this%uturb, this%vturb, this%wturb, this%pxdns, this%pydns, this%pzdns, & 
                      & this%uvisc, this%vvisc, this%wvisc, this%ucor, this%vcor, this%wcor, this%wb)  
             
                  
-            ! STEP 4: For horizontally-averaged surface quantities (called
-            ! Scalar here), and turbine statistics
-            !allocate(this%inst_horz_avg(5)) ! [ustar, uw, vw, Linv, wT]
+            ! STEP 4: For horizontally-averaged surface quantities (called Scalar here), and turbine statistics
             allocate(this%runningSum_sc(5))
             this%runningSum_sc = zero
             if(this%useWindTurbines) then
@@ -467,9 +471,7 @@ contains
                 this%runningSum_sc_turb = zero
                 this%runningSum_turb = zero
             endif
-
         end if
-
     end subroutine init
 
 
@@ -711,11 +713,12 @@ contains
         ! STEP 2: Get Reynolds stresses (IMPORTANT: need to correct for fluctuation before dumping)
         this%budget_0(:,:,:,4) = this%budget_0(:,:,:,4) + this%igrid_sim%u*this%igrid_sim%u
         this%budget_0(:,:,:,5) = this%budget_0(:,:,:,5) + this%igrid_sim%u*this%igrid_sim%v
-        this%budget_0(:,:,:,6) = this%budget_0(:,:,:,6) + this%igrid_sim%u*this%igrid_sim%wC
+        ! compute u'w' on edge cells for implicit dealiasing
+        this%budget_0(:,:,:,6) = this%budget_0(:,:,:,6) + this%multiply_Edges_interp_cell(this%igrid_sim%uE, this%igrid_sim%w)
         this%budget_0(:,:,:,7) = this%budget_0(:,:,:,7) + this%igrid_sim%v*this%igrid_sim%v
-        this%budget_0(:,:,:,8) = this%budget_0(:,:,:,8) + this%igrid_sim%v*this%igrid_sim%wC
-        this%budget_0(:,:,:,9) = this%budget_0(:,:,:,9) + this%igrid_sim%wC*this%igrid_sim%wC
-
+        ! compute v'w' on edge cells for implicit dealiasing
+        this%budget_0(:,:,:,8) = this%budget_0(:,:,:,8) + this%multiply_Edges_interp_cell(this%igrid_sim%vE, this%igrid_sim%w)
+        this%budget_0(:,:,:,9) = this%budget_0(:,:,:,9) + this%igrid_sim%wC*this%igrid_sim%wC        
         ! STEP 3: Pressure
         this%budget_0(:,:,:,10) = this%budget_0(:,:,:,10) + this%igrid_sim%pressure
 
@@ -753,7 +756,8 @@ contains
         if (this%isStratified) then
             this%budget_0(:,:,:,27) = this%budget_0(:,:,:,27) + this%igrid_sim%u*this%igrid_sim%T
             this%budget_0(:,:,:,28) = this%budget_0(:,:,:,28) + this%igrid_sim%v*this%igrid_sim%T
-            this%budget_0(:,:,:,29) = this%budget_0(:,:,:,29) + this%igrid_sim%wC*this%igrid_sim%T
+            ! compute w'T' on edge cells for implicit dealiasing
+            this%budget_0(:,:,:,29) = this%budget_0(:,:,:,29) +  this%multiply_Edges_interp_cell(this%igrid_sim%TE, this%igrid_sim%w)
             this%budget_0(:,:,:,30) = this%budget_0(:,:,:,30) + this%igrid_sim%T*this%igrid_sim%T
         end if
 
@@ -2674,4 +2678,14 @@ subroutine DumpBudget4_23(this)
         call transpose_y_to_x(this%igrid_sim%rbuffyC(:,:,:,1),fmultC,this%igrid_sim%gpC)
 
     end subroutine 
+
+    ! multiply on edge cells and interpolate to cell centers to reduce aliasing issues
+    function multiply_Edges_interp_cell(this, f1E, f2E) result(fmultC)
+        class(budgets_time_avg), intent(inout) :: this
+        real(rkind), dimension(this%igrid_sim%gpE%xsz(1),this%igrid_sim%gpE%xsz(2),this%igrid_sim%gpE%xsz(3)), intent(in) :: f1E,f2E
+        real(rkind), dimension(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)) :: fmultC
+
+        call this%interp_Edge2Cell(f1E * f2E, fmultC)
+    end function
+
 end module budgets_time_avg_mod
