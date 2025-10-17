@@ -1144,11 +1144,30 @@ contains
            call this%fringe_x2%init(inputfile, this%dx, this%mesh(:,1,1,1), this%dy, this%mesh(1,:,1,2), &
                                        this%spectC, this%spectE, this%gpC, this%gpE, &
                                        this%rbuffxC, this%rbuffxE, this%cbuffyC, this%cbuffyE, fringeID=2)   
+           if (this%fringe_x1%do_shifts) call gracefulExit("DO_SHIFTS is not implemented for USEDOUBLEFRINGEX", 123)
        else
            if (this%useFringe) then
                call this%fringe_x%init(inputfile, this%dx, this%mesh(:,1,1,1), this%dy, this%mesh(1,:,1,2), &
                                        this%spectC, this%spectE, this%gpC, this%gpE, &
                                        this%rbuffxC, this%rbuffxE, this%cbuffyC, this%cbuffyE)   
+
+               if (this%fringe_x%do_shifts) then
+                  ! initialize shifted boundary conditions (Munters, Meneveau, Meyers (2016))
+                  call this%fringe_x%allocateTargetArray_Cells(this%fringe_x%u_for_shifts)
+                  call this%fringe_x%allocateTargetArray_Cells(this%fringe_x%v_for_shifts)
+                  call this%fringe_x%allocateTargetArray_Edges(this%fringe_x%w_for_shifts)
+                  call this%fringe_x%associateFringeTargets(this%fringe_x%u_for_shifts, this%fringe_x%v_for_shifts, this%fringe_x%w_for_shifts)
+                  if (this%isStratified) then
+                     call this%fringe_x%allocateTargetArray_Cells(this%fringe_x%T_for_shifts)
+                     ! associate fringe targets and pointers
+                     call this%fringe_x%associateFringeTarget_scalar(this%fringe_x%T_for_shifts)
+                     call this%fringe_x%link_igrid_pointers(this%uhat, this%vhat, this%what, this%That)
+                  else
+                     ! associate fringe targets and pointers
+                     call this%fringe_x%link_igrid_pointers(this%uhat, this%vhat, this%what)
+                  end if
+               end if
+               ! END DO_SHIFTS
            end if
        end if 
        
