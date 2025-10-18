@@ -2467,9 +2467,25 @@ subroutine DumpBudget4_23(this)
         nullify(this%igrid_sim)
         if(this%do_budgets) then
             deallocate(this%uc, this%vc, this%wc, this%usgs, this%vsgs, this%wsgs, this%px, this%py, this%pz, this%uturb)  
-            deallocate(this%budget_0, this%budget_1)
-            deallocate(this%runningSum_sc)
+            deallocate(this%budget_0)
+            if (this%budgetType>0) then
+                deallocate(this%budget_1)
+            end
+            if (this%budgetType>1) then
+                deallocate(this%budget_2)
+            end
+            if (this%budgetType>2) then
+                deallocate(this%budget_3)
+            end
+            if (this%budgetType>3) then
+                deallocate(this%budget_4_11)
+                deallocate(this%budget_4_13)
+                deallocate(this%budget_4_22)
+                deallocate(this%budget_4_23)
+                deallocate(this%budget_4_33)
+            end
 
+            deallocate(this%runningSum_sc)
             if(this%useWindTurbines) then
                 deallocate(this%runningSum_sc_turb)
                 deallocate(this%runningSum_turb)
