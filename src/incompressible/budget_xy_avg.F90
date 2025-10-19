@@ -371,7 +371,24 @@ contains
             deallocate(this%uc, this%vc, this%wc, this%usgs, this%vsgs, this%wsgs, &
                        & this%uvisc, this%vvisc, this%wvisc, this%px, this%py, this%pz, this%wb, this%ucor, &
                        & this%vcor, this%wcor, this%uturb)
-            deallocate(this%budget_0, this%budget_1)
+            deallocate(this%budget_0)
+            if (this%budgetType>0) then
+                deallocate(this%budget_1)
+            end if
+            if (this%budgetType>1) then
+                deallocate(this%budget_2)
+            end if
+            if (this%budgetType>2) then
+                deallocate(this%budget_3)
+            end if
+            if (this%budgetType>3) then
+                deallocate(this%budget_4_11)
+                deallocate(this%budget_4_13)
+                deallocate(this%budget_4_22)
+                deallocate(this%budget_4_23)
+                deallocate(this%budget_4_33)
+            end if
+
             deallocate(this%mean_qty)
             if(this%do_spectra) then
                 deallocate(this%xspectra_mean)
