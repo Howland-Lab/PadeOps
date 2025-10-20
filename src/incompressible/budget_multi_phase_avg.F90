@@ -75,6 +75,8 @@ contains
             ! get default time budget config values and update from the namelist
             cfg = time_budget_config()
             call cfg%update_budget_config_from_namelist(inputfile)
+            ! want to run the phase budgets, even if time-averaged budget is turned off
+            cfg%do_budgets = this%do_budgets
             ! create one phase-average budget per requested phase (children of time-average budgets)
             allocate(this%phase_budgets(this%nphases))
             do i = 1, this%nphases
