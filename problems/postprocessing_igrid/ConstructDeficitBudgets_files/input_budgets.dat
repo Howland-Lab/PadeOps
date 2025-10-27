@@ -1,0 +1,35 @@
+&INPUT
+inputdir                 = "/anvil/scratch/x-kali/PadeOpsSims/NREL5MW-8x5-56x20x8/LR10/test_budgets_Kirby_case/new_budgets"
+outputdir                = "/anvil/scratch/x-kali/PadeOpsSims/NREL5MW-8x5-56x20x8/LR10/test_budgets_Kirby_case/new_budgets"
+nx                       = 384
+ny                       = 256
+nz                       = 256
+Lx                       = 3.84000000e+01
+Ly                       = 1.28000000e+01
+Lz                       = 1.28000000e+01
+prow                     = 0
+pcol                     = 0
+RID                      = 7
+BRID                     = 6 ! Base run index (precursor)
+startIDX                 = 100
+endIDX                   = 200
+tag                      = 'box1'
+! BudgetType               = 5    ! 1: x-Momentum, 2: y-Momentum, 3: z-Momentum, 4: MKE, 5: TKE
+/
+&NUMERICS
+NumericalSchemeVert      = 1
+/
+&BCs
+botWall                  = 3
+topWall                  = 2
+botBC_temp               = 1
+PeriodicInZ              = .false.
+/
+&BOX
+x1                       = 25.0
+x2                       = 35.0
+y1                       = 2.2832
+y2                       = 10.2832
+z1                       = 0.0
+z2                       = 3.0
+/
