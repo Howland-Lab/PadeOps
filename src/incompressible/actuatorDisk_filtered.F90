@@ -196,108 +196,124 @@ subroutine destroy(this)
     nullify(this%xG, this%yG, this%zG)
 end subroutine 
 
-! Convolution in x (streamwise) direction
-subroutine get_R1(this, R1) 
+! Eqn 10 in Shapiro et al. 2019
+subroutine get_R1(this, x, R1) 
     class(actuatordisk_filtered), intent(inout) :: this
-    real(rkind), dimension(this%nxLoc), intent(out) :: R1
-    real(rkind), dimension(this%nxLoc) :: xLine
+
+    ! Inputs
+    real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc), intent(in), allocatable :: x
+
+    ! Outputs
+    real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc), intent(out) :: R1
+
+    ! Local variables
     real(rkind) :: tmp
 
-    xLine = this%xLine - this%xLoc 
     tmp = sqrt(6.d0)/this%delta
-    R1 = erf(tmp*(xLine + this%thick/two)) - &
-         erf(tmp*(xLine - this%thick/two))
-    R1 = R1 / (two*this%thick)
+    R1 = erf(tmp*(x + this%thick/two)) - erf(tmp*(x - this%thick/two))
 end subroutine
 
-! Convolution in the yz-plane (build numerically with Green's function)
-subroutine get_R2(this, ys, zs, R2)
+! Eqn 11 in Shapiro et al. 2019
+subroutine get_R2(this, y, z, R2)
     class(actuatordisk_filtered), intent(inout) :: this
-    real(rkind), dimension(this%nyLoc, this%nzLoc), intent(out) :: R2
-    real(rkind), dimension(this%nyLoc, this%nzLoc) :: yy, zz
-    real(rkind), dimension(:), intent(in), allocatable :: ys, zs
-    real(rkind) :: tmp
-    real(rkind), dimension(this%nyLoc, this%nzLoc) :: stamp
-    integer :: j
+    ! Inputs
+    real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc), intent(in), allocatable :: y, z
+
+    ! Outputs
+    real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc), intent(out) :: R2
+
+    ! Local variables
+    real(rkind), allocatable :: xs(:), ys(:)
+    real(rkind), allocatable :: X(:), Y(:)
+    real(rkind), allocatable :: y_d(:), z_d(:)
+    logical, allocatable :: mask(:)
+    real(rkind) :: exponent, dx, dy
+    integer :: Nx, Ny, npts, i, j, k
+
+    ! Parameters
+    Nx = 100
+    Ny = 100
+    delta = this%delta
+
+    ! Set up Cartesian grid
+    allocate(xs(Nx), ys(Ny))
+    dx = one / real(Nx - 1, rkind)
+    dy = one / real(Ny - 1, rkind)
+
+    do i = 1, Nx
+        xs(i) = -half + (i - 1) * dx
+    end do
+    do j = 1, Ny
+        ys(j) = -half + (j - 1) * dy
+    end do
+
+    ! Flatten grid into vectors
+    allocate(X(Nx * Ny), Y(Nx * Ny))
+    npts = 0
+    do j = 1, Ny
+        do i = 1, Nx
+            npts = npts + 1
+            X(npts) = xs(i)
+            Y(npts) = ys(j)
+        end do
+    end do
+
+    ! Mask for circular region
+    allocate(mask(Nx * Ny))
+    do i = 1, Nx * Ny
+        mask(i) = (X(i)**2 + Y(i)**2) <= (half)**2
+    end do
+
+    ! Count and allocate filtered points
+    npts = count(mask)
+    allocate(y_d(npts), z_d(npts))
+
+    npts = 0
+    do i = 1, Nx * Ny
+        if (mask(i)) then
+            npts = npts + 1
+            y_d(npts) = Y(i)
+            z_d(npts) = X(i)
+        end if
+    end do
     
+    ! Initialize R2 output
     R2 = zero
-    stamp = zero
-    yy = this%yG(1, :, :)
-    zz = this%zG(1, :, :)
-    tmp = -6.d0 / (this%delta**2)
-    ! we need to compute the integral, iterate through points on disk face: 
-    do j = 1, size(ys)
-        stamp = exp(tmp*((ys(j)-yy)**2 + (zs(j)-zz)**2))
-        R2 = R2 + stamp
-    end do
 
-    tmp = this%dy*this%dz*24.d0 / (pi**2 * this%diam**2 * this%delta**2)
-    R2 = R2*tmp  ! weight accordingly to the sampling density in sample_on_circle()
+    ! Compute the Gaussian sum over the circular disk
+    do i = 1, npts
+        exponent = -6.d0 * (( (y - y_d(i))**2 + (z - z_d(i))**2 ) / delta**2)
+        R2 = R2 + exp(exponent)
+    end do
+    
+    ! Clean up
+    deallocate(xs, ys, X, Y, y_d, z_d, mask)
 end subroutine
 
-! Use this generic Greens function for yawed turbines
-subroutine get_R(this)
-    class(actuatordisk_filtered), intent(inout) :: this
-    real(rkind) :: yrad, trad, xs, ys, zs, C1, xtmp, ytmp, ztmp  ! rotations, in radians
-    real(rkind), dimension(this%npts) :: xi, yi, zi
-    integer :: k
-    
-    ! First, rotate all the points with the yaw and tilt
-    ! call message(1, "Building kernel for turbine yaw:", this%yaw)
-    yrad = this%yaw*pi/180.d0
-    trad = this%tilt*pi/180.d0
-    do k = 1, this%npts
-        xs = this%xs(k); ys = this%ys(k); zs = this%zs(k)
-        ! apply yaw rotation, +z = positive yaw (e.g., Howland, et al. 2022)
-        xtmp = (xs-this%xLoc)*cos(yrad) - (ys-this%yLoc)*sin(yrad) + this%xLoc
-        ytmp = (xs-this%xLoc)*sin(yrad) + (ys-this%yLoc)*cos(yrad) + this%yLoc
-        ztmp = zs
-        
-        ! then apply tilt rotation, +y = positive tilt (e.g., Bossuyt, et al. 2021)
-        xi(k) = (xtmp-this%xLoc)*cos(trad) + (ztmp-this%zLoc)*sin(trad) + this%xLoc
-        yi(k) = ytmp
-        zi(k) = -(xtmp-this%xLoc)*sin(trad) + (ztmp-this%zLoc)*cos(trad) + this%zLoc
-    end do
-    
-    ! now xi, yi, zi are the rotated coordinates, assemble w/Greens function 
-    ! this may take a while... 
-    ! TODO: can speed this up if only a subsection of the domain is used
-    C1 = (6.d0/pi/this%delta**2)**(three/two)
-    ! TODO: May need to zero scalarsource for dynamic yaw
-    do k = 1, this%npts
-        this%rbuff = (this%xG-xi(k))**2 + (this%yG-yi(k))**2 + (this%zG-zi(k))**2
-        this%scalarsource = this%scalarsource + C1*exp(-6.d0*this%rbuff/this%delta**2) 
-    end do
-    
-    ! scalarsource NOT necessarily normalized to integrate to 1 (yet), do this in get_weights()
-end subroutine
-
+! Eqn 8 in Shapiro et al. 2019
 subroutine get_weights(this)
     class(actuatordisk_filtered), intent(inout) :: this
-    real(rkind), dimension(this%nyLoc, this%nzLoc) :: R2
-    real(rkind), dimension(this%nxLoc) :: R1
+
+    ! Outputs
     real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc) :: R
         
-    if ((abs(this%yaw) < 1e-3) .and. (abs(this%tilt) < 1e-3)) then
-        if (this%quickDecomp) then
-            !aligned with the x-direction, use the "quick" kernel creation
-            call this%get_R2(this%ys, this%zs,R2)
-            call this%get_R1(R1)
-            
-            ! Not sure why, but setting the product of R1*R2 directly leads to
-            ! memory errors: (2023/07/17) 
-            !this%scalarsource = spread(spread(R1,2,this%nyLoc),3,this%nzLoc) * spread(R2, 1, this%nxLoc)
-            
-            ! Instead, store in intermediate variable R: 
-            R = spread(R2, 1, this%nxLoc) * spread(spread(R1, 2, this%nyLoc), 3,this%nzLoc)
+    ! Local variables
+    real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc) :: R1
+    real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc) :: R2
+    real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc), allocatable :: x_hat, y_hat, z_hat
+
+    ! Compute rotated coordinates
+    x_hat = (this%xG - this%xLoc) * cos(this%yaw * pi / 180.d0) + (this%yG - this%yLoc) * sin(this%yaw * pi / 180.d0) + this%xLoc
+    y_hat = -(this%xG - this%xLoc) * sin(this%yaw * pi / 180.d0) + (this%yG - this%yLoc) * cos(this%yaw * pi / 180.d0) + this%yLoc
+
+    x_hat = (x_hat - this%xLoc) * cos(this%tilt * pi / 180.d0) + (this%zG - this%zLoc) * sin(this%tilt * pi / 180.d0) + this%xLoc
+    z_hat = -(x_hat - this%xLoc) * sin(this%tilt * pi / 180.d0) + (this%zG - this%zLoc) * cos(this%tilt * pi / 180.d0) + this%zLoc
+
+    call this%get_R1(x_hat, R1)
+    call this%get_R2(y_hat, z_hat, R2)
+
+    R = R1 * R2
             this%scalarsource = R
-        else
-            call this%get_R()  ! bypass quick kernel
-        end if
-    else
-        ! build the kernel from 3D gaussian kernel
-        call this%get_R()
-    end if
      
     ! minimum threshold tolerance
     where (this%scalarsource < 1.d-10)
