@@ -276,7 +276,7 @@ subroutine get_R2(this, y, z, R2)
             z_d(npts) = X(i)
         end if
     end do
-    
+
     ! Initialize R2 output
     R2 = zero
 
@@ -285,7 +285,7 @@ subroutine get_R2(this, y, z, R2)
         exponent = -6.d0 * (( (y - y_d(i))**2 + (z - z_d(i))**2 ) / delta**2)
         R2 = R2 + exp(exponent)
     end do
-    
+
     ! Clean up
     deallocate(xs, ys, X, Y, y_d, z_d, mask)
 end subroutine
@@ -313,8 +313,8 @@ subroutine get_weights(this)
     call this%get_R2(y_hat, z_hat, R2)
 
     R = R1 * R2
-            this%scalarsource = R
-     
+    this%scalarsource = R
+        
     ! minimum threshold tolerance
     where (this%scalarsource < 1.d-10)
         this%scalarsource = 0
