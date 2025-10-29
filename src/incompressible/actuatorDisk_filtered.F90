@@ -50,7 +50,6 @@ module actuatorDisk_FilteredMod
         procedure :: get_RHS
         procedure :: get_R1
         procedure :: get_R2
-        procedure :: get_R
         procedure :: get_weights
         procedure :: get_power
 
@@ -149,13 +148,7 @@ subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG)
         ! use the turbine diameter to dimensionalize the filterwidth
         this%delta = filterWidth * this%diam 
     endif
-    ! Thickness is only used if quickDecomp = .TRUE.
-    this%quickDecomp = quickDecomp
-    if (quickDecomp) then
-        call message(1, "ADM: using quick decomposition in x")
-    else
-        call message(1, "ADM: using full kernel integration")
-    end if
+
 
     ! Get (unrotated) turbine location points
     call sample_on_circle(this%diam, this%yLoc, this%zLoc, this%ys, this%zs, this%dy, this%dz)
@@ -201,7 +194,7 @@ subroutine get_R1(this, x, R1)
     class(actuatordisk_filtered), intent(inout) :: this
 
     ! Inputs
-    real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc), intent(in), allocatable :: x
+    real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc), intent(in) :: x
 
     ! Outputs
     real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc), intent(out) :: R1
@@ -210,14 +203,14 @@ subroutine get_R1(this, x, R1)
     real(rkind) :: tmp
 
     tmp = sqrt(6.d0)/this%delta
-    R1 = erf(tmp*(x + this%thick/two)) - erf(tmp*(x - this%thick/two))
+    R1 = (one / (two * this%thick)) * erf(tmp*(x + this%thick/two)) - erf(tmp*(x - this%thick/two))
 end subroutine
 
 ! Eqn 11 in Shapiro et al. 2019
-subroutine get_R2(this, y, z, R2)
+subroutine get_R2(this, y_in, z_in, R2)
     class(actuatordisk_filtered), intent(inout) :: this
     ! Inputs
-    real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc), intent(in), allocatable :: y, z
+    real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc), intent(in) :: y_in, z_in
 
     ! Outputs
     real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc), intent(out) :: R2
@@ -227,13 +220,13 @@ subroutine get_R2(this, y, z, R2)
     real(rkind), allocatable :: X(:), Y(:)
     real(rkind), allocatable :: y_d(:), z_d(:)
     logical, allocatable :: mask(:)
-    real(rkind) :: exponent, dx, dy
+    real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc) :: exponent
+    real(rkind) :: dx, dy
     integer :: Nx, Ny, npts, i, j, k
 
     ! Parameters
     Nx = 100
     Ny = 100
-    delta = this%delta
 
     ! Set up Cartesian grid
     allocate(xs(Nx), ys(Ny))
@@ -282,7 +275,7 @@ subroutine get_R2(this, y, z, R2)
 
     ! Compute the Gaussian sum over the circular disk
     do i = 1, npts
-        exponent = -6.d0 * (( (y - y_d(i))**2 + (z - z_d(i))**2 ) / delta**2)
+        exponent = -6.d0 * (( (y_in - y_d(i))**2 + (z_in - z_d(i))**2 ) / this%delta**2)
         R2 = R2 + exp(exponent)
     end do
 
@@ -300,14 +293,14 @@ subroutine get_weights(this)
     ! Local variables
     real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc) :: R1
     real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc) :: R2
-    real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc), allocatable :: x_hat, y_hat, z_hat
+    real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc) :: x_hat, y_hat, z_hat
 
-    ! Compute rotated coordinates
-    x_hat = (this%xG - this%xLoc) * cos(this%yaw * pi / 180.d0) + (this%yG - this%yLoc) * sin(this%yaw * pi / 180.d0) + this%xLoc
-    y_hat = -(this%xG - this%xLoc) * sin(this%yaw * pi / 180.d0) + (this%yG - this%yLoc) * cos(this%yaw * pi / 180.d0) + this%yLoc
+    ! Compute rotated coordinates centered at the rotor and aligned with the rotor
+    x_hat = (this%xG - this%xLoc) * cos(this%yaw * pi / 180.d0) + (this%yG - this%yLoc) * sin(this%yaw * pi / 180.d0)
+    y_hat = -(this%xG - this%xLoc) * sin(this%yaw * pi / 180.d0) + (this%yG - this%yLoc) * cos(this%yaw * pi / 180.d0)
 
-    x_hat = (x_hat - this%xLoc) * cos(this%tilt * pi / 180.d0) + (this%zG - this%zLoc) * sin(this%tilt * pi / 180.d0) + this%xLoc
-    z_hat = -(x_hat - this%xLoc) * sin(this%tilt * pi / 180.d0) + (this%zG - this%zLoc) * cos(this%tilt * pi / 180.d0) + this%zLoc
+    x_hat = (x_hat) * cos(this%tilt * pi / 180.d0) + (this%zG - this%zLoc) * sin(this%tilt * pi / 180.d0)
+    z_hat = -(x_hat) * sin(this%tilt * pi / 180.d0) + (this%zG - this%zLoc) * cos(this%tilt * pi / 180.d0)
 
     call this%get_R1(x_hat, R1)
     call this%get_R2(y_hat, z_hat, R2)

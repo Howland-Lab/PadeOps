@@ -1,6 +1,7 @@
 #!/bin/bash
 
-module load cmake/3.31.15
+#module load cmake/3.31.15
+module load cmake/3.31.9
 module load intel impi
 
 CWD=`pwd`
