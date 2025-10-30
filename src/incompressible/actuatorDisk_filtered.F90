@@ -15,7 +15,8 @@ module actuatorDisk_FilteredMod
      
     type :: actuatorDisk_filtered
         ! Implementation of Shapiro et al. (2019) Filtered ADM
-        ! Kirby Heck 07/20/2022
+        ! Original code by Kirby Heck 07/20/2022
+        ! Modified by Ilan Upfal 10/30/2025
 
         ! Actuator Disk Info
         integer :: xLoc_idx, ActutorDisk_T2ID, tInd = 1
@@ -388,10 +389,11 @@ subroutine get_RHS(this, u, v, w, rhsxvals, rhsyvals, rhszvals)
     real(rkind), dimension(3,1) :: n=[1,0,0], tau=[0,1,0] !xn, Ft
     real(rkind), dimension(3,3) :: R, T
 
-    ! update yaw and tilt of the turbine
-    if (.not. this%useDynamicYaw .and. (this%yaw - yaw*180.d0/pi)>1.d-8) then
-        call GracefulExit("Turbine prescribed yaw changed, but useDynamicYaw is OFF", 423)
-    end if
+    ! ! update yaw and tilt of the turbine
+    ! if (.not. this%useDynamicYaw .and. (this%yaw - yaw*180.d0/pi)>1.d-8) then
+    !     print *, "this yaw is", this%yaw, "local yaw is", yaw
+    !     call GracefulExit("Turbine prescribed yaw changed, but useDynamicYaw is OFF", 423)
+    ! end if
 
     yaw = this%yaw * pi/180.d0
     tilt = this%tilt * pi/180.d0
