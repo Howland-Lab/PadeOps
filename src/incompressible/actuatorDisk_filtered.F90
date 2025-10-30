@@ -203,7 +203,10 @@ subroutine get_R1(this, x, R1)
     real(rkind) :: tmp
 
     tmp = sqrt(6.d0)/this%delta
-    R1 = (one / (two * this%thick)) * erf(tmp*(x + this%thick/two)) - erf(tmp*(x - this%thick/two))
+    R1 = (one / (two * this%thick)) * erf(tmp*(x + (this%thick/two))) - erf(tmp*(x - (this%thick/two)))
+
+    R1 = R1 / (p_sum(R1)*this%dV)
+
 end subroutine
 
 ! Eqn 11 in Shapiro et al. 2019
@@ -278,6 +281,8 @@ subroutine get_R2(this, y_in, z_in, R2)
         exponent = -6.d0 * (( (y_in - y_d(i))**2 + (z_in - z_d(i))**2 ) / this%delta**2)
         R2 = R2 + exp(exponent)
     end do
+
+    R2 = R2 / (p_sum(R2)*this%dV)
 
     ! Clean up
     deallocate(xs, ys, X, Y, y_d, z_d, mask)
