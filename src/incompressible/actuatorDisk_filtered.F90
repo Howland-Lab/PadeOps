@@ -203,7 +203,7 @@ subroutine get_R1(this, x, R1)
     real(rkind) :: tmp
 
     tmp = sqrt(6.d0)/this%delta
-    R1 = (one / (two * this%thick)) * erf(tmp*(x + (this%thick/two))) - erf(tmp*(x - (this%thick/two)))
+    R1 = (one / (two * this%thick)) * (erf(tmp*(x + (this%thick/two))) - erf(tmp*(x - (this%thick/two))))
 
 
 end subroutine
