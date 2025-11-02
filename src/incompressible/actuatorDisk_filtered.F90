@@ -299,13 +299,23 @@ subroutine get_weights(this)
     real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc) :: R1
     real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc) :: R2
     real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc) :: x_hat, y_hat, z_hat
+    real(rkind) :: yaw_rot, tilt_rot
 
-    ! Compute rotated coordinates centered at the rotor and aligned with the rotor
-    x_hat = (this%xG - this%xLoc) * cos(this%yaw * pi / 180.d0) + (this%yG - this%yLoc) * sin(this%yaw * pi / 180.d0)
-    y_hat = -(this%xG - this%xLoc) * sin(this%yaw * pi / 180.d0) + (this%yG - this%yLoc) * cos(this%yaw * pi / 180.d0)
+    ! Convert yaw and tilt to radians and invert sign for coordinate rotation
+    yaw_rot = - this%yaw * pi / 180.d0
+    tilt_rot = - this%tilt * pi / 180.d0
 
-    x_hat = (x_hat) * cos(this%tilt * pi / 180.d0) + (this%zG - this%zLoc) * sin(this%tilt * pi / 180.d0)
-    z_hat = -(x_hat) * sin(this%tilt * pi / 180.d0) + (this%zG - this%zLoc) * cos(this%tilt * pi / 180.d0)
+    ! Center coordinates at the rotor location
+    X_hat = this%xG - this%xLoc
+    Y_hat = this%yG - this%yLoc
+    Z_hat = this%zG - this%zLoc
+
+    ! Rotate for yaw and tilt
+    x_hat =  x_hat * cos(yaw_rot) - y_hat * sin(yaw_rot)
+    y_hat =  x_hat * sin(yaw_rot) + y_hat * cos(yaw_rot)
+
+    z_hat = z_hat * cos(tilt_rot) - x_hat * sin(tilt_rot)
+    x_hat = z_hat * sin(tilt_rot) + x_hat * cos(tilt_rot)
 
     call this%get_R1(x_hat, R1)
     call this%get_R2(y_hat, z_hat, R2)
