@@ -62,10 +62,8 @@ program AD_Coriolis_shear
     call budg_multi_phase_avg%destroy()
  
     call igp%finalize_io()                                              !<-- Close the header file (wrap up i/o)
-
-    call igp%destroy()                                                  !<-- Destroy the IGRID derived type 
-   
-
+    call igp%destroy()                                                  !<-- Destroy the IGRID derived type
+    
     deallocate(igp)                                                     !<-- Deallocate all the memory associated with scalar defaults
     
     call MPI_Finalize(ierr)                                             !<-- Terminate MPI 

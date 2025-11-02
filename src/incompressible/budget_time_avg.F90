@@ -181,12 +181,13 @@ module budgets_time_avg_mod
 
         complex(rkind), dimension(:,:,:), allocatable, public :: uc, vc, wc, usgs, vsgs, wsgs, px, py, pz, uturb, pxdns, pydns, pzdns, vturb, wturb 
         complex(rkind), dimension(:,:,:), allocatable, public :: uvisc, vvisc, wvisc, ucor, vcor, wcor, wb 
-        type(igrid), pointer, public :: igrid_sim 
+        type(igrid), pointer, public :: igrid_sim => null()
         
         real(rkind), dimension(:,:,:,:), allocatable, public :: budget_0, budget_1, budget_2, budget_3, budget_4_11, budget_4_22, budget_4_33, budget_4_13, budget_4_23
         real(rkind), dimension(:,:,:), allocatable :: tke, tke_old, u_old, v_old, wC_old, dUdt, dVdt, dWdt
         integer :: counter
         character(len=clen) :: budgets_dir
+        character(len=clen), public :: file_suffix = "NULL" ! children types can add in terms to the budget file names
 
         logical :: useWindTurbines, isStratified, useCoriolis
         real(rkind), allocatable, dimension(:) :: runningSum_sc, runningSum_sc_turb, runningSum_turb
@@ -196,7 +197,7 @@ module budgets_time_avg_mod
         integer :: tidx_budget_start 
         real(rkind) :: time_budget_start 
         logical :: do_budgets
-        logical :: forceDump
+        logical, public :: forceDump
         logical :: splitPressureDNS
 
     contains
@@ -204,18 +205,19 @@ module budgets_time_avg_mod
         procedure           :: destroy
         procedure           :: ResetBudget
         procedure           :: DoBudgets
+        procedure           :: DumpBudget
+        procedure           :: updateForceDump
 
-        procedure, public :: get_run_id
-        procedure, public :: get_counter
-        procedure, public :: get_budgets_dir
+        ! procedure, public :: get_run_id
+        ! procedure, public :: get_counter
+        ! procedure, public :: get_budgets_dir
         
         procedure, private  :: updateBudget
-        procedure, private  :: DumpBudget
         procedure, private  :: restartBudget
         procedure, private  :: restart_budget_field
         procedure, private  :: restart_budget_4_field
-        procedure, private  :: dump_budget_field 
-        procedure, private  :: dump_budget4_field 
+        procedure, private  :: dump_budget_field  ! override-able
+        procedure, private  :: dump_budget4_field
         
         procedure, private  :: AssembleBudget0
         procedure, private  :: DumpBudget0 
@@ -258,9 +260,10 @@ module budgets_time_avg_mod
 
 
 contains
-    subroutine update_budget_config_from_namelist(this, inputfile)
+    subroutine update_budget_config_from_namelist(this, inputfile, force_do_budgets)
         class(time_budget_config), intent(inout) :: this
         character(len=*), intent(in) :: inputfile
+        logical, intent(in), optional :: force_do_budgets
 
         logical :: do_budgets, restart_budgets
         character(len=clen) :: budgets_dir, restart_dir
@@ -276,6 +279,10 @@ contains
         read(unit=ioUnit, NML=BUDGET_TIME_AVG)
         close(ioUnit)
 
+        if (present(force_do_budgets)) then
+            do_budgets = force_do_budgets
+        end if
+
         this%do_budgets = do_budgets
         this%budgetType = budgetType
         this%budgets_dir = budgets_dir
@@ -290,23 +297,23 @@ contains
         this%time_budget_start = time_budget_start
     end subroutine update_budget_config_from_namelist
 
-    function get_run_id(this) result(val)
-        class(budgets_time_avg), intent(in) :: this
-        integer :: val
-        val = this%run_id
-    end function get_run_id
+    ! function get_run_id(this) result(val)
+    !     class(budgets_time_avg), intent(in) :: this
+    !     integer :: val
+    !     val = this%run_id
+    ! end function get_run_id
 
-    function get_counter(this) result(val)
-        class(budgets_time_avg), intent(in) :: this
-        integer :: val
-        val = this%counter
-    end function get_counter
+    ! function get_counter(this) result(val)
+    !     class(budgets_time_avg), intent(in) :: this
+    !     integer :: val
+    !     val = this%counter
+    ! end function get_counter
 
-    function get_budgets_dir(this) result(val)
-        class(budgets_time_avg), intent(in) :: this
-        character(len=clen) :: val
-        val = this%budgets_dir
-    end function get_budgets_dir
+    ! function get_budgets_dir(this) result(val)
+    !     class(budgets_time_avg), intent(in) :: this
+    !     character(len=clen) :: val
+    !     val = this%budgets_dir
+    ! end function get_budgets_dir
 
     subroutine init(this, inputfile, igrid_sim, cfg) 
         class(budgets_time_avg), intent(inout) :: this
@@ -474,11 +481,9 @@ contains
         end if
     end subroutine init
 
-
-    subroutine doBudgets(this, forceDump)
+    subroutine updateForceDump(this, forceDump)
         class(budgets_time_avg), intent(inout) :: this
         logical, intent(in), optional :: forceDump
-
         if(present(forceDump)) then
             this%forceDump = forceDump
         endif
@@ -486,6 +491,25 @@ contains
         if(this%igrid_sim%tsim > this%igrid_sim%tstop) then
             this%forceDump = .TRUE.
        endif
+
+       if (mod(this%igrid_sim%step,this%tidx_dump) .eq. 0) then
+            this%forceDump = .TRUE.
+       endif
+    end subroutine updateForceDump
+
+
+    subroutine doBudgets(this, forceDump)
+        class(budgets_time_avg), intent(inout) :: this
+        logical, intent(in), optional :: forceDump
+
+        call this%updateForceDump(forceDump)
+        ! if(present(forceDump)) then
+        !     this%forceDump = forceDump
+        ! endif
+
+    !     if(this%igrid_sim%tsim > this%igrid_sim%tstop) then
+    !         this%forceDump = .TRUE.
+    !    endif
 
         if (this%do_budgets)  then
             if( ( (this%tidx_budget_start>0) .and. (this%igrid_sim%step>this%tidx_budget_start) ) .or. &
@@ -495,7 +519,8 @@ contains
                     call this%updateBudget()
                 end if
 
-                if ((mod(this%igrid_sim%step,this%tidx_dump) .eq. 0) .or. this%forceDump) then
+                ! if ((mod(this%igrid_sim%step,this%tidx_dump) .eq. 0) .or. this%forceDump) then
+                if (this%forceDump) then
                     call this%dumpBudget()
                     call message(0,"Dumped a budget .stt file")
                 end if 
@@ -2224,13 +2249,15 @@ subroutine DumpBudget4_23(this)
         class(budgets_time_avg), intent(inout) :: this
         real(rkind), dimension(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)), intent(in) :: field
         integer, intent(in) :: fieldID, BudgetID
-        character(len=clen) :: fname, tempname 
-
-        write(tempname,"(A3,I2.2,A7,I1.1,A5,I2.2,A2,I6.6,A2,I6.6,A4)") "Run",this%run_id,"_budget",BudgetID,"_term",fieldID,"_t",this%igrid_sim%step,"_n",this%counter,".s3D"
+        character(len=clen) :: fname, tempname, fileext
+        write(tempname,"(A3,I2.2,A7,I1.1,A5,I2.2,A2,I6.6,A2,I6.6)") "Run",this%run_id,"_budget",BudgetID,"_term",fieldID,"_t",this%igrid_sim%step,"_n",this%counter
+        if ((this%file_suffix .ne. "null") .and. (this%file_suffix .ne. "NULL")) then
+            tempname = trim(tempname)//trim(this%file_suffix)
+        end if
+        write(fileext, "(A4)") ".s3D"
+        tempname = trim(tempname)//trim(fileext)
         fname = this%budgets_Dir(:len_trim(this%budgets_Dir))//"/"//trim(tempname)
-
         call decomp_2d_write_one(1,field,fname, this%igrid_sim%gpC)
-
     end subroutine 
 
     subroutine dump_budget4_field(this, field, fieldID, BudgetID, componentID)
@@ -2543,7 +2570,10 @@ subroutine DumpBudget4_23(this)
     
     subroutine destroy(this)
         class(budgets_time_avg), intent(inout) :: this
-        nullify(this%igrid_sim)
+        
+        if (associated(this%igrid_sim)) then
+            nullify(this%igrid_sim)
+        end if
         if(this%do_budgets) then
             deallocate(this%uc, this%vc, this%wc, this%usgs, this%vsgs, this%wsgs, this%px, this%py, this%pz, this%uturb)  
             deallocate(this%budget_0)

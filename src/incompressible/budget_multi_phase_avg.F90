@@ -20,6 +20,7 @@ module budgets_multi_phase_avg_mod
     namelist /BUDGET_MULTI_PHASE_AVG/ do_budgets, nphases, tol, phases
 
     type :: budgets_multi_phase_avg
+        type(igrid), pointer, public :: igrid_sim => null()
         logical :: do_budgets
         real(rkind), allocatable :: phases(:)
         type(budgets_phase_avg), allocatable :: phase_budgets(:)
@@ -47,6 +48,8 @@ contains
         if (.not. igrid_sim%WindTurbineArr%useDynamicTurbine) then
             call GracefulExit("Turbine isn't dynamic - right now phase averaging depends on turbine postions/speed.", 100)
         endif
+        ! save pointer to igrid_sim
+        this%igrid_sim => igrid_sim 
 
         ! read in namelist variables (declared above in module)
         ioUnit = 534
@@ -59,7 +62,7 @@ contains
         this%nphases = nphases
         this%phases = phases
         this%tol = tol
-        if this%do_budgets then
+        if (this%do_budgets) then
             ! check to ensure users have provided phases
             if (this%nphases == 0) then
                 call GracefulExit("Phase-averaged budgets turned on, but phases array is empty!", 101)
@@ -68,19 +71,17 @@ contains
             do i = 1, this%nphases
                 do j = 1, this%nphases
                     if ((.not. (i .eq. j)) .and. (phase_overlaps(this%phases(i), this%phases(j), this%tol))) then
-                        call GracefulExit("Phases overlap with given tolerance! This will cause double counting!", 101)
+                        call message(0, "Phases overlap with given tolerance! This will cause double counting!")
                     end if
                 end do
             end do
             ! get default time budget config values and update from the namelist
             cfg = time_budget_config()
-            call cfg%update_budget_config_from_namelist(inputfile)
-            ! want to run the phase budgets, even if time-averaged budget is turned off
-            cfg%do_budgets = this%do_budgets
+            call cfg%update_budget_config_from_namelist(inputfile, this%do_budgets)
             ! create one phase-average budget per requested phase (children of time-average budgets)
             allocate(this%phase_budgets(this%nphases))
             do i = 1, this%nphases
-                call this%phase_budgets(i)%phase_avg_init(inputfile, igrid_sim, this%phases(i), tol, cfg)
+                call this%phase_budgets(i)%phase_init(inputfile, igrid_sim, this%phases(i), tol, cfg)
             end do
         end if
     end subroutine init
@@ -106,26 +107,62 @@ contains
         endif
     end function phase_overlaps
 
+    ! TODO: right now this only uses surge!!! update to allow pitch later
+    pure function compute_phase(x, U, A, f, tol) result(phase)
+        !! Compute normalized phase (0–1).
+        real(rkind), intent(in) :: x, U, A, f, tol
+        real(rkind), parameter :: pi = acos(-1.0_rkind)
+        real(rkind) :: phi, sincomp, coscomp
+        real(rkind) :: phase
+
+        ! Construct normalized sine/cosine inputs
+        sincomp = (2.0_rkind * pi * f / A) * x
+        coscomp = U / A
+
+        ! Compute raw phase angle in radians
+        phi = atan2(sincomp, coscomp)
+
+        ! Normalize to [0,1)
+        phase = modulo(phi / (2.0_rkind * pi), 1.0_rkind)
+
+        if (abs(phase - 1.0_rkind) < tol) then
+            phase = 0.0_rkind
+        end if
+    end function compute_phase
+
     subroutine doBudgets(this, forceDump)
         class(budgets_multi_phase_avg), intent(inout) :: this
         logical, intent(in), optional :: forceDump
+        real(rkind) :: delx, uturb, surge_amp, surge_freq
+        real(rkind) :: sim_curr_phase
         integer:: i
         ! call doBudgets for each phase budget
         if (this%do_budgets)  then
+            ! get needed arguments from first wind turbine (assumes all turbines move the same)
+            delx = this%igrid_sim%WindTurbineArr%dynamicArray(1)%delx
+            uturb = this%igrid_sim%WindTurbineArr%dynamicArray(1)%ut
+            surge_amp = this%igrid_sim%WindTurbineArr%dynamicArray(1)%surge_amplitude
+            surge_freq = this%igrid_sim%WindTurbineArr%dynamicArray(1)%surge_freq
+            ! TODO: right now this only uses surge!!! update to allow pitch later
+            ! only do the budget if timestep is correct phase of turbine motion
+            ! compute the phase of the first turbine
+            sim_curr_phase = compute_phase(delx, uturb, surge_amp, surge_freq, this%tol)
             do i = 1, this%nphases
-                call this%phase_budgets(i)%doBudgets(forceDump)
+                call this%phase_budgets(i)%phase_doBudgets(sim_curr_phase, forceDump)
             end do
         end if 
-
     end subroutine doBudgets
 
     subroutine destroy(this)
         class(budgets_multi_phase_avg), intent(inout) :: this
         integer :: i
+        nullify(this%igrid_sim)
         ! destroy each phase budgets
-        do i = 1, this%nphases
-            call this%phase_budgets(i)%destroy()
-        end do
+        if (this%do_budgets) then 
+            do i = 1, this%nphases
+                call this%phase_budgets(i)%destroy()
+            end do
+        end if
     end subroutine destroy
 
 end module budgets_multi_phase_avg_mod
