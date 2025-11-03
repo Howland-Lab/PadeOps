@@ -316,8 +316,9 @@ subroutine get_weights(this)
     x_hat_y =  x_hat_o * cos(yaw_rot) - y_hat_o * sin(yaw_rot)
     y_hat_y =  x_hat_o * sin(yaw_rot) + y_hat_o * cos(yaw_rot)
 
-    x_hat_yt = z_hat_o * sin(tilt_rot) + x_hat_y * cos(tilt_rot)
-    z_hat_t = z_hat_o * cos(tilt_rot) - x_hat_y * sin(tilt_rot)
+    z_hat_t = - x_hat_y * sin(tilt_rot) + z_hat_o * cos(tilt_rot)
+    x_hat_yt =  x_hat_y * cos(tilt_rot) + z_hat_o * sin(tilt_rot)
+
 
     call this%get_R1(x_hat_yt, R1)
     call this%get_R2(y_hat_y, z_hat_t, R2)
