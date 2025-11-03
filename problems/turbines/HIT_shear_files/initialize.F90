@@ -453,11 +453,7 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
             call get_T(InflowProfileType, z, T, fname_inflow)
             call message_min_max(1,"Bounds for T:", p_minval(minval(T)), p_maxval(maxval(T)))
             nullify(T)
-        else
-            call message(0, 'GAHHHH WHY ARE WE NOT ENTERING THE PREVIOUS IF STATEMENT???')
-            ! call message(0, load_T_field)
         end if
-
 
         nullify(u,v,w,x,y,z)
         call message(0,"Velocity Field for Simulation 1 Initialized")
