@@ -69,9 +69,10 @@ module actuatorDisk_FilteredMod
 
 contains
 
-subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG)
+subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG, dx, dy, dz)
     class(actuatorDisk_filtered), intent(inout) :: this
     real(rkind), intent(in), dimension(:,:,:), target :: xG, yG, zG
+    real(rkind), intent(in) :: dx, dy, dz
     integer, intent(in) :: ActuatorDisk_ID
     character(len=*), intent(in) :: inputDir
     character(len=clen) :: tempname, fname
@@ -97,9 +98,9 @@ subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG)
     call tic()
     
     ! link grids and read inputs 
-    this%dx=xG(2,1,1)-xG(1,1,1)
-    this%dy=yG(1,2,1)-yG(1,1,1)
-    this%dz=zG(1,1,2)-zG(1,1,1)
+    this%dx = dx
+    this%dy = dy
+    this%dz = dz
     this%dV = this%dx*this%dy*this%dz
     this%xLoc = xLoc; this%yLoc = yLoc; this%zLoc = zLoc
     this%cT = cT; this%diam = diam; this%yaw = yaw; this%tilt = tilt
