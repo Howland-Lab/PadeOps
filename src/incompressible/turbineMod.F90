@@ -309,7 +309,7 @@ subroutine init(this, inputFile, gpC, gpE, spectC, spectE, cbuffyC, cbuffYE, cbu
          allocate(this%dynamicArray(this%nTurbines))  ! TODO make generic turbine and move this outside
 
          do i = 1, this%nTurbines
-             call this%turbArrayADM_fil(i)%init(turbInfoDir, i, mesh(:,:,:,1), mesh(:,:,:,2), mesh(:,:,:,3))
+             call this%turbArrayADM_fil(i)%init(turbInfoDir, i, mesh(:,:,:,1), mesh(:,:,:,2), mesh(:,:,:,3), dx, dy, dz)
              this%gamma(i) = this%turbArrayADM_fil(i)%yaw*pi/180.d0  ! stored in RADIANS  TODO - phase this out
              this%theta(i) = 0.d0  ! tilt angle
              
@@ -324,7 +324,7 @@ subroutine init(this, inputFile, gpC, gpE, spectC, spectE, cbuffyC, cbuffYE, cbu
         ! added ADM type 6 for pressure figure KSH 09/17/2023
         allocate (this%turbArrayADM_CT(this%nTurbines))
          do i = 1, this%nTurbines
-             call this%turbArrayADM_CT(i)%init(turbInfoDir, i, mesh(:,:,:,1), mesh(:,:,:,2), mesh(:,:,:,3))
+             call this%turbArrayADM_CT(i)%init(turbInfoDir, i, mesh(:,:,:,1), mesh(:,:,:,2), mesh(:,:,:,3), dx, dy, dz)
              this%gamma(i) = this%turbArrayADM_CT(i)%yaw*pi/180.d0  ! stored in RADIANS TODO - phase this out
              this%theta(i) = 0.d0
          end do
