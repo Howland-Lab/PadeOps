@@ -69,7 +69,7 @@ contains
             call this%doBudgets(forceDump) ! calls time average doBudgets
         else if (this%forceDump) then
             call this%dumpBudget()
-            call message(0,"Dumped a budget .stt file")
+            call message(0,"Dumped a phase budget .stt file")
             this%forceDump = .FALSE.
         end if
     end subroutine phase_doBudgets

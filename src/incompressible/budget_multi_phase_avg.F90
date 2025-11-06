@@ -1,6 +1,6 @@
 module budgets_multi_phase_avg_mod
     ! general imports used within function
-    use kind_parameters, only: rkind
+    use kind_parameters, only: rkind, clen
     use incompressibleGrid, only: igrid  
     use exits, only: GracefulExit, message
     ! import time-average type to act as parent to phase-average type
@@ -43,6 +43,7 @@ contains
         integer :: ioUnit, ierr
         integer:: i, j
         type(time_budget_config) :: cfg
+        character(len=clen) :: overlap_msg
 
         ! ensure using a dynamic turbine or else phase averaging doesn't make much sense (right now anyways)
         if (.not. igrid_sim%WindTurbineArr%useDynamicTurbine) then
@@ -71,7 +72,10 @@ contains
             do i = 1, this%nphases
                 do j = 1, this%nphases
                     if ((.not. (i .eq. j)) .and. (phase_overlaps(this%phases(i), this%phases(j), this%tol))) then
-                        call message(0, "Phases overlap with given tolerance! This will cause double counting!")
+                        write(overlap_msg, '(A, F10.4, A, F10.4)') &
+                            "The following phases overlap with given tolerance: ", &
+                            this%phases(i), " and ", this%phases(j)
+                        call message(0, overlap_msg)
                     end if
                 end do
             end do
@@ -108,9 +112,9 @@ contains
     end function phase_overlaps
 
     ! TODO: right now this only uses surge!!! update to allow pitch later
-    pure function compute_phase(x, U, A, f, tol) result(phase)
+    pure function compute_phase(x, U, A, f) result(phase)
         !! Compute normalized phase (0–1).
-        real(rkind), intent(in) :: x, U, A, f, tol
+        real(rkind), intent(in) :: x, U, A, f
         real(rkind), parameter :: pi = acos(-1.0_rkind)
         real(rkind) :: phi, sincomp, coscomp
         real(rkind) :: phase
@@ -124,10 +128,6 @@ contains
 
         ! Normalize to [0,1)
         phase = modulo(phi / (2.0_rkind * pi), 1.0_rkind)
-
-        if (abs(phase - 1.0_rkind) < tol) then
-            phase = 0.0_rkind
-        end if
     end function compute_phase
 
     subroutine doBudgets(this, forceDump)
@@ -146,7 +146,8 @@ contains
             ! TODO: right now this only uses surge!!! update to allow pitch later
             ! only do the budget if timestep is correct phase of turbine motion
             ! compute the phase of the first turbine
-            sim_curr_phase = compute_phase(delx, uturb, surge_amp, surge_freq, this%tol)
+            sim_curr_phase = compute_phase(delx, uturb, surge_amp, surge_freq)
+            call message(0, "Current phase ", sim_curr_phase)
             do i = 1, this%nphases
                 call this%phase_budgets(i)%phase_doBudgets(sim_curr_phase, forceDump)
             end do
