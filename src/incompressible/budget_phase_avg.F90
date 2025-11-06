@@ -44,13 +44,7 @@ contains
 
         ! first initialize time-average values
         call this%init(inputfile, igrid_sim, cfg)
-
-        ! add phase and tol values
-        if (abs(phase - 1.0_rkind) < tol) then ! if phase is approximately 1 -> set to 0 
-            this%phase = 0.0_rkind
-        else ! set phase to provided phase between [0, 1)
-            this%phase = phase
-        endif
+        this%phase = phase
         this%tol = tol
 
         ! create file name suffix for phase
@@ -64,10 +58,13 @@ contains
         class(budgets_phase_avg), intent(inout) :: this
         real(rkind), intent(in) :: sim_curr_phase
         logical, intent(in), optional :: forceDump
+        ! check if we need to calculate budget
+        logical :: runBudget
+        runBudget = check_runBudget(sim_curr_phase, this%phase, this%tol)
         ! update force dump
         call this%updateForceDump(forceDump)
         ! if current phase, then call time-average doBudgets on current budget
-        if (abs(sim_curr_phase - this%phase) < this%tol) then
+        if (runBudget) then
             call message(0, "Updating phase budget for phase", this%phase)
             call this%doBudgets(forceDump) ! calls time average doBudgets
         else if (this%forceDump) then
@@ -76,6 +73,32 @@ contains
             this%forceDump = .FALSE.
         end if
     end subroutine phase_doBudgets
+
+    pure function check_runBudget(sim_curr_phase, budget_phase, tol) result(runBudget)
+        real(rkind), intent(in) :: sim_curr_phase, budget_phase, tol
+        logical :: runBudget
+        real(rkind) :: wrapped_tol
+
+        runBudget = .FALSE.
+        ! if sim_curr_phase isn't within tol of 0 or 1, simple check
+        if (abs(sim_curr_phase - budget_phase) < tol) then
+            runBudget = .TRUE.
+        end if
+        ! if sim_curr_phase is within tol of 1
+        if (budget_phase + tol > 1.0_rkind) then
+            wrapped_tol = budget_phase + tol - 1.0_rkind
+            if (sim_curr_phase < wrapped_tol) then
+                runBudget = .TRUE.
+            end if
+        end if
+        ! if sim_curr_phase is within tol of 0
+        if (budget_phase - tol < 0.0_rkind) then
+            wrapped_tol = 1.0_rkind + (budget_phase - tol)
+            if (sim_curr_phase > wrapped_tol) then
+                runBudget = .TRUE.
+            end if
+        end if
+    end function check_runBudget
 
     ! subroutine phase_dump_budget_field(this, field, fieldID, BudgetID)
     !     use decomp_2d_io
