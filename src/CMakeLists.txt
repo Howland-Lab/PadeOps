@@ -26,24 +26,15 @@ elseif( CMAKE_Fortran_COMPILER_ID MATCHES "Cray" )
    target_link_libraries(PadeOps fftw3 2decomp_fft ${HDF5_LIBRARY_PATH}/libhdf5hl_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5_hl.a ${HDF5_LIBRARY_PATH}/libhdf5_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5.a ${MPI_LIBRARIES} m z dl)
 else()
    # Replace $ENV{CRAY_LIBSCI_PREFIX_DIR}/lib/libsci_gnu.a with local library if needed
-<<<<<<< HEAD
    target_link_libraries(PadeOps fftw3 2decomp_fft $ENV{CRAY_LIBSCI_PREFIX_DIR}/lib/libsci_gnu.a  ${HDF5_LIBRARY_PATH}/libhdf5hl_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5_hl.a ${HDF5_LIBRARY_PATH}/libhdf5_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5.a ${MPI_LIBRARIES} -lz -ldl -lm -Wl,-rpath -Wl,${HDF5_LIBRARY_PATH})
-=======
-   target_link_libraries(PadeOps fftw3 2decomp_fft $ENV{CRAY_LIBSCI_PREFIX_DIR}/lib/libsci_gnu.a  ${VTK_IO_LIBRARY_PATH}/libVTK_IO.a ${HDF5_LIBRARY_PATH}/libhdf5hl_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5_hl.a ${HDF5_LIBRARY_PATH}/libhdf5_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5.a ${MPI_LIBRARIES} -lz -ldl -lm -Wl,-rpath -Wl,${HDF5_LIBRARY_PATH})
->>>>>>> 4af35cc4 (changes to make code compile on AMD machine with GNU)
-endif()
 
 if ( CMAKE_Fortran_COMPILER_ID MATCHES "Intel" )
    target_link_libraries(PadeOps fftw3 2decomp_fft  ${MPI_LIBRARIES})
 elseif ( CMAKE_Fortran_COMPILER_ID MATCHES "GNU")
    # Replace $ENV{CRAY_LIBSCI_PREFIX_DIR}/lib/libsci_gnu.a with local library if needed
-<<<<<<< HEAD
    target_link_libraries(PadeOps fftw3 2decomp_fft $ENV{CRAY_LIBSCI_PREFIX_DIR}/lib/libsci_gnu.a  ${MPI_LIBRARIES})
 elseif ( CMAKE_Fortran_COMPILER_ID MATCHES "Cray")
    target_link_libraries(PadeOps fftw3 2decomp_fft $ENV{CRAY_LIBSCI_PREFIX_DIR}/lib/libsci_cray.a ${MPI_LIBRARIES})
-=======
-   target_link_libraries(PadeOps fftw3 2decomp_fft $ENV{CRAY_LIBSCI_PREFIX_DIR}/lib/libsci_gnu.a   ${VTK_IO_LIBRARY_PATH}/libVTK_IO.a ${MPI_LIBRARIES})
->>>>>>> 4af35cc4 (changes to make code compile on AMD machine with GNU)
 elseif ( CMAKE_Fortran_COMPILER_ID MATCHES "GNU_OSX")
    target_link_libraries(PadeOps fftw3 2decomp_fft blas lapack  ${MPI_LIBRARIES})
 endif()
