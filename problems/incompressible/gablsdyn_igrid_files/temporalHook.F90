@@ -20,8 +20,9 @@ contains
         character(len=*), intent(in) :: filename
         class(igrid), intent(inout) :: igp
         real(rkind) :: beta, sigma, phi_ref, alpha, angleTrigger
-        integer :: ioUnit,  controlType, z_ref = 16, dummy_contoller
-        namelist /CONTROL/ beta, sigma, phi_ref, z_ref, alpha, controlType, angleTrigger, dummy_contoller
+        integer :: ioUnit,  controlType, z_ref = 16
+        logical :: dummy_controller=.False.
+        namelist /CONTROL/ beta, sigma, phi_ref, z_ref, alpha, controlType, angleTrigger, dummy_controller
 
         ioUnit = 11
         open(unit=ioUnit, file=trim(filename), form='FORMATTED', iostat=ierr)

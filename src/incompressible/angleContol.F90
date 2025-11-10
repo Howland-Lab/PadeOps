@@ -46,7 +46,7 @@ contains
       val = this%phi_n * 180.d0 / pi
     end function  
 
-    subroutine update_RHS_control(this, dt, urhs, vrhs, wrhs, uC, vC, newTimestep, phi_n, wFilt_n, deltaGalpha, z_hub, trigger, dummy_contoller)
+    subroutine update_RHS_control(this, dt, urhs, vrhs, wrhs, uC, vC, newTimestep, phi_n, wFilt_n, deltaGalpha, z_hub, trigger, dumcntl)
       class(angCont),                                                                        intent(inout)  :: this
       real(rkind),                                                                         intent(in)     :: dt
       real(rkind),    dimension(this%gpC%xsz(1),this%gpC%xsz(2),this%gpC%xsz(3)),          intent(in)     :: uC, vC 
@@ -54,7 +54,7 @@ contains
       complex(rkind), dimension(this%sp_gpC%ysz(1),this%sp_gpC%ysz(2),this%sp_gpC%ysz(3)), intent(inout)  :: urhs, vrhs
       complex(rkind), dimension(this%sp_gpE%ysz(1),this%sp_gpE%ysz(2),this%sp_gpE%ysz(3)), intent(inout)  :: wrhs
       logical, intent(in) :: newTimestep
-      logical, intent(in) :: dummy_contoller
+      logical, intent(in) :: dumcntl
       integer :: nx, ny, i, j
       ! PID tuning parameters
       real(rkind) :: wControl_n, vM, uM
@@ -66,7 +66,7 @@ contains
       ny = this%gpC%ysz(2)
 
       ! Only do the following if it is not a dummy controller
-      if (.NOT. dummy_contoller) then
+      if (.NOT. dumcntl) then
       ! PID controller
       !this%rbuffxC(:,:,:,1) = atan2(vC, uC) !* 180.d0 / pi
       !call transpose_x_to_y(this%rbuffxC(:,:,:,1),this%rbuffyC(:,:,:,1),this%gpC)
@@ -161,7 +161,7 @@ contains
       real(rkind) :: phi_ref, beta, sigma, phi, alpha , angleTrigger
       integer :: controlType
       real(rkind), intent(in) :: phiRestart
-      logical :: dummy_controller
+      logical :: dummy_controller= .FALSE.
       !real(rkind) :: Lx, Ly, LambdaFact = 2.45d0, LambdaFact2 = 2.45d0
       !real(rkind) :: Fringe_yst = 1.d0, Fringe_yen = 1.d0
       !real(rkind) :: Fringe_xst = 0.75d0, Fringe_xen = 1.d0
@@ -175,7 +175,7 @@ contains
       integer :: ioUnit = 10, i, j, k, nx, ierr, z_ref
       !real(rkind), dimension(:), allocatable :: x1, x2, Fringe_func, S1, S2, y1, y2
       !logical :: Apply_x_fringe = .true., Apply_y_fringe = .false.
-      !namelist /FRINGE/ Apply_x_fringe, Apply_y_fringe, Fringe_xst, Fringe_xen, Fringe_delta_st_x, Fringe_delta_en_x, &
+      !namelist /FRINGEINPUT/ Apply_x_fringe, Apply_y_fringe, Fringe_xst, Fringe_xen, Fringe_delta_st_x, Fringe_delta_en_x, &
       !                  Fringe_delta_st_y, Fringe_delta_en_y, LambdaFact, LambdaFact2, Fringe_yen, Fringe_yst, Fringe1_delta_st_x, &
       !                  Fringe2_delta_st_x, Fringe1_delta_en_x, Fringe2_delta_en_x, Fringe1_xst, Fringe2_xst, Fringe1_xen, Fringe2_xen
     
@@ -190,9 +190,6 @@ contains
       !open(unit=ioUnit, file=trim(inputfile), form='FORMATTED', iostat=ierr)
       !read(unit=ioUnit, NML=CONTROL)
       !close(ioUnit)
-
-      ! By default
-      dummy_controller = .FALSE.
 
       ioUnit = 11
       open(unit=ioUnit, file=trim(inputfile), form='FORMATTED', iostat=ierr)

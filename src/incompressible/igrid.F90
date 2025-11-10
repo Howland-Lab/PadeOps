@@ -269,7 +269,7 @@ module IncompressibleGrid
         logical                            :: useControl = .false.
         type(angCont), allocatable, public :: angCont_yaw
         type(angCont), pointer :: angCont_yaw_dummy => NULL()
-        logical :: dummy_contoller = .false.
+        logical :: dummy_controller = .false.
         real(rkind) :: angleHubHeight, totalAngle, wFilt, restartPhi, deltaGalpha, angleTrigger
         integer :: zHubIndex = 16
 
@@ -525,6 +525,7 @@ contains
         this%zHubIndex = zHubIndex; this%angleTrigger = angleTrigger
         this%computeTurbinePressure = computeTurbinePressure; this%turbPr = Pr
         this%restartPhi = 0.d0
+        this%dummy_controller = .false.
         this%Ra = Ra
         if (useWindturbines) this%WriteTurbineForce = WriteTurbineForce
 
@@ -1282,10 +1283,7 @@ contains
            end if 
        end if 
        
-       ! STEP 24: Compute pressure  
-       if ((this%storePressure) .or. (this%fastCalcPressure)) then
-           call this%ComputePressure()
-       end if 
+        
 
        ! STEP 25: Schedule time dumps
        this%vizDump_Schedule = vizDump_Schedule
@@ -1315,12 +1313,18 @@ contains
               allocate(this%angCont_yaw)
               call this%angCont_yaw%init(inputfile, this%spectC, this%spectE, this%gpC, this%gpE, & 
                        this%rbuffxC, this%rbuffxE, this%cbuffyC, this%cbuffyE, & 
-                       this%rbuffyC, this%rbuffzC, this%restartPhi, this%dummy_contoller) 
+                       this%rbuffyC, this%rbuffzC, this%restartPhi, this%dummy_controller) 
+       call message(0, "Wind-angle controller successfully initialized.")
        end if
        this%angleHubHeight = 1.d0      
        this%totalAngle = 0.d0
        this%wFilt = 0.d0
        this%deltaGalpha = 0.d0
+
+       ! STEP 24: Compute pressure  
+       if ((this%storePressure) .or. (this%fastCalcPressure)) then
+           call this%ComputePressure()
+       end if
 
        ! STEP 28: Compute the timestep
        call this%compute_deltaT()

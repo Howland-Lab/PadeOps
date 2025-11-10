@@ -302,12 +302,11 @@ module budgets_time_avg_deficit_mod
          this%splitPressureDNS = this%prim_budget%igrid_sim%computeDNSPressure
  
          this%HaveScalars = this%prim_budget%igrid_sim%useScalars
- 
-         if((this%tidx_budget_start > 0) .and. (this%time_budget_start > 0.0d0)) then
-             call GracefulExit("Both tidx_budget_start and time_budget_start in budget_time_avg are positive. Turn one negative", 100)
-         endif
- 
+  
          if(this%do_budgets) then 
+            if((this%tidx_budget_start > 0) .and. (this%time_budget_start > 0.0d0)) then
+                call GracefulExit("Both tidx_budget_start and time_budget_start in budget_time_avg are positive. Turn one negative", 100)
+            endif
              !if (this%isStratified) then
              ! Always assume that you are stratified
  
