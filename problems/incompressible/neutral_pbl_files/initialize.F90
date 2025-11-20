@@ -84,14 +84,14 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
 
     ! EYS start
     ! Initial potential temperature profile for CNBL (Liu et al, 2020)
-    ! T = 300.d0 + 0.003d0*(ztmp)
+    T = 300.d0 + 0.003d0*(ztmp)
     ! EYS end
 
     ! EYS start
     ! Initial potential temperature profile for TNBL
-    where(ztmp < 10000.d0)
-      T = 300.d0
-    end where
+    ! where(ztmp < 10000.d0)
+    !   T = 300.d0
+    ! end where
     ! EYS end
 
     ! Add random numbers

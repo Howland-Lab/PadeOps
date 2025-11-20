@@ -105,8 +105,8 @@ subroutine computeWallStress(this, u, v, T, uhat, vhat, That, xline, dt)
 
             ! (EYS 07142024) START: To add temporal filtering of wall shear stress
             if (this%TemporalFilter) then
-                this%WallMEpsilon = this%WMEpsilonFact * 2.0d0 * kappa * dt / this%dz
-                ! this%WallMEpsilon = 0.01d0     ! EYS 02192025: constant filter value
+                ! this%WallMEpsilon = this%WMEpsilonFact * 2.0d0 * kappa * dt / this%dz
+                this%WallMEpsilon = this%WMEpsilonFact     ! EYS 02192025: constant filter value
             else 
                 this%WallMEpsilon = 1.0d0
             end if
