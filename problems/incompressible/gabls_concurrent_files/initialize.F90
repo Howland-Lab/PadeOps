@@ -1,6 +1,6 @@
-module neutral_pbl_parameters
+module gabls_concurrent_parameters
 
-      ! TAKE CARE OF TIME NON-DIMENSIONALIZATION IN THIS MODULE
+    ! TAKE CARE OF TIME NON-DIMENSIONALIZATION IN THIS MODULE
 
     use exits, only: message
     use kind_parameters,  only: rkind
@@ -19,7 +19,7 @@ end module
 
 
 subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
-    use neutral_pbl_parameters
+    use gabls_concurrent_parameters
     use kind_parameters,    only: rkind
     use constants,          only: zero, one, two, pi, half
     use gridtools,          only: alloc_buffs
@@ -39,7 +39,7 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     real(rkind), dimension(:,:,:), allocatable :: ybuffC, ybuffE, zbuffC, zbuffE, ztmp
     integer :: nz, nzE, k
     real(rkind) :: sig
-    real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, dTsurf_dt = -0.05d0, z0init = 1.d-4, frameAngle = -26.d0 
+    real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, dTsurf_dt = -0.05d0, z0init = 1.d-4, frameAngle = 0.d0 
     real(rkind), dimension(:,:,:), allocatable :: randArr, Tpurt, eta
 
     ! (EYS 06262025) START: added variables for randomness in seed at startup
@@ -53,7 +53,7 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     logical :: int_variability = .FALSE.
     ! (EYS 06262025) END
 
-    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, int_variability 
+    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, int_variability
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -74,25 +74,18 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     v = zero
     wC = zero
     ! Added to account for frame angle    
-    u = u * cos(frameAngle * pi / 180.d0)
-    v = v * sin(frameAngle * pi / 180.d0) 
+    !u = u * cos(frameAngle * pi / 180.d0)
+    !v = v * sin(frameAngle * pi / 180.d0) 
 
     allocate(ztmp(decompC%xsz(1),decompC%xsz(2),decompC%xsz(3)))
     allocate(Tpurt(decompC%xsz(1),decompC%xsz(2),decompC%xsz(3)))
     ztmp = z*xDim
-
-
-    ! EYS start
-    ! Initial potential temperature profile for CNBL (Liu et al, 2020)
-    ! T = 300.d0 + 0.003d0*(ztmp)
-    ! EYS end
-
-    ! EYS start
-    ! Initial potential temperature profile for TNBL
-    where(ztmp < 10000.d0)
-      T = 300.d0
+    T = 0.01d0*(ztmp - 100.d0) + 265.d0
+    where(ztmp < 100.d0)
+        T = 265.d0
     end where
-    ! EYS end
+    T = T + 0.0001d0*ztmp
+
 
     ! Add random numbers
     ! EYS code for generating a random seed each time
@@ -123,7 +116,6 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     T = T + Tpurt
 
     deallocate(ztmp, Tpurt)
-
 
     !!!!!!!!!!!!!!!!!!!!! DON'T CHANGE ANYTHING UNDER THIS !!!!!!!!!!!!!!!!!!!!!!
     ! Interpolate wC to w
@@ -156,23 +148,22 @@ subroutine setInhomogeneousNeumannBC_Temp(inputfile, wTh_surf)
     character(len=*),                intent(in)    :: inputfile
     real(rkind), intent(out) :: wTh_surf
     integer :: ioUnit 
-    real(rkind) :: wt_surface 
-    namelist /BOUNDARY_FLUX/wt_surface 
+    real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, z0init = 1.d-4, dTsurf_dt, frameAngle = 0.d0
+    logical :: int_variability = .FALSE.
+    
+    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, int_variability
      
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
-    read(unit=ioUnit, NML=BOUNDARY_FLUX)
+    read(unit=ioUnit, NML=PROBLEM_INPUT)
     close(ioUnit)    
 
-    wTh_surf = wt_surface
-
-
-    ! Do nothing really since temperature BC is homogeneous Neumann
+    ! Do nothing really since temperature BC is dirichlet
 end subroutine
 
 subroutine setDirichletBC_Temp(inputfile, Tsurf, dTsurf_dt)
     use kind_parameters,    only: rkind
-    use neutral_pbl_parameters
+    use gabls_concurrent_parameters
     use constants, only: one, zero 
     implicit none
     real(rkind), intent(out) :: Tsurf, dTsurf_dt
@@ -180,7 +171,7 @@ subroutine setDirichletBC_Temp(inputfile, Tsurf, dTsurf_dt)
     integer :: ioUnit 
     real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, z0init = 1.d-4, frameAngle = 0.d0
     logical :: int_variability = .FALSE.
-
+    
     namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, int_variability
  
     ioUnit = 11
@@ -239,7 +230,7 @@ end subroutine
 
 
 subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
-    use neutral_pbl_parameters    
+    use gabls_concurrent_parameters    
     use kind_parameters,  only: rkind
     use constants,        only: one,two
     use decomp_2d,        only: decomp_info
@@ -253,7 +244,7 @@ subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
     integer :: ix1, ixn, iy1, iyn, iz1, izn
     real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, dTsurf_dt = -0.05d0, z0init = 1.d-4, frameAngle = 0.d0
     logical :: int_variability = .FALSE.
-
+    
     namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, int_variability
 
     ioUnit = 11
@@ -302,9 +293,8 @@ subroutine set_Reference_Temperature(inputfile, Thetaref)
     real(rkind), intent(out) :: Thetaref
     integer :: ioUnit 
     real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, dTsurf_dt = -0.05d0, z0init = 2.5d-4, frameAngle = 0.d0 
-
     logical :: int_variability = .FALSE.
-
+    
     namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, int_variability
 
     ioUnit = 11
