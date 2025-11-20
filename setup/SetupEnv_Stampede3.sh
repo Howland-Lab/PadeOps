@@ -1,7 +1,8 @@
 #!/bin/bash
 
-module load cmake
-module load intel impi
+module load cmake/3.31.9
+module load intel
+module load impi
 
 CWD=`pwd`
 export COMPILER_ID=Intel
