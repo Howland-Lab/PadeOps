@@ -2,7 +2,7 @@ module gabls_igrid_parameters
 
       ! TAKE CARE OF TIME NON-DIMENSIONALIZATION IN THIS MODULE
 
-    use exits, only: message, GracefulExit
+    use exits, only: message
     use kind_parameters,  only: rkind
     use constants, only: zero, kappa, pi 
     implicit none
@@ -62,7 +62,7 @@ end subroutine
 
 subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     use gabls_igrid_parameters
-    use kind_parameters,    only: rkind, clen
+    use kind_parameters,    only: rkind
     use constants,          only: zero, one, two, pi, half
     use gridtools,          only: alloc_buffs
     use random,             only: gaussian_random
@@ -77,27 +77,19 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     real(rkind), dimension(:,:,:,:), intent(inout), target :: fieldsC
     real(rkind), dimension(:,:,:,:), intent(inout), target :: fieldsE
     integer :: ioUnit
-    real(rkind), dimension(:,:,:), pointer :: u, v, w, wC, T, x, y, z, trgt
+    real(rkind), dimension(:,:,:), pointer :: u, v, w, wC, T, x, y, z
     real(rkind), dimension(:,:,:), allocatable :: ybuffC, ybuffE, zbuffC, zbuffE
     integer :: nz, nzE, k
     real(rkind) :: sig
     real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, dTsurf_dt = -0.05d0, z0init = 1.d-4, frameAngle = -26.d0, z_Tref = zero, T_inv = zero, dTdz = zero 
     real(rkind), dimension(:,:,:), allocatable :: randArr, Tpurt, eta
-    real(rkind), dimension(:), allocatable :: buffer1d
-    logical :: file_init = .false.
-    character(len=clen), target :: ufile, vfile, wfile, tfile
-    integer :: i, j
-    character(len=clen), pointer :: pfile
-    integer :: ios
-    real(rkind) :: dummy, prof
     
-    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, z_Tref, T_inv, dTdz, file_init
-    namelist /INITIALIZE/ ufile, vfile, wfile, tfile
-
+    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, z_Tref, T_inv, dTdz
+    
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
     read(unit=ioUnit, NML=PROBLEM_INPUT)
-    close(ioUnit)       
+    close(ioUnit)        
 
 
     !!!!!!!!!!!!!!!!!!!!! DON'T CHANGE THE POINTERS / ALLOCATIONS !!!!!!!!!!!!!!!!!!!!!!
@@ -108,61 +100,22 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     !allocate(randArr(size(T,1),size(T,2),size(T,3)))
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-    if(file_init)then
-        open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
-        read(unit=ioUnit, NML=INITIALIZE)
-        close(ioUnit)
 
-        allocate(buffer1d(decompC%zsz(3)+1)) ! Equal to number of edges
-        call message(0, 'Allocated 1D buffer to', decompC%zsz(3)+1)
+    u = one
+    v = zero
+    wC = zero
+    ! Added to account for frame angle    
+    !u = u * cos(frameAngle * pi / 180.d0)
+    !v = v * sin(frameAngle * pi / 180.d0) 
 
-        do k=1,4
-            if(k==1)then
-                trgt => u
-                pfile => ufile
-            elseif(k==2)then
-                trgt => v
-                pfile => vfile
-            elseif(k==3)then
-                trgt => wC
-                pfile => wfile
-            elseif(k==4)then
-                trgt => T
-                pfile => tfile
-            end if
-
-            ! Open file for reading
-            call message(0, 'Reading from '//trim(pfile))
-            open(newunit=ioUnit, file=trim(pfile), status='old', action='read', iostat=ios)
-            if (ios /= 0) call GracefulExit('Cannot open '//trim(pfile), 288)
-            read(ioUnit, *, iostat=ios) ! Skip header
-            do i = 1, decompC%zsz(3)+1
-                read(ioUnit, *, iostat=ios) dummy, prof
-                if (ios /= 0) call GracefulExit('Not enough entries in '//trim(pfile), 288)
-                buffer1d(i) = prof
-            end do
-            close(ioUnit)
-
-            do i=1,size(trgt,1)
-                do j=1,size(trgt,2)
-                    trgt(i,j,:) = half*(buffer1d(1:nz-1) + buffer1d(2:nz))
-                end do
-            end do
-        end do
-        deallocate(buffer1d)
-
-    else
-        u = one
-        v = zero
-        wC = zero
-        T = dTdz*(z - z_Tref) + Tsurf0 + T_inv
-        where(z < z_Tref)
-            T = Tsurf0
-        end where
-    end if
-
-    ! Add random numbers
     allocate(Tpurt(decompC%xsz(1),decompC%xsz(2),decompC%xsz(3)))
+
+    T = dTdz*(z - z_Tref) + Tsurf0 + T_inv
+    where(z < z_Tref)
+        T = Tsurf0
+    end where
+    
+    ! Add random numbers
     allocate(randArr(size(T,1),size(T,2),size(T,3)))
     call gaussian_random(randArr,zero,one,seedu + 10*nrank)
     !randArr = cos(4.d0*2.d0*pi*x)*sin(4.d0*2.d0*pi*y)
@@ -199,6 +152,7 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     call message(0,"Velocity Field Initialized")
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+
 end subroutine
 
 subroutine setInhomogeneousNeumannBC_Temp(inputfile, wTh_surf)
@@ -210,8 +164,7 @@ subroutine setInhomogeneousNeumannBC_Temp(inputfile, wTh_surf)
     real(rkind), intent(out) :: wTh_surf
     integer :: ioUnit 
     real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, z0init = 1.d-4, dTsurf_dt, z_Tref, T_inv, dTdz
-    logical :: file_init = .false.
-    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, z_Tref, T_inv, dTdz, file_init  
+    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, z_Tref, T_inv, dTdz  
      
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -230,8 +183,7 @@ subroutine setDirichletBC_Temp(inputfile, Tsurf, dTsurf_dt)
     character(len=*),                intent(in)    :: inputfile
     integer :: ioUnit 
     real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, z0init = 1.d-4, frameAngle = 0.d0, z_Tref, T_inv, dTdz
-    logical :: file_init = .false.
-    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, z_Tref, T_inv, dTdz, file_init
+    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, z_Tref, T_inv, dTdz
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -302,10 +254,9 @@ subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
     character(len=*),                intent(in)    :: inputfile
     integer :: ix1, ixn, iy1, iyn, iz1, izn
     real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, dTsurf_dt = -0.05d0, z0init = 1.d-4, frameAngle = 0.d0, z_Tref, T_inv, dTdz
-    logical :: file_init = .false.
     !real(rkind)  :: beta, sigma, phi_ref
     !integer :: z_ref 
-    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, z_Tref, T_inv, dTdz, file_init 
+    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, z_Tref, T_inv, dTdz 
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -353,9 +304,11 @@ subroutine set_Reference_Temperature(inputfile, Thetaref)
     real(rkind), intent(out) :: Thetaref
     integer :: ioUnit 
     real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, dTsurf_dt = -0.05d0, z0init = 2.5d-4, frameAngle = 0.d0, z_Tref, T_inv, dTdz 
-    logical :: file_init = .false.
-    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, z_Tref, T_inv, dTdz, file_init  
-    
+    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, z_Tref, T_inv, dTdz  
+    !real(rkind)  :: beta, sigma, phi_ref
+    !integer :: z_ref
+    !namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle!, beta, sigma, phi_ref, z_ref     
+
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
     read(unit=ioUnit, NML=PROBLEM_INPUT)
