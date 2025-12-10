@@ -53,10 +53,10 @@ program stable_pbl_concurrent
         call primary%fringe_x%associateFringeTarget_scalar(precursor%T)
     end if
 
-    if (primary%useControl .AND. primary%dummy_contoller)then
+    if (primary%useControl .AND. primary%dummy_controller)then
         if(.NOT. precursor%useControl)then
             call gracefulExit("Primary has a dummy controller, but precursor does not have a controller at all. Exiting.", 44)
-        elseif(precursor%dummy_contoller) then
+        elseif(precursor%dummy_controller) then
             call gracefulExit("Both Primary and Precursor have dummy controllers. Exiting.", 44)
         else
             if(.NOT. allocated(precursor%angCont_yaw))then
@@ -64,6 +64,7 @@ program stable_pbl_concurrent
             end if
             ! Point to the precursor's controller
             primary%angCont_yaw_dummy => precursor%angCont_yaw
+            call message(0, 'Dummy controller points to main controller.')
         end if
     end if
 

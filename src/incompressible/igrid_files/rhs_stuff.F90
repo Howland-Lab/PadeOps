@@ -6,7 +6,7 @@ subroutine get_geostrophic_forcing(this, Fg_x, Fg_y)
     real(rkind), dimension(:,:,:), pointer :: gx_vec, gy_vec
     real(rkind) :: gx, gy
 
-    if (not(this%useConstantG) .and. (this%fringe_x%TargetsAssociated)) then
+    if ((.not. this%useConstantG) .and. (this%fringe_x%TargetsAssociated)) then
         ! adds a coriolis term that changes in Z
         gx_vec => this%fringe_x%u_target
         gy_vec => this%fringe_x%v_target
@@ -51,7 +51,7 @@ subroutine addCoriolisTerm(this, urhs, vrhs, wrhs)
 
         ! MODIFYING GEOSTROPHIC BEGINS HERE:
 
-        if (not(this%useConstantG) .and. (this%fringe_x%TargetsAssociated)) then
+        if ((.not. this%useConstantG) .and. (this%fringe_x%TargetsAssociated)) then
             u_target => this%fringe_x%u_target
             v_target => this%fringe_x%v_target
 

@@ -13,25 +13,31 @@ set(FFTW_LIBRARY_PATH "${FFTW_PATH}/lib")
 set(FFTW_INCLUDE_PATH "${FFTW_PATH}/include")
 
 # Include directories
-include_directories(${MPI_INCLUDE_PATH} ${FFTW_INCLUDE_PATH} ${DECOMP_INCLUDE_PATH} ${VTK_IO_INCLUDE_PATH} ${HDF5_INCLUDE_PATH})
+include_directories(${MPI_INCLUDE_PATH} ${FFTW_INCLUDE_PATH} ${DECOMP_INCLUDE_PATH} ${HDF5_INCLUDE_PATH})
 
 # Link directories
-link_directories(${FFTW_LIBRARY_PATH} ${DECOMP_LIBRARY_PATH} ${VTK_IO_LIBRARY_PATH} ${HDF5_LIBRARY_PATH})
+link_directories(${FFTW_LIBRARY_PATH} ${DECOMP_LIBRARY_PATH} ${HDF5_LIBRARY_PATH})
 
 # Create a library called PadeOps
 add_library(PadeOps STATIC ${utilities_source_files} ${derivatives_source_files} ${filters_source_files} ${io_source_files} )
 if ( CMAKE_Fortran_COMPILER_ID MATCHES "Intel" )
-   target_link_libraries(PadeOps fftw3 2decomp_fft ${VTK_IO_LIBRARY_PATH}/libVTK_IO.a ${HDF5_LIBRARY_PATH}/libhdf5hl_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5_hl.a ${HDF5_LIBRARY_PATH}/libhdf5_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5.a ${MPI_LIBRARIES} -lz -ldl -lm -Wl,-rpath -Wl,${HDF5_LIBRARY_PATH})
+   target_link_libraries(PadeOps fftw3 2decomp_fft  ${HDF5_LIBRARY_PATH}/libhdf5hl_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5_hl.a ${HDF5_LIBRARY_PATH}/libhdf5_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5.a ${MPI_LIBRARIES} -lz -ldl -lm -Wl,-rpath -Wl,${HDF5_LIBRARY_PATH})
+elseif( CMAKE_Fortran_COMPILER_ID MATCHES "Cray" )
+   target_link_libraries(PadeOps fftw3 2decomp_fft ${HDF5_LIBRARY_PATH}/libhdf5hl_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5_hl.a ${HDF5_LIBRARY_PATH}/libhdf5_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5.a ${MPI_LIBRARIES} m z dl)
 else()
-   target_link_libraries(PadeOps fftw3 2decomp_fft blas lapack ${VTK_IO_LIBRARY_PATH}/libVTK_IO.a ${HDF5_LIBRARY_PATH}/libhdf5hl_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5_hl.a ${HDF5_LIBRARY_PATH}/libhdf5_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5.a ${MPI_LIBRARIES} -lz -ldl -lm -Wl,-rpath -Wl,${HDF5_LIBRARY_PATH})
+   # Replace $ENV{CRAY_LIBSCI_PREFIX_DIR}/lib/libsci_gnu.a with local library if needed
+   target_link_libraries(PadeOps fftw3 2decomp_fft $ENV{CRAY_LIBSCI_PREFIX_DIR}/lib/libsci_gnu.a  ${HDF5_LIBRARY_PATH}/libhdf5hl_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5_hl.a ${HDF5_LIBRARY_PATH}/libhdf5_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5.a ${MPI_LIBRARIES} -lz -ldl -lm -Wl,-rpath -Wl,${HDF5_LIBRARY_PATH})
 endif()
 
 if ( CMAKE_Fortran_COMPILER_ID MATCHES "Intel" )
-   target_link_libraries(PadeOps fftw3 2decomp_fft ${VTK_IO_LIBRARY_PATH}/libVTK_IO.a ${MPI_LIBRARIES})
+   target_link_libraries(PadeOps fftw3 2decomp_fft  ${MPI_LIBRARIES})
 elseif ( CMAKE_Fortran_COMPILER_ID MATCHES "GNU")
-   target_link_libraries(PadeOps fftw3 2decomp_fft blas lapack ${VTK_IO_LIBRARY_PATH}/libVTK_IO.a ${MPI_LIBRARIES})
+   # Replace $ENV{CRAY_LIBSCI_PREFIX_DIR}/lib/libsci_gnu.a with local library if needed
+   target_link_libraries(PadeOps fftw3 2decomp_fft $ENV{CRAY_LIBSCI_PREFIX_DIR}/lib/libsci_gnu.a  ${MPI_LIBRARIES})
+elseif ( CMAKE_Fortran_COMPILER_ID MATCHES "Cray")
+   target_link_libraries(PadeOps fftw3 2decomp_fft $ENV{CRAY_LIBSCI_PREFIX_DIR}/lib/libsci_cray.a ${MPI_LIBRARIES})
 elseif ( CMAKE_Fortran_COMPILER_ID MATCHES "GNU_OSX")
-   target_link_libraries(PadeOps fftw3 2decomp_fft blas lapack ${VTK_IO_LIBRARY_PATH}/libVTK_IO.a ${MPI_LIBRARIES})
+   target_link_libraries(PadeOps fftw3 2decomp_fft blas lapack  ${MPI_LIBRARIES})
 endif()
    
 if (MPI_Fortran_COMPILER_FLAGS)

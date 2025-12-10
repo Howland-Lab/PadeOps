@@ -202,11 +202,10 @@ contains
         this%budgetType = budgetType 
         this%avgFact = 1.d0/(real(igrid_sim%nx,rkind)*real(igrid_sim%ny,rkind))
 
-        if((this%tidx_budget_start > 0) .and. (this%time_budget_start > 0.0d0)) then
-            call GracefulExit("Both tidx_budget_start and time_budget_start in budget_xy_avg are positive. Turn one negative", 100)
-        endif
-
         if(this%do_budgets) then
+            if((this%tidx_budget_start > 0) .and. (this%time_budget_start > 0.0d0)) then
+                call GracefulExit("Both tidx_budget_start and time_budget_start in budget_xy_avg are positive. Turn one negative", 100)
+            endif
             allocate(this%Budget_0s(this%nz,21))
             allocate(this%Budget_0(this%nz,21))
             allocate(this%Budget_1(this%nz,14))
