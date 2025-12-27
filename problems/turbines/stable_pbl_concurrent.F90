@@ -49,7 +49,7 @@ program stable_pbl_concurrent
     call precursor%start_io(.true.)
 
     if (primary%usefringe) then
-        call primary%fringe_x%associateFringeTargets(precursor%u, precursor%v, precursor%wC, precursor%T)
+        call primary%fringe_x%associateFringeTargets(precursor%u, precursor%v, precursor%w, precursor%T)
         call primary%fringe_x%associateFringeTarget_scalar(precursor%T)
     end if
 
