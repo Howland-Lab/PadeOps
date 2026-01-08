@@ -785,7 +785,7 @@ subroutine getForceRHS(this, dt, u, v, wC, urhs, vrhs, wrhs, newTimeStep, inst_h
                         call this%dynamicArray(i)%time_advance(dt)
                     endif
 
-                    call this%turbArrayADM_fil(i)%get_RHS(u,v,wC,this%fx,this%fy,this%fz)
+                    call this%turbArrayADM_fil(i)%get_RHS(u,v,wC,this%fx,this%fy,this%fz, budgetCall)
                end do
            case (6)
                do i = 1, this%nTurbines

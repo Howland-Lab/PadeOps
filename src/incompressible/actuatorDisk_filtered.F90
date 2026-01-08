@@ -405,7 +405,7 @@ subroutine sample_on_circle(diam, xcen, ycen, xloc, yloc, dx, dy)
 end subroutine
 
 ! Right hand side forcing term for the ADM
-subroutine get_RHS(this, u, v, w, rhsxvals, rhsyvals, rhszvals)
+subroutine get_RHS(this, u, v, w, rhsxvals, rhsyvals, rhszvals, budgetCall)
     class(actuatordisk_filtered), intent(inout) :: this
     real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc), intent(inout) :: rhsxvals, rhsyvals, rhszvals
     real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc), intent(in)    :: u, v, w
