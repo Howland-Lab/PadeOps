@@ -540,12 +540,7 @@
           end if
       end if
 
-      if (forceWrite) then
-
-        call message(0,"Performing a forced visualization dump.")
-        call this%dump_visualization_files()
-
-      else if (this%vizDump_Schedule == 1  .and. this%DumpThisStep) then
+      if (this%vizDump_Schedule == 1  .and. this%DumpThisStep) then
 
         call message(0,"Performing a fixed timed visualization dump at time:", this%tsim)
         call message(2,"This time step used a deltaT:",this%dt)
@@ -554,6 +549,11 @@
       else if (this%vizDump_Schedule /= 1 .and. mod(this%step, this%t_dataDump) == 0) then
 
         call message(0,"Scheduled visualization dump.")
+        call this%dump_visualization_files()
+
+      else if (forceWrite) then
+
+        call message(0,"Performing a forced visualization dump.")
         call this%dump_visualization_files()
         
       end if 
