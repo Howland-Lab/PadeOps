@@ -551,7 +551,7 @@
         call message(2,"This time step used a deltaT:",this%dt)
         call this%dump_visualization_files()
 
-      else if (this%vizDump_Schedule /= 1 .and. mod(this%step, this%t_dataDump) == 0)
+      else if (this%vizDump_Schedule /= 1 .and. mod(this%step, this%t_dataDump) == 0) then
 
         call message(0,"Scheduled visualization dump.")
         call this%dump_visualization_files()
