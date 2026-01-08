@@ -409,10 +409,13 @@ subroutine get_RHS(this, u, v, w, rhsxvals, rhsyvals, rhszvals)
     class(actuatordisk_filtered), intent(inout) :: this
     real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc), intent(inout) :: rhsxvals, rhsyvals, rhszvals
     real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc), intent(in)    :: u, v, w
+    logical, intent(in), optional :: budgetCall
+
     real(rkind) :: yaw, tilt
     real(rkind) :: usp_sq, force, vface
     real(rkind), dimension(3,1) :: n=[1,0,0], tau=[0,1,0] !xn, Ft
     real(rkind), dimension(3,3) :: R, T
+    logical :: writeTurbineVals
 
     ! update yaw and tilt of the turbine
     if (.not. this%useDynamicYaw .and. (this%yaw - yaw*180.d0/pi)>1.d-8) then
@@ -461,8 +464,11 @@ subroutine get_RHS(this, u, v, w, rhsxvals, rhsyvals, rhszvals)
     rhszvals = rhszvals + force * n(3,1) * this%scalarSource
 
     if (allocated(this%powerTime)) then   ! check allocated so only one processor writes data
-    !        if((this%Am_I_Split .and. this%myComm_nrank==0) .or. (.not. this%Am_I_Split)) then
-        if (usp_sq /= 0.d0) then
+        ! turbine values should not write if get_RHS is being called for budget calculations
+        writeTurbineVals = .true.
+        if (present(budgetCall)) writeTurbineVals = (.not. budgetCall)
+
+        if ((writeTurbineVals) .and. (usp_sq /= 0.d0)) then
             this%powerTime(this%tInd) = this%get_power()
             this%uTime(this%tInd) = this%ut
             this%vTime(this%tInd) = vface
