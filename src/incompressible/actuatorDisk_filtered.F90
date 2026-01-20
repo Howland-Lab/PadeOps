@@ -69,9 +69,10 @@ module actuatorDisk_FilteredMod
 
 contains
 
-subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG)
+subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG, dx, dy, dz)
     class(actuatorDisk_filtered), intent(inout) :: this
     real(rkind), intent(in), dimension(:,:,:), target :: xG, yG, zG
+    real(rkind), intent(in) :: dx, dy, dz
     integer, intent(in) :: ActuatorDisk_ID
     character(len=*), intent(in) :: inputDir
     character(len=clen) :: tempname, fname
@@ -97,9 +98,9 @@ subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG)
     call tic()
     
     ! link grids and read inputs 
-    this%dx=xG(2,1,1)-xG(1,1,1)
-    this%dy=yG(1,2,1)-yG(1,1,1)
-    this%dz=zG(1,1,2)-zG(1,1,1)
+    this%dx = dx
+    this%dy = dy
+    this%dz = dz
     this%dV = this%dx*this%dy*this%dz
     this%xLoc = xLoc; this%yLoc = yLoc; this%zLoc = zLoc
     this%cT = cT; this%diam = diam; this%yaw = yaw; this%tilt = tilt
@@ -240,7 +241,10 @@ subroutine get_R(this)
     class(actuatordisk_filtered), intent(inout) :: this
     real(rkind) :: yrad, trad, xs, ys, zs, C1, xtmp, ytmp, ztmp  ! rotations, in radians
     real(rkind), dimension(this%npts) :: xi, yi, zi
-    integer :: k
+    ! integer :: k
+    real(rkind) :: rcut, coef, rsq
+    real(rkind) :: xmin, xmax, ymin, ymax, zmin, zmax
+    integer :: i1, i2, j1, j2, k1, k2, i, j, k, l
     
     ! First, rotate all the points with the yaw and tilt
     ! call message(1, "Building kernel for turbine yaw:", this%yaw)
@@ -260,13 +264,48 @@ subroutine get_R(this)
     end do
     
     ! now xi, yi, zi are the rotated coordinates, assemble w/Greens function 
-    ! this may take a while... 
-    ! TODO: can speed this up if only a subsection of the domain is used
-    C1 = (6.d0/pi/this%delta**2)**(three/two)
-    ! TODO: May need to zero scalarsource for dynamic yaw
+
+    ! Slow implementation
+    ! C1 = (6.d0/pi/this%delta**2)**(three/two)
+    ! do k = 1, this%npts
+    !     this%rbuff = (this%xG-xi(k))**2 + (this%yG-yi(k))**2 + (this%zG-zi(k))**2
+    !     this%scalarsource = this%scalarsource + C1*exp(-6.d0*this%rbuff/this%delta**2) 
+    ! end do
+
+    ! faster implementation: 
+    rcut   = 2.d0 * this%delta  ! this includes >99.999% of the forcing
+    coef   = -6.d0 / this%delta**2
+    C1     = (6.d0/pi/this%delta**2)**(three/two)
+
     do k = 1, this%npts
-        this%rbuff = (this%xG-xi(k))**2 + (this%yG-yi(k))**2 + (this%zG-zi(k))**2
-        this%scalarsource = this%scalarsource + C1*exp(-6.d0*this%rbuff/this%delta**2) 
+        ! bounds in physical space
+        xmin = xi(k) - rcut
+        xmax = xi(k) + rcut
+        ymin = yi(k) - rcut
+        ymax = yi(k) + rcut
+        zmin = zi(k) - rcut
+        zmax = zi(k) + rcut
+
+        ! find index limits (assuming monotonic coordinates in each direction)
+        ! Using max/min to clip to local array bounds
+        i1 = max(1, minloc(abs(this%xG(:,1,1) - xmin), dim=1))
+        i2 = min(this%nxLoc, minloc(abs(this%xG(:,1,1) - xmax), dim=1))
+        j1 = max(1, minloc(abs(this%yG(1,:,1) - ymin), dim=1))
+        j2 = min(this%nyLoc, minloc(abs(this%yG(1,:,1) - ymax), dim=1))
+        k1 = max(1, minloc(abs(this%zG(1,1,:) - zmin), dim=1))
+        k2 = min(this%nzLoc, minloc(abs(this%zG(1,1,:) - zmax), dim=1))
+
+        ! loop only over the small cube around the point
+        do l = k1, k2
+            do j = j1, j2
+                do i = i1, i2
+                    rsq = (this%xG(i,j,l) - xi(k))**2 + &
+                                        (this%yG(i,j,l) - yi(k))**2 + &
+                                        (this%zG(i,j,l) - zi(k))**2
+                    this%scalarsource(i,j,l) = this%scalarsource(i,j,l) + C1 * exp(coef * rsq)
+                end do
+            end do
+        end do
     end do
     
     ! scalarsource NOT necessarily normalized to integrate to 1 (yet), do this in get_weights()
@@ -366,14 +405,17 @@ subroutine sample_on_circle(diam, xcen, ycen, xloc, yloc, dx, dy)
 end subroutine
 
 ! Right hand side forcing term for the ADM
-subroutine get_RHS(this, u, v, w, rhsxvals, rhsyvals, rhszvals)
+subroutine get_RHS(this, u, v, w, rhsxvals, rhsyvals, rhszvals, budgetCall)
     class(actuatordisk_filtered), intent(inout) :: this
     real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc), intent(inout) :: rhsxvals, rhsyvals, rhszvals
     real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc), intent(in)    :: u, v, w
+    logical, intent(in), optional :: budgetCall
+
     real(rkind) :: yaw, tilt
     real(rkind) :: usp_sq, force, vface
     real(rkind), dimension(3,1) :: n=[1,0,0], tau=[0,1,0] !xn, Ft
     real(rkind), dimension(3,3) :: R, T
+    logical :: writeTurbineVals
 
     ! update yaw and tilt of the turbine
     if (.not. this%useDynamicYaw .and. (this%yaw - yaw*180.d0/pi)>1.d-8) then
@@ -422,8 +464,11 @@ subroutine get_RHS(this, u, v, w, rhsxvals, rhsyvals, rhszvals)
     rhszvals = rhszvals + force * n(3,1) * this%scalarSource
 
     if (allocated(this%powerTime)) then   ! check allocated so only one processor writes data
-    !        if((this%Am_I_Split .and. this%myComm_nrank==0) .or. (.not. this%Am_I_Split)) then
-        if (usp_sq /= 0.d0) then
+        ! turbine values should not write if get_RHS is being called for budget calculations
+        writeTurbineVals = .true.
+        if (present(budgetCall)) writeTurbineVals = (.not. budgetCall)
+
+        if ((writeTurbineVals) .and. (usp_sq /= 0.d0)) then
             this%powerTime(this%tInd) = this%get_power()
             this%uTime(this%tInd) = this%ut
             this%vTime(this%tInd) = vface
