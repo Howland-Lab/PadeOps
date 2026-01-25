@@ -2,7 +2,7 @@ module AD_Coriolis_parameters
 
     use exits, only: message
     use kind_parameters,  only: rkind
-    use constants, only: kappa, pi
+    use constants, only: kappa, pi, zero
     implicit none
     integer :: seedu = 321341
     integer :: seedv = 423424
