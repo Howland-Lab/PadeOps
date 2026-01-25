@@ -37,15 +37,16 @@ subroutine init_fringe_targets(inputfile, igp)
 !    real(rkind), dimension(:,:,:,:), intent(in), target    :: mesh
     type(igrid), allocatable, target, intent(inout) :: igp
     real(rkind), dimension(:,:,:), pointer :: z
-    real(rkind) :: Lx, Ly, Lz, uInflow, vInflow, yaw, InflowSurgeFreq, InflowSurgeAmplit
+    real(rkind) :: Lx, Ly, Lz, uInflow, vInflow, yaw
+    real(rkind) :: InflowSurgeAmplit = zero, InflowSurgeFreq = zero
     real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid
     integer :: ioUnit
     integer :: InflowProfileType
     logical :: useGeostrophicForcing
 
-    namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, zmid, & 
-        InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw, &
-        InflowSurgeFreq, InflowSurgeAmplit
+    namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, & 
+                                InflowProfileAmplit, InflowProfileThick, InflowProfileType, &
+                                yaw, InflowSurgeAmplit, InflowSurgeFreq
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -232,13 +233,14 @@ subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
     integer :: i,j,k, ioUnit
     character(len=*),                intent(in)    :: inputfile
     integer :: ix1, ixn, iy1, iyn, iz1, izn
-    real(rkind)  :: Lx = one, Ly = one, Lz = one, yaw, InflowSurgeAmplit, InflowSurgeFreq
-    real(rkind) :: uInflow, vInflow  
-    real(rkind) :: InflowProfileAmplit, InflowProfileThick
+    real(rkind) :: Lx = one, Ly = one, Lz = one
+    real(rkind) :: InflowSurgeAmplit = zero, InflowSurgeFreq = zero
+    real(rkind) :: uInflow, vInflow, yaw  
+    real(rkind) :: InflowProfileAmplit = zero, InflowProfileThick = zero
     integer :: InflowProfileType
-    namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, zmid, & 
-        InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw, &
-        InflowSurgeFreq, InflowSurgeAmplit
+    namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, & 
+                                InflowProfileAmplit, InflowProfileThick, InflowProfileType, &
+                                yaw, InflowSurgeAmplit, InflowSurgeFreq
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -298,14 +300,15 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     real(rkind), dimension(:,:,:), pointer :: u, v, w, wC, x, y, z
     real(rkind), dimension(:,:,:), allocatable :: randArr, ybuffC, ybuffE, zbuffC, zbuffE
     integer :: nz, nzE
-    real(rkind)  :: Lx = one, Ly = one, Lz = one, G_alpha, yaw, InflowSurgeAmplit, InflowSurgeFreq
+    real(rkind)  :: Lx = one, Ly = one, Lz = one, G_alpha, yaw
+    real(rkind) :: InflowSurgeAmplit = zero, InflowSurgeFreq = zero
     real(rkind) :: uInflow, vInflow  
     real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid
     integer :: InflowProfileType
     
-    namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, zmid, & 
-        InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw, &
-        InflowSurgeFreq, InflowSurgeAmplit
+    namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, & 
+                                InflowProfileAmplit, InflowProfileThick, InflowProfileType, &
+                                yaw, InflowSurgeAmplit, InflowSurgeFreq
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -402,14 +405,15 @@ subroutine setInhomogeneousNeumannBC_Temp(inputfile, wTh_surf)
     character(len=*),                intent(in)    :: inputfile
     real(rkind), intent(out) :: wTh_surf
     integer :: ioUnit 
-    real(rkind) :: ThetaRef, Lx, Ly, Lz, yaw, InflowSurgeAmplit, InflowSurgeFreq
+    real(rkind) :: ThetaRef, Lx, Ly, Lz, yaw
+    real(rkind) :: InflowSurgeAmplit = zero, InflowSurgeFreq = zero
     logical :: initPurturbations = .false. 
     real(rkind) :: uInflow, vInflow  
     real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid
     integer :: InflowProfileType
-    namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, zmid, & 
-        InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw, &
-        InflowSurgeFreq, InflowSurgeAmplit
+    namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, & 
+                                InflowProfileAmplit, InflowProfileThick, InflowProfileType, &
+                                yaw, InflowSurgeAmplit, InflowSurgeFreq
      
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -426,14 +430,15 @@ subroutine setDirichletBC_Temp(inputfile, Tsurf, dTsurf_dt)
 
     character(len=*),                intent(in)    :: inputfile
     real(rkind), intent(out) :: Tsurf, dTsurf_dt
-    real(rkind) :: ThetaRef, Lx, Ly, Lz, G_alpha, yaw, InflowSurgeAmplit, InflowSurgeFreq
+    real(rkind) :: ThetaRef, Lx, Ly, Lz, G_alpha, yaw
+    real(rkind) :: InflowSurgeAmplit = zero, InflowSurgeFreq = zero
     integer :: iounit
     real(rkind) :: uInflow, vInflow  
     real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid
     integer :: InflowProfileType
-    namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, zmid, & 
-        InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw, &
-        InflowSurgeFreq, InflowSurgeAmplit
+    namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, & 
+                                InflowProfileAmplit, InflowProfileThick, InflowProfileType, &
+                                yaw, InflowSurgeAmplit, InflowSurgeFreq
     
     Tsurf = zero; dTsurf_dt = zero; ThetaRef = one
     
@@ -452,15 +457,16 @@ subroutine set_Reference_Temperature(inputfile, Tref)
     implicit none 
     character(len=*),                intent(in)    :: inputfile
     real(rkind), intent(out) :: Tref
-    real(rkind) :: Lx, Ly, Lz, G_alpha, yaw, InflowSurgeAmplit, InflowSurgeFreq
+    real(rkind) :: Lx, Ly, Lz, G_alpha, yaw
+    real(rkind) :: InflowSurgeAmplit = zero, InflowSurgeFreq = zero
     integer :: iounit
     real(rkind) :: uInflow, vInflow  
     real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid
     integer :: InflowProfileType
     
-    namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, zmid, & 
-    InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw, &
-    InflowSurgeFreq, InflowSurgeAmplit
+    namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, & 
+                                InflowProfileAmplit, InflowProfileThick, InflowProfileType, &
+                                yaw, InflowSurgeAmplit, InflowSurgeFreq
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
