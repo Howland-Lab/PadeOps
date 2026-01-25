@@ -28,13 +28,15 @@ contains
         real(rkind), dimension(:,:,:,:), intent(in), target    :: mesh
         real(rkind), dimension(:,:,:), pointer :: z
         real(rkind) :: Lx, Ly, Lz, uInflow, vInflow, yaw
+        real(rkind) :: InflowSurgeAmplit = zero, InflowSurgeFreq = zero
         real(rkind) :: InflowProfileAmplit, InflowProfileThick, zmid=-1
         integer :: ioUnit
         integer :: InflowProfileType
         logical :: useGeostrophicForcing
 
         namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, zmid, &
-            InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw
+            InflowProfileAmplit, InflowProfileThick, InflowProfileType, &
+            yaw, InflowSurgeAmplit, InflowSurgeFreq
 
         ioUnit = 11
         open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -163,9 +165,11 @@ subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
     real(rkind)  :: Lx = one, Ly = one, Lz = one, yaw
     real(rkind) :: uInflow, vInflow, zmid
     real(rkind) :: InflowProfileAmplit, InflowProfileThick
+    real(rkind) :: InflowSurgeAmplit = zero, InflowSurgeFreq = zero
     integer :: InflowProfileType
     namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, zmid, &
-        InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw
+        InflowProfileAmplit, InflowProfileThick, InflowProfileType, &
+        yaw, InflowSurgeAmplit, InflowSurgeFreq
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -228,10 +232,12 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     real(rkind)  :: Lx = one, Ly = one, Lz = one, G_alpha, yaw
     real(rkind) :: uInflow, vInflow
     real(rkind) :: InflowProfileAmplit, InflowProfileThick, zmid=-1
+    real(rkind) :: InflowSurgeAmplit = zero, InflowSurgeFreq = zero
     integer :: InflowProfileType
 
     namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, zmid, &
-        InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw
+        InflowProfileAmplit, InflowProfileThick, InflowProfileType, &
+        yaw, InflowSurgeAmplit, InflowSurgeFreq
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
