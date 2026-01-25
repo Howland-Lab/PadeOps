@@ -122,6 +122,7 @@ subroutine time_advance(this, dt)
         if (this%pitch_amplitude > zero) then
             call message(1, 'dynamicTurbine: turbine tilt (deg.)', this%tilt)
         endif
+        call message(1, 'dynamicTurbine: normalized turbine phase', this%phase_turbine)
     endif
 
 end subroutine
@@ -141,7 +142,8 @@ subroutine sinusoid_update(this)
         this%delx = this%surge_amplitude / omega * sin(omega * this%time)
         ! update the pitch (tilt) as well
         this%tilt = this%pitch_amplitude * sin(omega * this%time)
-        
+        ! update the turbine phase
+        this%phase_turbine = modulo(this%surge_freq * this%time, 1._rkind)  ! same as before
     endif
 
 end subroutine

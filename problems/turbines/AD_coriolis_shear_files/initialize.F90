@@ -34,7 +34,8 @@ contains
         logical :: useGeostrophicForcing
 
         namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, zmid, &
-            InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw
+            InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw, &
+            InflowSurgeFreq, InflowSurgeAmplit 
 
         ioUnit = 11
         open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -165,7 +166,8 @@ subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
     real(rkind) :: InflowProfileAmplit, InflowProfileThick
     integer :: InflowProfileType
     namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, zmid, &
-        InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw
+        InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw, &
+        InflowSurgeFreq, InflowSurgeAmplit 
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -231,7 +233,8 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     integer :: InflowProfileType
 
     namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, zmid, &
-        InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw
+        InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw, &
+        InflowSurgeFreq, InflowSurgeAmplit 
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
