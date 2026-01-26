@@ -16,7 +16,7 @@ module AD_Coriolis_parameters
     real(rkind), dimension(:,:,:), allocatable :: utarget0, vtarget0, wtarget0
     ! variables set by the inputfile: 
     real(rkind) :: fringe_fact, lambdafact, freq_inflow, amplit_inflow, dt_max
-    real(rkind) :: phase_inflow = zero  ! inflow surge phase to be used by phase budget if turned on
+    real(rkind) :: phase_inflow  ! inflow surge phase to be used by phase budget if turned on
     integer :: N = 20  ! minimum number of time steps per period
 
     contains
@@ -38,11 +38,15 @@ subroutine init_fringe_targets(inputfile, igp)
     type(igrid), allocatable, target, intent(inout) :: igp
     real(rkind), dimension(:,:,:), pointer :: z
     real(rkind) :: Lx, Ly, Lz, uInflow, vInflow, yaw
-    real(rkind) :: InflowSurgeAmplit = zero, InflowSurgeFreq = zero
+    real(rkind) :: InflowSurgeAmplit, InflowSurgeFreq, phase_inflow
     real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid
     integer :: ioUnit
     integer :: InflowProfileType
     logical :: useGeostrophicForcing
+
+    InflowSurgeAmplit = zero
+    InflowSurgeFreq = zero
+    phase_inflow = zero
 
     namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, & 
                                 InflowProfileAmplit, InflowProfileThick, InflowProfileType, &
@@ -110,6 +114,7 @@ subroutine update_fringe_targets(inputfile, igp)
     vtarget = vtarget0 * (one + amplit_inflow * sin(two*pi*freq_inflow*igp%tsim) * gain)
     wtarget = wtarget0 * (one + amplit_inflow * sin(two*pi*freq_inflow*igp%tsim) * gain)
     phase_inflow = modulo(freq_inflow * igp%tsim, one)
+    call message(0, "Normalized inflow surge phase: ", phase_inflow)
 end subroutine
 
 subroutine check_dt(igp)
@@ -234,9 +239,9 @@ subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
     character(len=*),                intent(in)    :: inputfile
     integer :: ix1, ixn, iy1, iyn, iz1, izn
     real(rkind) :: Lx = one, Ly = one, Lz = one
-    real(rkind) :: InflowSurgeAmplit = zero, InflowSurgeFreq = zero
+    real(rkind) :: InflowSurgeAmplit, InflowSurgeFreq
     real(rkind) :: uInflow, vInflow, yaw  
-    real(rkind) :: InflowProfileAmplit = zero, InflowProfileThick = zero
+    real(rkind) :: InflowProfileAmplit, InflowProfileThick
     integer :: InflowProfileType
     namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, & 
                                 InflowProfileAmplit, InflowProfileThick, InflowProfileType, &
@@ -301,7 +306,7 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     real(rkind), dimension(:,:,:), allocatable :: randArr, ybuffC, ybuffE, zbuffC, zbuffE
     integer :: nz, nzE
     real(rkind)  :: Lx = one, Ly = one, Lz = one, G_alpha, yaw
-    real(rkind) :: InflowSurgeAmplit = zero, InflowSurgeFreq = zero
+    real(rkind) :: InflowSurgeAmplit, InflowSurgeFreq
     real(rkind) :: uInflow, vInflow  
     real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid
     integer :: InflowProfileType
@@ -406,7 +411,7 @@ subroutine setInhomogeneousNeumannBC_Temp(inputfile, wTh_surf)
     real(rkind), intent(out) :: wTh_surf
     integer :: ioUnit 
     real(rkind) :: ThetaRef, Lx, Ly, Lz, yaw
-    real(rkind) :: InflowSurgeAmplit = zero, InflowSurgeFreq = zero
+    real(rkind) :: InflowSurgeAmplit, InflowSurgeFreq
     logical :: initPurturbations = .false. 
     real(rkind) :: uInflow, vInflow  
     real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid
@@ -431,7 +436,7 @@ subroutine setDirichletBC_Temp(inputfile, Tsurf, dTsurf_dt)
     character(len=*),                intent(in)    :: inputfile
     real(rkind), intent(out) :: Tsurf, dTsurf_dt
     real(rkind) :: ThetaRef, Lx, Ly, Lz, G_alpha, yaw
-    real(rkind) :: InflowSurgeAmplit = zero, InflowSurgeFreq = zero
+    real(rkind) :: InflowSurgeAmplit, InflowSurgeFreq
     integer :: iounit
     real(rkind) :: uInflow, vInflow  
     real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid
@@ -458,7 +463,7 @@ subroutine set_Reference_Temperature(inputfile, Tref)
     character(len=*),                intent(in)    :: inputfile
     real(rkind), intent(out) :: Tref
     real(rkind) :: Lx, Ly, Lz, G_alpha, yaw
-    real(rkind) :: InflowSurgeAmplit = zero, InflowSurgeFreq = zero
+    real(rkind) :: InflowSurgeAmplit, InflowSurgeFreq
     integer :: iounit
     real(rkind) :: uInflow, vInflow  
     real(rkind) :: InflowProfileAmplit, InflowProfileThick, zMid

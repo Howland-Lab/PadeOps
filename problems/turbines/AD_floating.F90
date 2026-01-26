@@ -10,7 +10,9 @@ program AD_Coriolis
     use temporalhook, only: doTemporalStuff
     use timer, only: tic, toc
     use exits, only: message
-    use AD_Coriolis_parameters, only: check_dt, init_fringe_targets, update_fringe_targets, amplit_inflow, freq_inflow, phase_inflow
+    use AD_Coriolis_parameters, only: check_dt, init_fringe_targets, update_fringe_targets, &
+                                      amplit_inflow, freq_inflow, phase_inflow, &
+                                      utarget, vtarget, wtarget
     use budgets_time_avg_mod, only: budgets_time_avg
     use budgets_multi_phase_avg_mod, only: budgets_multi_phase_avg
 
@@ -33,9 +35,11 @@ program AD_Coriolis
     call igp%printDivergence()
  
     ! Budgets
+    call message(0,"Start time-budget init!")
     call budg_tavg%init(inputfile, igp)   !<-- Budget class initialization
+    call message(0,"Finished time-budget init!")
     call budg_multi_phase_avg%init(inputfile, igp, amplit_inflow, freq_inflow)   !<-- Budget class initialization 
-    
+    call message(0,"Finished multi-phase-budget init!")
     ! Fringe associations for non-periodic BCs in x
     call igp%fringe_x%allocateTargetArray_Cells(utarget)                !<-- Allocate target array of appropriate size
     call igp%fringe_x%allocateTargetArray_Cells(vtarget)                !<-- Allocate target array of appropriate size
@@ -52,11 +56,11 @@ program AD_Coriolis
     do while (igp%tsim < igp%tstop) 
        call check_dt(igp)                                               !<-- Checks that dt meets frequency criteria
        call igp%timeAdvance()                                           !<-- Time stepping scheme + Pressure Proj. (see igrid.F90)
-       call budg_tavg%doBudgets()
-       call budg_multi_phase_avg%doBudgets(phase_inflow)       
+       call budg_tavg%doBudgets()                                       !<-- Calculates time-averaged budgets 
+       call budg_multi_phase_avg%doBudgets(phase_inflow = phase_inflow)  !<-- Calculates phase-averaged budgets 
+       ! NOTE: update_fringe_targets updates module variable phase_inflow    
        call update_fringe_targets(inputfile, igp)                       !<-- Updates fringe targets sinusoidally
        call doTemporalStuff(igp)                                        !<-- Go to the temporal hook (see temporalHook.F90)
-       
     end do 
     
     call budg_tavg%destroy()           !<-- release memory taken by the budget class 

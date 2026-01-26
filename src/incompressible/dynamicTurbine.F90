@@ -25,6 +25,7 @@ module dynamicTurbineMod
         real(rkind) :: yaw, tilt, roll = zero  ! turbine angles 
         real(rkind) :: time  ! simulation time, non-dimensional
         real(rkind) :: surge_freq, surge_amplitude, pitch_amplitude
+        real(rkind) :: phase_turbine
 
         ! methods to implement motion: 
         logical :: use_dynamic_turbine, use_simple_periodic, verbose 
@@ -50,6 +51,7 @@ subroutine init(this, turbine)
     logical :: use_dynamic_turbine = .true., use_simple_periodic = .true., verbose = .false.
     character(len=clen) :: fname
     real(rkind) :: surge_freq = zero, surge_amplitude = zero, pitch_amplitude = zero
+    real(rkind) :: phase_turbine = zero
 
     ! read namelist
     namelist /DYNAMICTURBINE/ use_simple_periodic, surge_freq, surge_amplitude, verbose, pitch_amplitude
@@ -72,6 +74,7 @@ subroutine init(this, turbine)
     this%surge_freq = surge_freq            ! surge frequency, non-dimensionalized
     this%surge_amplitude = surge_amplitude  ! surge amplitude =  u_d,max/U
     this%pitch_amplitude = pitch_amplitude  ! pitch amplitude, in degrees
+    this%phase_turbine = phase_turbine      ! normalized phase of turbine motion between 0-1
 
     call message(1, 'Initialized dynamicTurbine module')
 
@@ -136,7 +139,6 @@ subroutine sinusoid_update(this)
     if (.not. (this%surge_freq == zero)) then
         ! sinusoid needs updating every timestep as long as f != 0, A != 0
         this%do_redraw = .true.
-
         ! TODO update to include other DOF
         this%ut = this%surge_amplitude * cos(omega * this%time)
         this%delx = this%surge_amplitude / omega * sin(omega * this%time)

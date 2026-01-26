@@ -190,6 +190,8 @@ subroutine set_budget_rhs_to_zero(this)
         this%wcor = czero 
     endif
 
+    call message(0,"Almost at end of setting budget rhs to zero")
+
     if (associated(this%wb   )) this%wb = czero 
     if (associated(this%uturb)) this%uturb = czero 
     if (associated(this%vturb)) this%vturb = czero 
@@ -200,7 +202,6 @@ subroutine set_budget_rhs_to_zero(this)
         this%HITforcing_y = czero 
         this%HITforcing_z = czero 
     endif
-
 end subroutine 
 
 subroutine getMomentumTerms(this)
