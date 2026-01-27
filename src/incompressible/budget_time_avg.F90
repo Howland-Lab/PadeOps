@@ -183,7 +183,7 @@ module budgets_time_avg_mod
 
         complex(rkind), dimension(:,:,:), allocatable, public :: uc, vc, wc, usgs, vsgs, wsgs, px, py, pz, uturb, pxdns, pydns, pzdns, vturb, wturb 
         complex(rkind), dimension(:,:,:), allocatable, public :: uvisc, vvisc, wvisc, ucor, vcor, wcor, wb 
-        type(igrid), pointer, public :: igrid_sim 
+        type(igrid), pointer, public :: igrid_sim => null()
         
         real(rkind), dimension(:,:,:,:), allocatable, public :: budget_0, budget_1, budget_2, budget_3, budget_4_11, budget_4_22, budget_4_33, budget_4_13, budget_4_23
         real(rkind), dimension(:,:,:), allocatable :: tke, tke_old, u_old, v_old, wC_old, dUdt, dVdt, dWdt
