@@ -2212,6 +2212,7 @@ subroutine DumpBudget4_23(this)
             tempname = trim(tempname)//trim(this%file_suffix)
         end if
         write(fileext, "(A4)") ".s3D"
+        tempname = trim(tempname)//trim(fileext)
 
         fname = this%budgets_Dir(:len_trim(this%budgets_Dir))//"/"//trim(tempname)
         call decomp_2d_write_one(1,field,fname, this%igrid_sim%gpC)
