@@ -11,7 +11,23 @@ module budgets_time_avg_mod
    implicit none 
 
    private
-   public :: budgets_time_avg
+   public :: time_budget_config, budgets_time_avg
+
+   ! default values for BUDGET_TIME_AVG namelist
+    type :: time_budget_config
+        private
+        logical :: do_budgets = .false.
+        integer :: budgetType = 1
+        character(len=clen) :: budgets_dir = "NULL"
+        character(len=clen) :: restart_dir = "NULL"
+        logical :: restart_budgets = .false. 
+        integer :: restart_tid = 0, restart_rid = 0, restart_counter = 0
+        integer :: tidx_compute = 1000000, tidx_dump = 1000000, tidx_budget_start = -100
+        real(rkind) :: time_budget_start = -1.0d0
+    contains
+        procedure :: update_budget_config_from_namelist
+    end type time_budget_config
+
 
    ! BUDGET TYPE: 
    ! BUDGET_0: 6 Reynolds stress terms + 3 temp fluxes + meanU + meanV + meanT
@@ -173,6 +189,7 @@ module budgets_time_avg_mod
         real(rkind), dimension(:,:,:), allocatable :: tke, tke_old, u_old, v_old, wC_old, dUdt, dVdt, dWdt
         integer :: counter
         character(len=clen) :: budgets_dir
+        character(len=clen), public :: file_suffix = "NULL" ! children types can add in terms to the budget file names
 
         logical :: useWindTurbines, isStratified, useCoriolis
         real(rkind), allocatable, dimension(:) :: runningSum_sc, runningSum_sc_turb, runningSum_turb
@@ -182,7 +199,7 @@ module budgets_time_avg_mod
         integer :: tidx_budget_start 
         real(rkind) :: time_budget_start 
         logical :: do_budgets
-        logical :: forceDump
+        logical, public :: forceDump
         logical :: splitPressureDNS
 
     contains
@@ -190,12 +207,14 @@ module budgets_time_avg_mod
         procedure           :: destroy
         procedure           :: ResetBudget
         procedure           :: DoBudgets
+        procedure           :: DumpBudget
+        procedure           :: updateForceDump
         
         procedure, private  :: updateBudget
-        procedure, private  :: DumpBudget
         procedure, private  :: restartBudget
         procedure, private  :: restart_budget_field
         procedure, private  :: restart_budget_4_field
+
         procedure, private  :: dump_budget_field 
         procedure, private  :: dump_budget4_field 
         
@@ -236,48 +255,80 @@ module budgets_time_avg_mod
         procedure, private :: interp_Cell2Edge
         procedure, private :: multiply_CellFieldsOnEdges
         procedure, private :: multiply_Edges_interp_cell
-    end type 
+    end type budgets_time_avg
 
 
 contains 
 
-    subroutine init(this, inputfile, igrid_sim) 
-        class(budgets_time_avg), intent(inout) :: this
-        character(len=*), intent(in) :: inputfile 
-        type(igrid), intent(inout), target :: igrid_sim 
-        
-        character(len=clen) :: budgets_dir = "NULL"
-        character(len=clen) :: restart_dir = "NULL"
-        integer :: ioUnit, ierr,  budgetType = 1, restart_tid = 0, restart_rid = 0, restart_counter = 0
-        logical :: restart_budgets = .false. 
-        integer :: tidx_compute = 1000000, tidx_dump = 1000000, tidx_budget_start = -100
-        real(rkind) :: time_budget_start = -1.0d0
-        logical :: do_budgets = .false. 
-        namelist /BUDGET_TIME_AVG/ budgetType, budgets_dir, restart_budgets, restart_dir, restart_rid, restart_tid, restart_counter, tidx_dump, tidx_compute, do_budgets, tidx_budget_start, time_budget_start
-        
-        restart_dir = "NULL"
+    subroutine update_budget_config_from_namelist(this, inputfile, force_do_budgets)
+        class(time_budget_config), intent(inout) :: this
+        character(len=*), intent(in) :: inputfile
+        logical, intent(in), optional :: force_do_budgets
 
-        ! STEP 1: Read in inputs, link pointers and allocate budget vectors
+        logical :: do_budgets, restart_budgets
+        character(len=clen) :: budgets_dir, restart_dir
+        integer :: ioUnit, ierr, budgetType, restart_tid, restart_rid, restart_counter, tidx_compute, tidx_dump, tidx_budget_start
+        real(rkind) :: time_budget_start
+        ! define namelist variables have read the namelist into the config object (this) if they exist - else keep defaults!
+        namelist /BUDGET_TIME_AVG/ do_budgets, budgetType, budgets_dir, restart_dir, &
+                                   restart_budgets, restart_tid, restart_rid, restart_counter, &
+                                   tidx_compute, tidx_dump, tidx_budget_start, time_budget_start
+        ! read in namelist values
         ioUnit = 534
         open(unit=ioUnit, file=trim(inputfile), form='FORMATTED', iostat=ierr)
         read(unit=ioUnit, NML=BUDGET_TIME_AVG)
         close(ioUnit)
 
+        if (present(force_do_budgets)) then
+            do_budgets = force_do_budgets
+        end if
+
+        this%do_budgets = do_budgets
+        this%budgetType = budgetType
+        this%budgets_dir = budgets_dir
+        this%restart_dir = restart_dir
+        this%restart_budgets = restart_budgets
+        this%restart_tid = restart_tid
+        this%restart_rid = restart_rid
+        this%restart_counter = restart_counter
+        this%tidx_compute = tidx_compute
+        this%tidx_dump = tidx_dump
+        this%tidx_budget_start = tidx_budget_start
+        this%time_budget_start = time_budget_start
+    end subroutine update_budget_config_from_namelist
+
+    subroutine init(this, inputfile, igrid_sim, cfg) 
+        class(budgets_time_avg), intent(inout) :: this
+        character(len=*), intent(in) :: inputfile 
+        type(igrid), intent(inout), target :: igrid_sim
+        type(time_budget_config), intent(in), optional :: cfg
+
+        ! Start with default config values
+        type(time_budget_config) :: local_cfg
+
+        ! Replace with provided config - assumes already updated from namelist
+        if (present(cfg)) then
+            local_cfg = cfg
+        else ! Else update default config from namelist
+            local_cfg = time_budget_config()
+            call update_budget_config_from_namelist(local_cfg, inputfile)
+        end if
+
         this%igrid_sim => igrid_sim 
         this%run_id = igrid_sim%runid
         this%nz = igrid_sim%nz
-        this%do_budgets = do_budgets
-        this%tidx_dump = tidx_dump
-        this%tidx_compute = tidx_compute
-        this%tidx_budget_start = tidx_budget_start  
-        this%time_budget_start = time_budget_start  
+        this%do_budgets = local_cfg%do_budgets
+        this%tidx_dump = local_cfg%tidx_dump
+        this%tidx_compute = local_cfg%tidx_compute
+        this%tidx_budget_start = local_cfg%tidx_budget_start  
+        this%time_budget_start = local_cfg%time_budget_start  
         this%useWindTurbines = igrid_sim%useWindTurbines
         this%isStratified    = igrid_sim%isStratified
         this%useCoriolis    = igrid_sim%useCoriolis
         this%forceDump = .false.
 
-        this%budgets_dir = budgets_dir
-        this%budgetType = budgetType
+        ! this%budgets_dir = budgets_dir
+        this%budgetType = local_cfg%budgetType
 
         this%splitPressureDNS = this%igrid_sim%computeDNSPressure
 
