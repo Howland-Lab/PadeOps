@@ -327,7 +327,6 @@ contains
         this%useCoriolis    = igrid_sim%useCoriolis
         this%forceDump = .false.
 
-        ! this%budgets_dir = budgets_dir
         this%budgetType = local_cfg%budgetType
 
         this%splitPressureDNS = this%igrid_sim%computeDNSPressure
@@ -380,19 +379,21 @@ contains
             end if 
 
             ! set buget output directory if not provided
-            if ((trim(budgets_dir) .eq. "null") .or.(trim(budgets_dir) .eq. "NULL")) then
+            if ((trim(local_cfg%budgets_dir) .eq. "null") .or.(trim(local_cfg%budgets_dir) .eq. "NULL")) then
                 this%budgets_dir = igrid_sim%outputDir
-            end if 
+            else
+                this%budgets_dir = local_cfg%budgets_dir
+            end if
             ! set buget restart directory if not provided
-            if ((trim(restart_dir) .eq. "null") .or.(trim(restart_dir) .eq. "NULL")) then
-                restart_dir = this%budgets_dir
+            if ((trim(local_cfg%restart_dir) .eq. "null") .or.(trim(local_cfg%restart_dir) .eq. "NULL")) then
+                local_cfg%restart_dir = this%budgets_dir
             end if 
 
             ! if restarting bugets
-            if (restart_budgets) then
+            if (local_cfg%restart_budgets) then
                call message(0, "budget_time_avg: Initializing budget restart")
-               this%counter = restart_counter
-               call this%RestartBudget(restart_dir, restart_rid, restart_tid, restart_counter)
+               this%counter = local_cfg%restart_counter
+               call this%RestartBudget(local_cfg%restart_dir, local_cfg%restart_rid, local_cfg%restart_tid, local_cfg%restart_counter)
                call message(1, "budget_time_avg: Budget restarts initialized")
             else
                 call this%resetBudget()
@@ -443,13 +444,11 @@ contains
                 this%runningSum_turb = zero
             endif
         end if
-    end subroutine 
+    end subroutine init
 
-
-    subroutine doBudgets(this, forceDump)
+    subroutine updateForceDump(this, forceDump)
         class(budgets_time_avg), intent(inout) :: this
         logical, intent(in), optional :: forceDump
-
         if(present(forceDump)) then
             this%forceDump = forceDump
         endif
@@ -457,6 +456,17 @@ contains
         if(this%igrid_sim%tsim > this%igrid_sim%tstop) then
             this%forceDump = .TRUE.
        endif
+
+       if (mod(this%igrid_sim%step,this%tidx_dump) .eq. 0) then
+            this%forceDump = .TRUE.
+       endif
+    end subroutine updateForceDump
+
+    subroutine doBudgets(this, forceDump)
+        class(budgets_time_avg), intent(inout) :: this
+        logical, intent(in), optional :: forceDump
+
+        call this%updateForceDump(forceDump)
 
         if (this%do_budgets)  then
             if( ( (this%tidx_budget_start>0) .and. (this%igrid_sim%step>this%tidx_budget_start) ) .or. &
@@ -466,7 +476,7 @@ contains
                     call this%updateBudget()
                 end if
 
-                if ((mod(this%igrid_sim%step,this%tidx_dump) .eq. 0) .or. this%forceDump) then
+                if (this%forceDump) then
                     call this%dumpBudget()
                     call message(0,"Dumped a budget .stt file")
                 end if 
@@ -2195,11 +2205,15 @@ subroutine DumpBudget4_23(this)
         class(budgets_time_avg), intent(inout) :: this
         real(rkind), dimension(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)), intent(in) :: field
         integer, intent(in) :: fieldID, BudgetID
-        character(len=clen) :: fname, tempname 
+        character(len=clen) :: fname, tempname, fileext
+        
+        write(tempname,"(A3,I2.2,A7,I1.1,A5,I2.2,A2,I6.6,A2,I6.6)") "Run",this%run_id,"_budget",BudgetID,"_term",fieldID,"_t",this%igrid_sim%step,"_n",this%counter
+        if ((this%file_suffix .ne. "null") .and. (this%file_suffix .ne. "NULL")) then
+            tempname = trim(tempname)//trim(this%file_suffix)
+        end if
+        write(fileext, "(A4)") ".s3D"
 
-        write(tempname,"(A3,I2.2,A7,I1.1,A5,I2.2,A2,I6.6,A2,I6.6,A4)") "Run",this%run_id,"_budget",BudgetID,"_term",fieldID,"_t",this%igrid_sim%step,"_n",this%counter,".s3D"
         fname = this%budgets_Dir(:len_trim(this%budgets_Dir))//"/"//trim(tempname)
-
         call decomp_2d_write_one(1,field,fname, this%igrid_sim%gpC)
 
     end subroutine 
@@ -2514,7 +2528,10 @@ subroutine DumpBudget4_23(this)
     
     subroutine destroy(this)
         class(budgets_time_avg), intent(inout) :: this
-        nullify(this%igrid_sim)
+        if (associated(this%igrid_sim)) then
+            nullify(this%igrid_sim)
+        end if
+
         if(this%do_budgets) then
             deallocate(this%uc, this%vc, this%wc, this%usgs, this%vsgs, this%wsgs, this%px, this%py, this%pz, this%uturb)  
             deallocate(this%budget_0)
@@ -2673,4 +2690,4 @@ subroutine DumpBudget4_23(this)
         call this%interp_Edge2Cell(f1E * f2E, fmultC)
     end function
 
-end module 
+end module budgets_time_avg_mod
