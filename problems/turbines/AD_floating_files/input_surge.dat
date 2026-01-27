@@ -149,6 +149,6 @@ vInflow                       = 0.d0           ! Veer strength dalpha/dz = vInfl
 InflowProfileAmplit           = 0.d0           ! Controls amplitude in Type 1, 2
 InflowProfileThick            = 5.d0           ! with uInflow (vInflow) controls strength of shear (veer) 
 InflowProfileType             = 0              ! Inflow profile; 0: uniform, 1: MFH shear, 2: MFH shear + veer, 5: new shear 6: new veer, 7: shear + veer
-amplit                        = 0.1d0          ! Forcing amplitude target, as a fraction of G
-freq                          = 10.d0          ! Forcing frequency (non-dimensionalized)
+InflowSurgeAmplit                        = 0.1d0          ! Forcing amplitude target, as a fraction of G
+InflowSurgeFreq                          = 10.d0          ! Forcing frequency (non-dimensionalized)
 /
