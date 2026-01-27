@@ -2,7 +2,7 @@ module AD_Coriolis_parameters
 
     use exits, only: message
     use kind_parameters,  only: rkind
-    use constants, only: kappa, pi, one
+    use constants, only: kappa, pi, one, zero
     implicit none
     integer :: seedu = 321341
     integer :: seedv = 423424
@@ -16,6 +16,7 @@ module AD_Coriolis_parameters
     real(rkind), dimension(:,:,:), allocatable :: utarget0, vtarget0, wtarget0
     ! variables set by the inputfile: 
     real(rkind) :: fringe_fact, lambdafact, freq_inflow, amplit_inflow, dt_max 
+    real(rkind) :: phase_inflow ! inflow surge phase to be used by phase budget
     integer :: N = 20  ! minimum number of time steps per period
 
     contains
@@ -45,7 +46,13 @@ subroutine init_fringe_targets(inputfile, igp)
     namelist /AD_CoriolisINPUT/ Lx, Ly, Lz, uInflow, vInflow, & 
                                 InflowProfileAmplit, InflowProfileThick, InflowProfileType, yaw, InflowSurgeFreq, InflowSurgeAmplit
 
+    ! default initializations
+    InflowSurgeFreq   = zero
+    InflowSurgeAmplit = zero
+    phase_inflow = zero
     ioUnit = 11
+
+    ! read in namelist
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
     read(unit=ioUnit, NML=AD_CoriolisINPUT)
     close(ioUnit)    
@@ -107,6 +114,8 @@ subroutine update_fringe_targets(inputfile, igp)
     vtarget = vtarget0 * (one + amplit_inflow * sin(two*pi*freq_inflow*igp%tsim) * gain)
     wtarget = wtarget0 * (one + amplit_inflow * sin(two*pi*freq_inflow*igp%tsim) * gain)
 
+    phase_inflow = modulo(freq_inflow * igp%tsim, one)
+    call message(0, "Normalized inflow surge phase: ", phase_inflow)
 end subroutine
 
 subroutine check_dt(igp)
