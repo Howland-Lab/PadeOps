@@ -196,8 +196,8 @@ module budgets_time_avg_mod
         logical :: HaveScalars
         integer :: tidx_dump 
         integer :: tidx_compute
-        integer :: tidx_budget_start 
-        real(rkind) :: time_budget_start 
+        integer, public :: tidx_budget_start ! public for use in child phase_average
+        real(rkind), public :: time_budget_start ! public for use in child phase_average
         logical :: do_budgets
         logical, public :: forceDump
         logical :: splitPressureDNS
