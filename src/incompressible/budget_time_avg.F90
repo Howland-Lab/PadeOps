@@ -625,7 +625,7 @@ contains
             this%budget_0(:,:,:,26) = this%budget_0(:,:,:,26) + this%igrid_sim%T
             call this%igrid_sim%spectE%ifft(this%wb,this%igrid_sim%rbuffxE(:,:,:,1))
             call this%interp_Edge2Cell(this%igrid_sim%rbuffxE(:,:,:,1), this%igrid_sim%rbuffxC(:,:,:,1))
-            this%budget_0(:,:,:,31) = this%budget_0(:,:,:,31) - this%igrid_sim%rbuffxC(:,:,:,1)
+            this%budget_0(:,:,:,31) = this%budget_0(:,:,:,31) + this%igrid_sim%rbuffxC(:,:,:,1)
         end if 
 
         ! STEP 2: Get Reynolds stresses (IMPORTANT: need to correct for fluctuation before dumping)
