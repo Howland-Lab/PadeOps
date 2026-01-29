@@ -347,9 +347,9 @@ subroutine get_RHS(this, u, v, w, rhsxvals, rhsyvals, rhszvals, yaw, theta)
     real(rkind), dimension(3,3) :: R, T
 
     ! update yaw and tilt of the turbine
-    if (.not. this%useDynamicYaw .and. (this%yaw - yaw*180.d0/pi)>1.d-8) then
-        call GracefulExit("Turbine prescribed yaw changed, but useDynamicYaw is OFF", 423)
-    end if
+    ! if (.not. this%useDynamicYaw .and. (this%yaw - yaw*180.d0/pi)>1.d-8) then
+    !     call GracefulExit("Turbine prescribed yaw changed, but useDynamicYaw is OFF", 423)
+    ! end if
    
     this%yaw = yaw*180.d0/pi
     this%tilt = theta*180.d0/pi  ! For now, these are stored in degrees but input in radians ...?
