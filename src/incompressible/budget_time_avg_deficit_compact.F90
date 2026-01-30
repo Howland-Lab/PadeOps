@@ -57,8 +57,8 @@ module budgets_time_avg_deficit_compact_mod
         procedure, private  :: AssembleBudget3
    
         procedure, private  :: getProductOfMeans
-        procedure, private  :: writeTimeSum
-        procedure, private  :: readTimeSum
+        ! procedure, private  :: writeTimeSum
+        ! procedure, private  :: readTimeSum
 
         procedure, private :: ddx_R2R
         procedure, private :: ddy_R2R
@@ -110,7 +110,9 @@ module budgets_time_avg_deficit_compact_mod
         this%useWindTurbines = this%prim_budget%igrid_sim%useWindTurbines
         this%isStratified    = this%prim_budget%igrid_sim%isStratified
         this%useCoriolis    = this%prim_budget%igrid_sim%useCoriolis
-        this%time_weighted_average = use_time_weighted_average
+        ! Deactivate time-weighted sum till time-averaged budgets are weighted similarily
+        !this%time_weighted_average = use_time_weighted_average
+        this%time_weighted_average = .False.
         this%forceDump = .false.
         this%write_budget0 = write_budget0
         this%write_budget1 = write_budget1
@@ -225,11 +227,11 @@ module budgets_time_avg_deficit_compact_mod
         this%delta_tauij = this%prim_budget%igrid_sim%tauSGS_ij - this%pre_budget%igrid_sim%tauSGS_ij
 
         ! To be multiplied by every term added to the sum
-        if(this%time_weighted_average)then
-            this%weight = this%prim_budget%igrid_sim%dt
-        else
-            this%weight = real(1., rkind)
-        end if
+        ! if(this%time_weighted_average)then
+        !     this%weight = this%prim_budget%igrid_sim%dt
+        ! else
+        !     this%weight = real(1., rkind)
+        ! end if
 
         if(this%do_budget0) call this%AssembleBudget0()
         if(this%do_budget1) call this%AssembleBudget1()
@@ -237,7 +239,7 @@ module budgets_time_avg_deficit_compact_mod
         if(this%do_budget3) call this%AssembleBudget3()
 
         this%counter = this%counter + 1
-        this%timeSum = this%timeSum + this%prim_budget%igrid_sim%dt
+        ! this%timeSum = this%timeSum + this%prim_budget%igrid_sim%dt
     end subroutine 
 
     subroutine DumpBudget(this)
@@ -248,12 +250,13 @@ module budgets_time_avg_deficit_compact_mod
         real(rkind), dimension(:,:,:,:), pointer :: budget
         logical :: writeBudget
 
-        if(this%time_weighted_average)then
-            totalWeight = this%timeSum + 1.d-18
-            call this%writeTimeSum()
-        else
-            totalWeight = real(this%counter,rkind) + 1.d-18
-        end if
+        ! if(this%time_weighted_average)then
+        !     totalWeight = this%timeSum + 1.d-18
+        !     call this%writeTimeSum()
+        ! else
+        !     totalWeight = real(this%counter,rkind) + 1.d-18
+        ! end if
+        totalWeight = real(this%counter,rkind) + 1.d-18
 
         ! Cell x-pencil buffers 
         ! Buffers 1 and 2 are used locally inside getProductOfMeans
@@ -342,89 +345,89 @@ module budgets_time_avg_deficit_compact_mod
         rbuffxC2 => this%prim_budget%igrid_sim%rbuffxC(:,:,:,2)        
         
         ! STEP 1: Compute mean Delta U, Delta V, and Delta W
-        this%budget_0(:,:,:,1) = this%budget_0(:,:,:,1) + this%weight*(this%prim_budget%igrid_sim%u  - this%pre_budget%igrid_sim%u)
-        this%budget_0(:,:,:,2) = this%budget_0(:,:,:,2) + this%weight*(this%prim_budget%igrid_sim%v  - this%pre_budget%igrid_sim%v)
-        this%budget_0(:,:,:,3) = this%budget_0(:,:,:,3) + this%weight*(this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)
+        this%budget_0(:,:,:,1) = this%budget_0(:,:,:,1) + (this%prim_budget%igrid_sim%u  - this%pre_budget%igrid_sim%u)
+        this%budget_0(:,:,:,2) = this%budget_0(:,:,:,2) + (this%prim_budget%igrid_sim%v  - this%pre_budget%igrid_sim%v)
+        this%budget_0(:,:,:,3) = this%budget_0(:,:,:,3) + (this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)
 
         ! STEP 2: Pressure
-        this%budget_0(:,:,:,4) = this%budget_0(:,:,:,4) + this%weight*(this%prim_budget%igrid_sim%pressure - this%pre_budget%igrid_sim%pressure)
+        this%budget_0(:,:,:,4) = this%budget_0(:,:,:,4) + (this%prim_budget%igrid_sim%pressure - this%pre_budget%igrid_sim%pressure)
 
         ! STEP 3: Potential temperature
         if (this%isStratified)then 
-            this%budget_0(:,:,:,5) = this%budget_0(:,:,:,5) + this%weight*(this%prim_budget%igrid_sim%T - this%pre_budget%igrid_sim%T)
+            this%budget_0(:,:,:,5) = this%budget_0(:,:,:,5) + (this%prim_budget%igrid_sim%T - this%pre_budget%igrid_sim%T)
             
             cbuffyE1 = this%prim_budget%wb - this%pre_budget%wb
             call this%prim_budget%igrid_sim%spectE%ifft(cbuffyE1, rbuffxE1)
             call this%interp_Edge2Cell(rbuffxE1, rbuffxC1)
-            this%budget_0(:,:,:,17) = this%budget_0(:,:,:,17) + this%weight*rbuffxC1
+            this%budget_0(:,:,:,17) = this%budget_0(:,:,:,17) + rbuffxC1
         end if
 
         ! Step 4: SGS stresses (also viscous stress if finite reynolds number is being used)
-        this%budget_0(:,:,:,6:11) = this%budget_0(:,:,:,6:11) + this%weight * this%delta_tauij
+        this%budget_0(:,:,:,6:11) = this%budget_0(:,:,:,6:11) + this%delta_tauij
 
         ! Step 5: SGS stress gradients
         ! Reverse signs of usgs, vsgs, wsgs
         cbuffyC1 = this%pre_budget%usgs - this%prim_budget%usgs
         call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
-        this%budget_0(:,:,:,12) = this%budget_0(:,:,:,12) + this%weight*rbuffxC1
+        this%budget_0(:,:,:,12) = this%budget_0(:,:,:,12) + rbuffxC1
 
         cbuffyC1 = this%pre_budget%vsgs - this%prim_budget%vsgs
         call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
-        this%budget_0(:,:,:,13) = this%budget_0(:,:,:,13) + this%weight*rbuffxC1
+        this%budget_0(:,:,:,13) = this%budget_0(:,:,:,13) + rbuffxC1
 
         cbuffyE1 = this%pre_budget%wsgs - this%prim_budget%wsgs
         call this%prim_budget%igrid_sim%spectE%ifft(cbuffyE1, rbuffxE1)
         call this%interp_Edge2Cell(rbuffxE1, rbuffxC1)
-        this%budget_0(:,:,:,14) = this%budget_0(:,:,:,14) + this%weight*rbuffxC1
+        this%budget_0(:,:,:,14) = this%budget_0(:,:,:,14) + rbuffxC1
         
         ! Step 6: Coriolis
         if(this%useCoriolis) then
             ! Remove the geostrophic forcing term from exported Coriolis force  
             call this%pre_budget%igrid_sim%get_geostrophic_forcing(rbuffxC1, rbuffxC2)  
-            this%budget_0(:,:,:,15) = this%budget_0(:,:,:,15) + this%weight*rbuffxC1
-            this%budget_0(:,:,:,16) = this%budget_0(:,:,:,16) + this%weight*rbuffxC2      
+            this%budget_0(:,:,:,15) = this%budget_0(:,:,:,15) + rbuffxC1
+            this%budget_0(:,:,:,16) = this%budget_0(:,:,:,16) + rbuffxC2      
 
             call this%prim_budget%igrid_sim%get_geostrophic_forcing(rbuffxC1, rbuffxC2)
-            this%budget_0(:,:,:,15) = this%budget_0(:,:,:,15) - this%weight*rbuffxC1
-            this%budget_0(:,:,:,16) = this%budget_0(:,:,:,16) - this%weight*rbuffxC2              
+            this%budget_0(:,:,:,15) = this%budget_0(:,:,:,15) - rbuffxC1
+            this%budget_0(:,:,:,16) = this%budget_0(:,:,:,16) - rbuffxC2              
             
             ! Coriolis term, X 
             cbuffyC1 = this%prim_budget%ucor - this%pre_budget%ucor      
             call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
-            this%budget_0(:,:,:,15) = this%budget_0(:,:,:,15) + this%weight*rbuffxC1
+            this%budget_0(:,:,:,15) = this%budget_0(:,:,:,15) + rbuffxC1
 
             ! Coriolis term, Y       
             cbuffyC1 = this%prim_budget%vcor - this%pre_budget%vcor
             call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)            
-            this%budget_0(:,:,:,16) = this%budget_0(:,:,:,16) + this%weight*rbuffxC1
+            this%budget_0(:,:,:,16) = this%budget_0(:,:,:,16) + rbuffxC1
         end if
 
         ! Step 7: Pressure gradient force
         ! px sign is reversed
         cbuffyC1 = this%pre_budget%px - this%prim_budget%px
         call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
-        this%budget_0(:,:,:,18) = this%budget_0(:,:,:,18) + this%weight*rbuffxC1
+        this%budget_0(:,:,:,18) = this%budget_0(:,:,:,18) + rbuffxC1
 
         ! py sign is reversed
         cbuffyC1 = this%pre_budget%py - this%prim_budget%py
         call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
-        this%budget_0(:,:,:,19) = this%budget_0(:,:,:,19) + this%weight*rbuffxC1
+        this%budget_0(:,:,:,19) = this%budget_0(:,:,:,19) + rbuffxC1
 
         ! pz sign is reversed
         cbuffyE1 = this%pre_budget%pz - this%prim_budget%pz
         call this%prim_budget%igrid_sim%spectE%ifft(cbuffyE1, rbuffxE1)
         call this%interp_Edge2Cell(rbuffxE1, rbuffxC1)
-        this%budget_0(:,:,:,20) = this%budget_0(:,:,:,20) + this%weight*rbuffxC1         
+        this%budget_0(:,:,:,20) = this%budget_0(:,:,:,20) + rbuffxC1         
 
         ! Step 8: turbine forcing
         if(this%useWindTurbines)then        
             cbuffyC1 = this%prim_budget%uturb - this%pre_budget%uturb
             call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
-            this%budget_0(:,:,:,21) = this%budget_0(:,:,:,21) + this%weight*rbuffxC1
+            this%budget_0(:,:,:,21) = this%budget_0(:,:,:,21) + rbuffxC1
 
             cbuffyC1 = this%prim_budget%vturb - this%pre_budget%vturb
             call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
-            this%budget_0(:,:,:,22) = this%budget_0(:,:,:,22) + this%weight*rbuffxC1
+            this%budget_0(:,:,:,22) = this%budget_0(:,:,:,22) + rbuffxC1
         end if
 
         nullify(rbuffxE1, rbuffxC1, rbuffxC2, cbuffyC1, cbuffyE1)
@@ -456,29 +459,29 @@ module budgets_time_avg_deficit_compact_mod
         dwE = this%prim_budget%igrid_sim%w  - this%pre_budget%igrid_sim%w
 
         ! Reynolds stresses
-        this%budget_1(:,:,:,1) = this%budget_1(:,:,:,1) + this%weight * du * du
-        this%budget_1(:,:,:,2) = this%budget_1(:,:,:,2) + this%weight * du * dv        
+        this%budget_1(:,:,:,1) = this%budget_1(:,:,:,1) + du * du
+        this%budget_1(:,:,:,2) = this%budget_1(:,:,:,2) + du * dv        
         buffer = this%multiply_Edges_interp_cell(duE, dwE)
-        this%budget_1(:,:,:,3) = this%budget_1(:,:,:,3) + this%weight * buffer
-        this%budget_1(:,:,:,4) = this%budget_1(:,:,:,4) + this%weight * dv * dv
+        this%budget_1(:,:,:,3) = this%budget_1(:,:,:,3) + buffer
+        this%budget_1(:,:,:,4) = this%budget_1(:,:,:,4) + dv * dv
         buffer = this%multiply_Edges_interp_cell(dvE, dwE)
-        this%budget_1(:,:,:,5) = this%budget_1(:,:,:,5) + this%weight * buffer
-        this%budget_1(:,:,:,6) = this%budget_1(:,:,:,6) + this%weight * dw * dw
+        this%budget_1(:,:,:,5) = this%budget_1(:,:,:,5) + buffer
+        this%budget_1(:,:,:,6) = this%budget_1(:,:,:,6) + dw * dw
          
         ! Mixed Reynolds stresses
-        this%budget_1(:,:,:,7)  = this%budget_1(:,:,:,7) + this%weight * du * this%pre_budget%igrid_sim%u
-        this%budget_1(:,:,:,8)  = this%budget_1(:,:,:,8) + this%weight * du * this%pre_budget%igrid_sim%v
-        this%budget_1(:,:,:,9)  = this%budget_1(:,:,:,9) + this%weight * dv * this%pre_budget%igrid_sim%u
+        this%budget_1(:,:,:,7)  = this%budget_1(:,:,:,7) + du * this%pre_budget%igrid_sim%u
+        this%budget_1(:,:,:,8)  = this%budget_1(:,:,:,8) + du * this%pre_budget%igrid_sim%v
+        this%budget_1(:,:,:,9)  = this%budget_1(:,:,:,9) + dv * this%pre_budget%igrid_sim%u
         buffer = this%multiply_Edges_interp_cell(duE, this%pre_budget%igrid_sim%w)
-        this%budget_1(:,:,:,10) = this%budget_1(:,:,:,10) + this%weight * buffer
+        this%budget_1(:,:,:,10) = this%budget_1(:,:,:,10) + buffer
         buffer = this%multiply_Edges_interp_cell(dwE, this%pre_budget%igrid_sim%uE)
-        this%budget_1(:,:,:,11) = this%budget_1(:,:,:,11) + this%weight * buffer
-        this%budget_1(:,:,:,12) = this%budget_1(:,:,:,12) + this%weight * dv * this%pre_budget%igrid_sim%v
+        this%budget_1(:,:,:,11) = this%budget_1(:,:,:,11) + buffer
+        this%budget_1(:,:,:,12) = this%budget_1(:,:,:,12) + dv * this%pre_budget%igrid_sim%v
         buffer = this%multiply_Edges_interp_cell(dvE, this%pre_budget%igrid_sim%w)
-        this%budget_1(:,:,:,13) = this%budget_1(:,:,:,13) + this%weight * buffer
+        this%budget_1(:,:,:,13) = this%budget_1(:,:,:,13) + buffer
         buffer = this%multiply_Edges_interp_cell(dwE, this%pre_budget%igrid_sim%vE)
-        this%budget_1(:,:,:,14) = this%budget_1(:,:,:,14) + this%weight * buffer
-        this%budget_1(:,:,:,15) = this%budget_1(:,:,:,15) + this%weight * dw * this%pre_budget%igrid_sim%wC
+        this%budget_1(:,:,:,14) = this%budget_1(:,:,:,14) + buffer
+        this%budget_1(:,:,:,15) = this%budget_1(:,:,:,15) + dw * this%pre_budget%igrid_sim%wC
 
         nullify(du, dv, dw, duE, dvE, dwE, buffer)
     end subroutine
@@ -500,76 +503,76 @@ module budgets_time_avg_deficit_compact_mod
         dw = this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC
 
         call this%ddx_R2R(du, buffer)
-        this%budget_2(:,:,:,1) = this%budget_2(:,:,:,1) + this%weight * du * buffer
-        this%budget_2(:,:,:,7) = this%budget_2(:,:,:,7) + this%weight * this%pre_budget%igrid_sim%u * buffer
+        this%budget_2(:,:,:,1) = this%budget_2(:,:,:,1) + du * buffer
+        this%budget_2(:,:,:,7) = this%budget_2(:,:,:,7) + this%pre_budget%igrid_sim%u * buffer
 
         call this%ddy_R2R(du, buffer)
-        this%budget_2(:,:,:,1) = this%budget_2(:,:,:,1) + this%weight * dv * buffer
-        this%budget_2(:,:,:,7) = this%budget_2(:,:,:,7) + this%weight * this%pre_budget%igrid_sim%v * buffer
+        this%budget_2(:,:,:,1) = this%budget_2(:,:,:,1) + dv * buffer
+        this%budget_2(:,:,:,7) = this%budget_2(:,:,:,7) + this%pre_budget%igrid_sim%v * buffer
 
         call this%ddz_R2R(du, buffer)
-        this%budget_2(:,:,:,1) = this%budget_2(:,:,:,1) + this%weight * dw * buffer
-        this%budget_2(:,:,:,7) = this%budget_2(:,:,:,7) + this%weight * this%pre_budget%igrid_sim%wC * buffer
+        this%budget_2(:,:,:,1) = this%budget_2(:,:,:,1) + dw * buffer
+        this%budget_2(:,:,:,7) = this%budget_2(:,:,:,7) + this%pre_budget%igrid_sim%wC * buffer
 
         call this%ddx_R2R(dv, buffer)
-        this%budget_2(:,:,:,2) = this%budget_2(:,:,:,2) + this%weight * du * buffer
-        this%budget_2(:,:,:,8) = this%budget_2(:,:,:,8) + this%weight * this%pre_budget%igrid_sim%u * buffer
+        this%budget_2(:,:,:,2) = this%budget_2(:,:,:,2) + du * buffer
+        this%budget_2(:,:,:,8) = this%budget_2(:,:,:,8) + this%pre_budget%igrid_sim%u * buffer
 
         call this%ddy_R2R(dv, buffer)
-        this%budget_2(:,:,:,2) = this%budget_2(:,:,:,2) + this%weight * dv * buffer
-        this%budget_2(:,:,:,8) = this%budget_2(:,:,:,8) + this%weight * this%pre_budget%igrid_sim%v * buffer
+        this%budget_2(:,:,:,2) = this%budget_2(:,:,:,2) + dv * buffer
+        this%budget_2(:,:,:,8) = this%budget_2(:,:,:,8) + this%pre_budget%igrid_sim%v * buffer
 
         call this%ddz_R2R(dv, buffer)
-        this%budget_2(:,:,:,2) = this%budget_2(:,:,:,2) + this%weight * dw * buffer
-        this%budget_2(:,:,:,8) = this%budget_2(:,:,:,8) + this%weight * this%pre_budget%igrid_sim%wC * buffer
+        this%budget_2(:,:,:,2) = this%budget_2(:,:,:,2) + dw * buffer
+        this%budget_2(:,:,:,8) = this%budget_2(:,:,:,8) + this%pre_budget%igrid_sim%wC * buffer
 
         call this%ddx_R2R(dw, buffer)
-        this%budget_2(:,:,:,3) = this%budget_2(:,:,:,3) + this%weight * du * buffer
-        this%budget_2(:,:,:,9) = this%budget_2(:,:,:,9) + this%weight * this%pre_budget%igrid_sim%u * buffer
+        this%budget_2(:,:,:,3) = this%budget_2(:,:,:,3) + du * buffer
+        this%budget_2(:,:,:,9) = this%budget_2(:,:,:,9) + this%pre_budget%igrid_sim%u * buffer
 
         call this%ddy_R2R(dw, buffer)
-        this%budget_2(:,:,:,3) = this%budget_2(:,:,:,3) + this%weight * dv * buffer
-        this%budget_2(:,:,:,9) = this%budget_2(:,:,:,9) + this%weight * this%pre_budget%igrid_sim%v * buffer
+        this%budget_2(:,:,:,3) = this%budget_2(:,:,:,3) + dv * buffer
+        this%budget_2(:,:,:,9) = this%budget_2(:,:,:,9) + this%pre_budget%igrid_sim%v * buffer
 
         call this%ddz_R2R(dw, buffer)
-        this%budget_2(:,:,:,3) = this%budget_2(:,:,:,3) + this%weight * dw * buffer
-        this%budget_2(:,:,:,9) = this%budget_2(:,:,:,9) + this%weight * this%pre_budget%igrid_sim%wC * buffer
+        this%budget_2(:,:,:,3) = this%budget_2(:,:,:,3) + dw * buffer
+        this%budget_2(:,:,:,9) = this%budget_2(:,:,:,9) + this%pre_budget%igrid_sim%wC * buffer
 
         call this%ddx_R2R(this%pre_budget%igrid_sim%u, buffer)
-        this%budget_2(:,:,:,4) = this%budget_2(:,:,:,4) + this%weight * du * buffer
-        this%budget_2(:,:,:,10) = this%budget_2(:,:,:,10) + this%weight * this%pre_budget%igrid_sim%u * buffer
+        this%budget_2(:,:,:,4) = this%budget_2(:,:,:,4) + du * buffer
+        this%budget_2(:,:,:,10) = this%budget_2(:,:,:,10) + this%pre_budget%igrid_sim%u * buffer
 
         call this%ddy_R2R(this%pre_budget%igrid_sim%u, buffer)
-        this%budget_2(:,:,:,4) = this%budget_2(:,:,:,4) + this%weight * dv * buffer
-        this%budget_2(:,:,:,10) = this%budget_2(:,:,:,10) + this%weight * this%pre_budget%igrid_sim%v * buffer
+        this%budget_2(:,:,:,4) = this%budget_2(:,:,:,4) + dv * buffer
+        this%budget_2(:,:,:,10) = this%budget_2(:,:,:,10) + this%pre_budget%igrid_sim%v * buffer
 
         call this%ddz_R2R(this%pre_budget%igrid_sim%u, buffer)
-        this%budget_2(:,:,:,4) = this%budget_2(:,:,:,4) + this%weight * dw * buffer
-        this%budget_2(:,:,:,10) = this%budget_2(:,:,:,10) + this%weight * this%pre_budget%igrid_sim%wC * buffer
+        this%budget_2(:,:,:,4) = this%budget_2(:,:,:,4) + dw * buffer
+        this%budget_2(:,:,:,10) = this%budget_2(:,:,:,10) + this%pre_budget%igrid_sim%wC * buffer
 
         call this%ddx_R2R(this%pre_budget%igrid_sim%v, buffer)
-        this%budget_2(:,:,:,5) = this%budget_2(:,:,:,5) + this%weight * du * buffer
-        this%budget_2(:,:,:,11) = this%budget_2(:,:,:,11) + this%weight * this%pre_budget%igrid_sim%u * buffer
+        this%budget_2(:,:,:,5) = this%budget_2(:,:,:,5) + du * buffer
+        this%budget_2(:,:,:,11) = this%budget_2(:,:,:,11) + this%pre_budget%igrid_sim%u * buffer
 
         call this%ddy_R2R(this%pre_budget%igrid_sim%v, buffer)
-        this%budget_2(:,:,:,5) = this%budget_2(:,:,:,5) + this%weight * dv * buffer
-        this%budget_2(:,:,:,11) = this%budget_2(:,:,:,11) + this%weight * this%pre_budget%igrid_sim%v * buffer
+        this%budget_2(:,:,:,5) = this%budget_2(:,:,:,5) + dv * buffer
+        this%budget_2(:,:,:,11) = this%budget_2(:,:,:,11) + this%pre_budget%igrid_sim%v * buffer
 
         call this%ddz_R2R(this%pre_budget%igrid_sim%v, buffer)
-        this%budget_2(:,:,:,5) = this%budget_2(:,:,:,5) + this%weight * dw * buffer
-        this%budget_2(:,:,:,11) = this%budget_2(:,:,:,11) + this%weight * this%pre_budget%igrid_sim%wC * buffer
+        this%budget_2(:,:,:,5) = this%budget_2(:,:,:,5) + dw * buffer
+        this%budget_2(:,:,:,11) = this%budget_2(:,:,:,11) + this%pre_budget%igrid_sim%wC * buffer
         
         call this%ddx_R2R(this%pre_budget%igrid_sim%wC, buffer)
-        this%budget_2(:,:,:,6) = this%budget_2(:,:,:,6) + this%weight * du * buffer
-        this%budget_2(:,:,:,12) = this%budget_2(:,:,:,12) + this%weight * this%pre_budget%igrid_sim%u * buffer
+        this%budget_2(:,:,:,6) = this%budget_2(:,:,:,6) + du * buffer
+        this%budget_2(:,:,:,12) = this%budget_2(:,:,:,12) + this%pre_budget%igrid_sim%u * buffer
 
         call this%ddy_R2R(this%pre_budget%igrid_sim%wC, buffer)
-        this%budget_2(:,:,:,6) = this%budget_2(:,:,:,6) + this%weight * dv * buffer
-        this%budget_2(:,:,:,12) = this%budget_2(:,:,:,12) + this%weight * this%pre_budget%igrid_sim%v * buffer
+        this%budget_2(:,:,:,6) = this%budget_2(:,:,:,6) + dv * buffer
+        this%budget_2(:,:,:,12) = this%budget_2(:,:,:,12) + this%pre_budget%igrid_sim%v * buffer
 
         call this%ddz_R2R(this%pre_budget%igrid_sim%wC, buffer)
-        this%budget_2(:,:,:,6) = this%budget_2(:,:,:,6) + this%weight * dw * buffer
-        this%budget_2(:,:,:,12) = this%budget_2(:,:,:,12) + this%weight * this%pre_budget%igrid_sim%wC * buffer
+        this%budget_2(:,:,:,6) = this%budget_2(:,:,:,6) + dw * buffer
+        this%budget_2(:,:,:,12) = this%budget_2(:,:,:,12) + this%pre_budget%igrid_sim%wC * buffer
         
         nullify(du, dv, dw, buffer)
     end subroutine
@@ -613,50 +616,50 @@ module budgets_time_avg_deficit_compact_mod
         ! px, py, pz signs are reversed
         cbuffyC1 = this%pre_budget%px - this%prim_budget%px
         call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, bf)
-        this%budget_3(:,:,:,1)=this%budget_3(:,:,:,1)+ this%weight * bf * du
-        this%budget_3(:,:,:,2)=this%budget_3(:,:,:,2)+ this%weight * bf * ubase
+        this%budget_3(:,:,:,1)=this%budget_3(:,:,:,1)+ bf * du
+        this%budget_3(:,:,:,2)=this%budget_3(:,:,:,2)+ bf * ubase
 
         cbuffyC1 = this%pre_budget%py - this%prim_budget%py
         call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, bf)
-        this%budget_3(:,:,:,1)=this%budget_3(:,:,:,1)+ this%weight * bf * dv
-        this%budget_3(:,:,:,2)=this%budget_3(:,:,:,2)+ this%weight * bf * vbase
+        this%budget_3(:,:,:,1)=this%budget_3(:,:,:,1)+ bf * dv
+        this%budget_3(:,:,:,2)=this%budget_3(:,:,:,2)+ bf * vbase
 
         cbuffyE1 = this%pre_budget%pz - this%prim_budget%pz
         call this%prim_budget%igrid_sim%spectE%ifft(cbuffyE1, rbuffxE1)
         call this%interp_Edge2Cell(rbuffxE1, bf)
-        this%budget_3(:,:,:,1)=this%budget_3(:,:,:,1)+ this%weight * bf * dw        
-        this%budget_3(:,:,:,2)=this%budget_3(:,:,:,2)+ this%weight * bf * wcbase
+        this%budget_3(:,:,:,1)=this%budget_3(:,:,:,1)+ bf * dw        
+        this%budget_3(:,:,:,2)=this%budget_3(:,:,:,2)+ bf * wcbase
 
         ! Term 3: delta u_j' d_j(base p')
         ! px, py, pz signs are reversed
         call this%pre_budget%igrid_sim%spectC%ifft(this%pre_budget%px, bf)
-        this%budget_3(:,:,:,3)=this%budget_3(:,:,:,3)- this%weight * bf * du
+        this%budget_3(:,:,:,3)=this%budget_3(:,:,:,3)- bf * du
 
         call this%pre_budget%igrid_sim%spectC%ifft(this%pre_budget%py, bf)
-        this%budget_3(:,:,:,3)=this%budget_3(:,:,:,3)- this%weight * bf * dv
+        this%budget_3(:,:,:,3)=this%budget_3(:,:,:,3)- bf * dv
 
         call this%pre_budget%igrid_sim%spectE%ifft(this%pre_budget%pz, rbuffxE1)
         call this%interp_Edge2Cell(rbuffxE1, bf)
-        this%budget_3(:,:,:,3)=this%budget_3(:,:,:,3)- this%weight * bf * dw
+        this%budget_3(:,:,:,3)=this%budget_3(:,:,:,3)- bf * dw
 
         ! Term 4: d_j(base  u_i' * delta tau_ij') [SGS transport] 
         ! Term 6: d_j(delta u_i' * delta tau_ij')  [SGS transport]
         ! sign of usgs, vsgs, and wsgs are reversed.
         cbuffyC1 = this%pre_budget%usgs - this%prim_budget%usgs
         call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, bf)
-        this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + this%weight * bf * ubase 
-        this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + this%weight * bf * du
+        this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + bf * ubase 
+        this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + bf * du
 
         cbuffyC1 = this%pre_budget%vsgs - this%prim_budget%vsgs
         call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, bf) 
-        this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + this%weight * bf * vbase  
-        this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + this%weight * bf * dv
+        this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + bf * vbase  
+        this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + bf * dv
 
         cbuffyE1 = this%pre_budget%wsgs - this%prim_budget%wsgs
         call this%prim_budget%igrid_sim%spectE%ifft(cbuffyE1, rbuffxE1)
         call this%interp_Edge2Cell(rbuffxE1, bf)
-        this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + this%weight * bf * wcbase
-        this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + this%weight * bf * dw
+        this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + bf * wcbase
+        this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + bf * dw
         
         ! The remaining of B3(4) is exactly B3(7). Calculation is done once
         ! Term 7: delta tau_ij' d_j(base u_i')     [SGS dissipation]  
@@ -664,91 +667,91 @@ module budgets_time_avg_deficit_compact_mod
         ! Term 14: d_j(base  u_j' base u_i' delta u_i')   [Turbulent transport of TKE] 
         ! Term 15: d_j(delta u_j' base u_i' delta u_i')   [Turbulent transport of TKE]
         call this%ddx_R2R(ubase,bf)
-        buffer = this%weight * bf * this%delta_tauij(:,:,:,1) ! i=1, j=1
+        buffer =   bf * this%delta_tauij(:,:,:,1) ! i=1, j=1
         this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + buffer
         this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + buffer
-        buffer = this%weight * bf * du * ubase
+        buffer =   bf * du * ubase
         this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) + buffer
         this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) + buffer
-        this%budget_3(:,:,:,15) = this%budget_3(:,:,:,15) + this%weight * bf * du * du
+        this%budget_3(:,:,:,15) = this%budget_3(:,:,:,15) + bf * du * du
         
         call this%ddy_R2R(ubase,bf)
-        buffer = this%weight * bf * this%delta_tauij(:,:,:,2) ! i=1, j=2
+        buffer =   bf * this%delta_tauij(:,:,:,2) ! i=1, j=2
         this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + buffer
         this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + buffer
-        this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) + this%weight * bf * dv * ubase
-        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) + this%weight * bf * vbase * du
-        this%budget_3(:,:,:,15) = this%budget_3(:,:,:,15) + this%weight * bf * dv * du
+        this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) + bf * dv * ubase
+        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) + bf * vbase * du
+        this%budget_3(:,:,:,15) = this%budget_3(:,:,:,15) + bf * dv * du
         
         call this%ddz_R2R(ubase,bf)
-        buffer = this%weight * bf * this%delta_tauij(:,:,:,3) ! i=1, j=3
+        buffer =   bf * this%delta_tauij(:,:,:,3) ! i=1, j=3
         this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + buffer
         this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + buffer
-        this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) + this%weight * bf * dw * ubase
-        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) + this%weight * bf * wcbase * du
-        this%budget_3(:,:,:,15) = this%budget_3(:,:,:,15) + this%weight * bf * dw * du
+        this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) + bf * dw * ubase
+        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) + bf * wcbase * du
+        this%budget_3(:,:,:,15) = this%budget_3(:,:,:,15) + bf * dw * du
 
         call this%ddx_R2R(vbase,bf)
-        buffer = this%weight * bf * this%delta_tauij(:,:,:,2) ! i=2, j=1
+        buffer =   bf * this%delta_tauij(:,:,:,2) ! i=2, j=1
         this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + buffer
         this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + buffer
-        this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) + this%weight * bf * du * vbase
-        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) + this%weight * bf * ubase * dv
-        this%budget_3(:,:,:,15) = this%budget_3(:,:,:,15) + this%weight * bf * du * dv
+        this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) + bf * du * vbase
+        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) + bf * ubase * dv
+        this%budget_3(:,:,:,15) = this%budget_3(:,:,:,15) + bf * du * dv
         
         call this%ddy_R2R(vbase,bf)
-        buffer = this%weight * bf * this%delta_tauij(:,:,:,4) ! i=2, j=2
+        buffer =   bf * this%delta_tauij(:,:,:,4) ! i=2, j=2
         this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + buffer
         this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + buffer
-        buffer = this%weight * bf * dv * vbase
+        buffer =   bf * dv * vbase
         this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) + buffer
         this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) + buffer
-        this%budget_3(:,:,:,15) = this%budget_3(:,:,:,15) + this%weight * bf * dv * dv
+        this%budget_3(:,:,:,15) = this%budget_3(:,:,:,15) + bf * dv * dv
         
         call this%ddz_R2R(vbase,bf)
-        buffer = this%weight * bf * this%delta_tauij(:,:,:,5) ! i=2, j=3
+        buffer =   bf * this%delta_tauij(:,:,:,5) ! i=2, j=3
         this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + buffer
         this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + buffer
-        this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) + this%weight * bf * dw * vbase
-        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) + this%weight * bf * wcbase * dv
-        this%budget_3(:,:,:,15) = this%budget_3(:,:,:,15) + this%weight * bf * dw * dv
+        this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) + bf * dw * vbase
+        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) + bf * wcbase * dv
+        this%budget_3(:,:,:,15) = this%budget_3(:,:,:,15) + bf * dw * dv
 
         call this%ddx_R2R(wcbase,bf)
-        buffer = this%weight * bf * this%delta_tauij(:,:,:,3) ! i=3, j=1
+        buffer =   bf * this%delta_tauij(:,:,:,3) ! i=3, j=1
         this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + buffer
         this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + buffer
-        this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) + this%weight * bf * du * wcbase
-        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) + this%weight * bf * ubase * dw
-        this%budget_3(:,:,:,15) = this%budget_3(:,:,:,15) + this%weight * bf * du * dw
+        this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) + bf * du * wcbase
+        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) + bf * ubase * dw
+        this%budget_3(:,:,:,15) = this%budget_3(:,:,:,15) + bf * du * dw
         
         call this%ddy_R2R(wcbase,bf)
-        buffer = this%weight * bf * this%delta_tauij(:,:,:,5) ! i=3, j=2
+        buffer =   bf * this%delta_tauij(:,:,:,5) ! i=3, j=2
         this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + buffer
         this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + buffer
-        this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) + this%weight * bf * dv * wcbase
-        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) + this%weight * bf * vbase * dw
-        this%budget_3(:,:,:,15) = this%budget_3(:,:,:,15) + this%weight * bf * dv * dw
+        this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) + bf * dv * wcbase
+        this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) + bf * vbase * dw
+        this%budget_3(:,:,:,15) = this%budget_3(:,:,:,15) + bf * dv * dw
         
         call this%ddz_R2R(wcbase,bf)
-        buffer = this%weight * bf * this%delta_tauij(:,:,:,6) ! i=3, j=3
+        buffer =   bf * this%delta_tauij(:,:,:,6) ! i=3, j=3
         this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + buffer
         this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + buffer
-        buffer = this%weight * bf * dw * wcbase
+        buffer =   bf * dw * wcbase
         this%budget_3(:,:,:,13) = this%budget_3(:,:,:,13) + buffer
         this%budget_3(:,:,:,14) = this%budget_3(:,:,:,14) + buffer
-        this%budget_3(:,:,:,15) = this%budget_3(:,:,:,15) + this%weight * bf * dw * dw
+        this%budget_3(:,:,:,15) = this%budget_3(:,:,:,15) + bf * dw * dw
 
         ! Term 5: d_j(delta  u_i' base tau_ij') [SGS transport]         
         ! sign of usgs, vsgs, and wsgs are reversed. 
         call this%pre_budget%igrid_sim%spectC%ifft(this%pre_budget%usgs, bf)
-        this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) - this%weight * bf * du
+        this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) - bf * du
 
         call this%pre_budget%igrid_sim%spectC%ifft(this%pre_budget%vsgs, bf)
-        this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) - this%weight * bf * dv 
+        this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) - bf * dv 
 
         call this%pre_budget%igrid_sim%spectE%ifft(this%pre_budget%wsgs, rbuffxE1)
         call this%interp_Edge2Cell(rbuffxE1, bf)
-        this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) - this%weight * bf * dw
+        this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) - bf * dw
 
         ! The remaining of B3(5) is the exactly as B3(8)
         ! Term 8: base  tau_ij' * d_j(delta u_i')     [SGS dissipation]
@@ -760,115 +763,115 @@ module budgets_time_avg_deficit_compact_mod
         ! Term 17: d_j(delta u_j' delta u_i' delta u_i')/2 [Turbulent transport of TKE] 
         
         call this%ddx_R2R(du, bf)! i=1, j=1
-        buffer = this%weight * bf * this%pre_budget%igrid_sim%tauSGS_ij(:,:,:,1) 
+        buffer =   bf * this%pre_budget%igrid_sim%tauSGS_ij(:,:,:,1) 
         this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) + buffer
         this%budget_3(:,:,:,8) = this%budget_3(:,:,:,8) + buffer  
-        buffer = this%weight * bf * this%delta_tauij(:,:,:,1)   
+        buffer =   bf * this%delta_tauij(:,:,:,1)   
         this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + buffer
         this%budget_3(:,:,:,9) = this%budget_3(:,:,:,9) + buffer  
-        this%budget_3(:,:,:,14)= this%budget_3(:,:,:,14)+ this%weight * bf * ubase * ubase
-        buffer = this%weight * bf * du * ubase
+        this%budget_3(:,:,:,14)= this%budget_3(:,:,:,14)+ bf * ubase * ubase
+        buffer =   bf * du * ubase
         this%budget_3(:,:,:,15)= this%budget_3(:,:,:,15)+ buffer
         this%budget_3(:,:,:,16)= this%budget_3(:,:,:,16)+ buffer
-        this%budget_3(:,:,:,17)= this%budget_3(:,:,:,17)+ this%weight * bf * du * du         
+        this%budget_3(:,:,:,17)= this%budget_3(:,:,:,17)+ bf * du * du         
         
         call this%ddy_R2R(du, bf)! i=1, j=2
-        buffer = this%weight * bf * this%pre_budget%igrid_sim%tauSGS_ij(:,:,:,2) 
+        buffer =   bf * this%pre_budget%igrid_sim%tauSGS_ij(:,:,:,2) 
         this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) + buffer
         this%budget_3(:,:,:,8) = this%budget_3(:,:,:,8) + buffer  
-        buffer = this%weight * bf * this%delta_tauij(:,:,:,2)   
+        buffer =   bf * this%delta_tauij(:,:,:,2)   
         this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + buffer  
         this%budget_3(:,:,:,9) = this%budget_3(:,:,:,9) + buffer  
-        this%budget_3(:,:,:,14)= this%budget_3(:,:,:,14)+ this%weight * bf * ubase * vbase
-        this%budget_3(:,:,:,15)= this%budget_3(:,:,:,15)+ this%weight * bf * dv * ubase
-        this%budget_3(:,:,:,16)= this%budget_3(:,:,:,16)+ this%weight * bf * vbase * du
-        this%budget_3(:,:,:,17)= this%budget_3(:,:,:,17)+ this%weight * bf * dv * du  
+        this%budget_3(:,:,:,14)= this%budget_3(:,:,:,14)+ bf * ubase * vbase
+        this%budget_3(:,:,:,15)= this%budget_3(:,:,:,15)+ bf * dv * ubase
+        this%budget_3(:,:,:,16)= this%budget_3(:,:,:,16)+ bf * vbase * du
+        this%budget_3(:,:,:,17)= this%budget_3(:,:,:,17)+ bf * dv * du  
         
         call this%ddz_R2R(du, bf)! i=1, j=3
-        buffer = this%weight * bf * this%pre_budget%igrid_sim%tauSGS_ij(:,:,:,3) 
+        buffer =   bf * this%pre_budget%igrid_sim%tauSGS_ij(:,:,:,3) 
         this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) + buffer
         this%budget_3(:,:,:,8) = this%budget_3(:,:,:,8) + buffer
-        buffer = this%weight * bf * this%delta_tauij(:,:,:,3)   
+        buffer =   bf * this%delta_tauij(:,:,:,3)   
         this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + buffer
         this%budget_3(:,:,:,9) = this%budget_3(:,:,:,9) + buffer
-        this%budget_3(:,:,:,14)= this%budget_3(:,:,:,14)+ this%weight * bf * ubase * wcbase
-        this%budget_3(:,:,:,15)= this%budget_3(:,:,:,15)+ this%weight * bf * dw * ubase
-        this%budget_3(:,:,:,16)= this%budget_3(:,:,:,16)+ this%weight * bf * wcbase * du
-        this%budget_3(:,:,:,17)= this%budget_3(:,:,:,17)+ this%weight * bf * dw * du
+        this%budget_3(:,:,:,14)= this%budget_3(:,:,:,14)+ bf * ubase * wcbase
+        this%budget_3(:,:,:,15)= this%budget_3(:,:,:,15)+ bf * dw * ubase
+        this%budget_3(:,:,:,16)= this%budget_3(:,:,:,16)+ bf * wcbase * du
+        this%budget_3(:,:,:,17)= this%budget_3(:,:,:,17)+ bf * dw * du
         
         call this%ddx_R2R(dv, bf)! i=2, j=1
-        buffer = this%weight * bf * this%pre_budget%igrid_sim%tauSGS_ij(:,:,:,2) 
+        buffer =   bf * this%pre_budget%igrid_sim%tauSGS_ij(:,:,:,2) 
         this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) + buffer
         this%budget_3(:,:,:,8) = this%budget_3(:,:,:,8) + buffer
-        buffer = this%weight * bf * this%delta_tauij(:,:,:,2)   
+        buffer =   bf * this%delta_tauij(:,:,:,2)   
         this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + buffer
         this%budget_3(:,:,:,9) = this%budget_3(:,:,:,9) + buffer
-        this%budget_3(:,:,:,14)= this%budget_3(:,:,:,14)+ this%weight * bf * vbase * ubase
-        this%budget_3(:,:,:,15)= this%budget_3(:,:,:,15)+ this%weight * bf * du * vbase
-        this%budget_3(:,:,:,16)= this%budget_3(:,:,:,16)+ this%weight * bf * ubase * dv
-        this%budget_3(:,:,:,17)= this%budget_3(:,:,:,17)+ this%weight * bf * du * dv
+        this%budget_3(:,:,:,14)= this%budget_3(:,:,:,14)+ bf * vbase * ubase
+        this%budget_3(:,:,:,15)= this%budget_3(:,:,:,15)+ bf * du * vbase
+        this%budget_3(:,:,:,16)= this%budget_3(:,:,:,16)+ bf * ubase * dv
+        this%budget_3(:,:,:,17)= this%budget_3(:,:,:,17)+ bf * du * dv
         
         call this%ddy_R2R(dv, bf)! i=2, j=2
-        buffer = this%weight * bf * this%pre_budget%igrid_sim%tauSGS_ij(:,:,:,4) 
+        buffer =   bf * this%pre_budget%igrid_sim%tauSGS_ij(:,:,:,4) 
         this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) + buffer
         this%budget_3(:,:,:,8) = this%budget_3(:,:,:,8) + buffer
-        buffer = this%weight * bf * this%delta_tauij(:,:,:,4)   
+        buffer =   bf * this%delta_tauij(:,:,:,4)   
         this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + buffer
         this%budget_3(:,:,:,9) = this%budget_3(:,:,:,9) + buffer
-        this%budget_3(:,:,:,14)= this%budget_3(:,:,:,14)+ this%weight * bf * vbase * vbase
-        buffer = this%weight * bf * dv * vbase 
+        this%budget_3(:,:,:,14)= this%budget_3(:,:,:,14)+ bf * vbase * vbase
+        buffer =   bf * dv * vbase 
         this%budget_3(:,:,:,15)= this%budget_3(:,:,:,15)+ buffer
         this%budget_3(:,:,:,16)= this%budget_3(:,:,:,16)+ buffer
-        this%budget_3(:,:,:,17)= this%budget_3(:,:,:,17)+ this%weight * bf * dv * dv
+        this%budget_3(:,:,:,17)= this%budget_3(:,:,:,17)+ bf * dv * dv
         
         call this%ddz_R2R(dv, bf)! i=2, j=3
-        buffer = this%weight * bf * this%pre_budget%igrid_sim%tauSGS_ij(:,:,:,5) 
+        buffer =   bf * this%pre_budget%igrid_sim%tauSGS_ij(:,:,:,5) 
         this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) + buffer
         this%budget_3(:,:,:,8) = this%budget_3(:,:,:,8) + buffer
-        buffer = this%weight * bf * this%delta_tauij(:,:,:,5)   
+        buffer =   bf * this%delta_tauij(:,:,:,5)   
         this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + buffer
         this%budget_3(:,:,:,9) = this%budget_3(:,:,:,9) + buffer
-        this%budget_3(:,:,:,14)= this%budget_3(:,:,:,14)+ this%weight * bf * vbase * wcbase
-        this%budget_3(:,:,:,15)= this%budget_3(:,:,:,15)+ this%weight * bf * dw * vbase
-        this%budget_3(:,:,:,16)= this%budget_3(:,:,:,16)+ this%weight * bf * wcbase * dv
-        this%budget_3(:,:,:,17)= this%budget_3(:,:,:,17)+ this%weight * bf * dw * dv
+        this%budget_3(:,:,:,14)= this%budget_3(:,:,:,14)+ bf * vbase * wcbase
+        this%budget_3(:,:,:,15)= this%budget_3(:,:,:,15)+ bf * dw * vbase
+        this%budget_3(:,:,:,16)= this%budget_3(:,:,:,16)+ bf * wcbase * dv
+        this%budget_3(:,:,:,17)= this%budget_3(:,:,:,17)+ bf * dw * dv
         
         call this%ddx_R2R(dw, bf)! i=3, j=1
-        buffer = this%weight * bf * this%pre_budget%igrid_sim%tauSGS_ij(:,:,:,3) 
+        buffer =   bf * this%pre_budget%igrid_sim%tauSGS_ij(:,:,:,3) 
         this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) + buffer
         this%budget_3(:,:,:,8) = this%budget_3(:,:,:,8) + buffer
-        buffer = this%weight * bf * this%delta_tauij(:,:,:,3)   
+        buffer =   bf * this%delta_tauij(:,:,:,3)   
         this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + buffer
         this%budget_3(:,:,:,9) = this%budget_3(:,:,:,9) + buffer
-        this%budget_3(:,:,:,14)= this%budget_3(:,:,:,14)+ this%weight * bf * wcbase * ubase
-        this%budget_3(:,:,:,15)= this%budget_3(:,:,:,15)+ this%weight * bf * du * wcbase
-        this%budget_3(:,:,:,16)= this%budget_3(:,:,:,16)+ this%weight * bf * ubase * dw
-        this%budget_3(:,:,:,17)= this%budget_3(:,:,:,17)+ this%weight * bf * du * dw
+        this%budget_3(:,:,:,14)= this%budget_3(:,:,:,14)+ bf * wcbase * ubase
+        this%budget_3(:,:,:,15)= this%budget_3(:,:,:,15)+ bf * du * wcbase
+        this%budget_3(:,:,:,16)= this%budget_3(:,:,:,16)+ bf * ubase * dw
+        this%budget_3(:,:,:,17)= this%budget_3(:,:,:,17)+ bf * du * dw
         
         call this%ddy_R2R(dw, bf)! i=3, j=2
-        buffer = this%weight * bf * this%pre_budget%igrid_sim%tauSGS_ij(:,:,:,5) 
+        buffer =   bf * this%pre_budget%igrid_sim%tauSGS_ij(:,:,:,5) 
         this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) + buffer
         this%budget_3(:,:,:,8) = this%budget_3(:,:,:,8) + buffer
-        buffer = this%weight * bf * this%delta_tauij(:,:,:,5)   
+        buffer =   bf * this%delta_tauij(:,:,:,5)   
         this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + buffer
         this%budget_3(:,:,:,9) = this%budget_3(:,:,:,9) + buffer
-        this%budget_3(:,:,:,14)= this%budget_3(:,:,:,14)+ this%weight * bf * wcbase * vbase
-        this%budget_3(:,:,:,15)= this%budget_3(:,:,:,15)+ this%weight * bf * dv * wcbase
-        this%budget_3(:,:,:,16)= this%budget_3(:,:,:,16)+ this%weight * bf * vbase * dw
-        this%budget_3(:,:,:,17)= this%budget_3(:,:,:,17)+ this%weight * bf * dv * dw
+        this%budget_3(:,:,:,14)= this%budget_3(:,:,:,14)+ bf * wcbase * vbase
+        this%budget_3(:,:,:,15)= this%budget_3(:,:,:,15)+ bf * dv * wcbase
+        this%budget_3(:,:,:,16)= this%budget_3(:,:,:,16)+ bf * vbase * dw
+        this%budget_3(:,:,:,17)= this%budget_3(:,:,:,17)+ bf * dv * dw
         
         call this%ddz_R2R(dw, bf)! i=3, j=3
-        buffer = this%weight * bf * this%pre_budget%igrid_sim%tauSGS_ij(:,:,:,6) 
+        buffer =   bf * this%pre_budget%igrid_sim%tauSGS_ij(:,:,:,6) 
         this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) + buffer
         this%budget_3(:,:,:,8) = this%budget_3(:,:,:,8) + buffer    
-        buffer = this%weight * bf * this%delta_tauij(:,:,:,6)   
+        buffer =   bf * this%delta_tauij(:,:,:,6)   
         this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + buffer 
         this%budget_3(:,:,:,9) = this%budget_3(:,:,:,9) + buffer 
-        this%budget_3(:,:,:,14)= this%budget_3(:,:,:,14)+ this%weight * bf * wcbase * wcbase
-        buffer = this%weight * bf * dw * wcbase
+        this%budget_3(:,:,:,14)= this%budget_3(:,:,:,14)+ bf * wcbase * wcbase
+        buffer =   bf * dw * wcbase
         this%budget_3(:,:,:,15)= this%budget_3(:,:,:,15)+ buffer
         this%budget_3(:,:,:,16)= this%budget_3(:,:,:,16)+ buffer
-        this%budget_3(:,:,:,17)= this%budget_3(:,:,:,17)+ this%weight * bf * dw * dw 
+        this%budget_3(:,:,:,17)= this%budget_3(:,:,:,17)+ bf * dw * dw 
 
         ! Term 10: delta u_3' delta wb'
         ! Term 11: delta u_3' base wb'
@@ -877,24 +880,24 @@ module budgets_time_avg_deficit_compact_mod
             cbuffyE1 = this%prim_budget%wb - this%pre_budget%wb 
             call this%prim_budget%igrid_sim%spectE%ifft(cbuffyE1, rbuffxE1)
             call this%interp_Edge2Cell(rbuffxE1, buffer)        
-            this%budget_3(:,:,:,10) = this%budget_3(:,:,:,10) + this%weight * dw * buffer
-            this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) + this%weight * wcbase * buffer
+            this%budget_3(:,:,:,10) = this%budget_3(:,:,:,10) + dw * buffer
+            this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) + wcbase * buffer
             
             call this%pre_budget%igrid_sim%spectE%ifft(this%pre_budget%wb, rbuffxE1)
             call this%interp_Edge2Cell(rbuffxE1, buffer)
-            this%budget_3(:,:,:,11) = this%budget_3(:,:,:,11) + this%weight * dw * buffer    
+            this%budget_3(:,:,:,11) = this%budget_3(:,:,:,11) + dw * buffer    
         end if  
 
         if (this%useWindTurbines)then
             cbuffyC1 = this%prim_budget%uturb - this%pre_budget%uturb
             call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, buffer)
-            this%budget_3(:,:,:,18) = this%budget_3(:,:,:,18) + this%weight * du * buffer 
-            this%budget_3(:,:,:,19) = this%budget_3(:,:,:,19) + this%weight * ubase * buffer
+            this%budget_3(:,:,:,18) = this%budget_3(:,:,:,18) + du * buffer 
+            this%budget_3(:,:,:,19) = this%budget_3(:,:,:,19) + ubase * buffer
 
             cbuffyC1 = this%prim_budget%vturb - this%pre_budget%vturb
             call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, buffer)
-            this%budget_3(:,:,:,18) = this%budget_3(:,:,:,18) + this%weight * dv * buffer 
-            this%budget_3(:,:,:,19) = this%budget_3(:,:,:,19) + this%weight * vbase * buffer
+            this%budget_3(:,:,:,18) = this%budget_3(:,:,:,18) + dv * buffer 
+            this%budget_3(:,:,:,19) = this%budget_3(:,:,:,19) + vbase * buffer
         end if 
 
         nullify(du, dv, dw, rbuffxE1, buffer, bf, cbuffyE1, cbuffyC1, ubase, vbase, wcbase)        
@@ -1323,31 +1326,31 @@ module budgets_time_avg_deficit_compact_mod
     end subroutine
 
     ! ----------------------supporting subroutines ------------------------
-    subroutine writeTimeSum(this)
-        class(budgets_time_avg_deficit_compact), intent(inout), target :: this
-        character(len=clen) :: fname, tempname 
-        integer :: ios
+    ! subroutine writeTimeSum(this)
+    !     class(budgets_time_avg_deficit_compact), intent(inout), target :: this
+    !     character(len=clen) :: fname, tempname 
+    !     integer :: ios
 
-        write(tempname,"(A3,I2.2,A14,I6.6,A2,I6.6,A4)") "Run",this%run_id,"_time_weight_t",this%prim_budget%igrid_sim%step,"_n",this%counter,".txt"
-        fname = this%budgets_Dir(:len_trim(this%budgets_Dir))//"/"//trim(tempname)
-        open(unit=10, file=trim(fname), status='replace', action='write', form='formatted', iostat=ios)
-        write(10,'(ES23.15)') this%timeSum
-        close(10)        
-    end subroutine
+    !     write(tempname,"(A3,I2.2,A14,I6.6,A2,I6.6,A4)") "Run",this%run_id,"_time_weight_t",this%prim_budget%igrid_sim%step,"_n",this%counter,".txt"
+    !     fname = this%budgets_Dir(:len_trim(this%budgets_Dir))//"/"//trim(tempname)
+    !     open(unit=10, file=trim(fname), status='replace', action='write', form='formatted', iostat=ios)
+    !     write(10,'(ES23.15)') this%timeSum
+    !     close(10)        
+    ! end subroutine
 
-    subroutine readTimeSum(this, dir, rid, tid, cid)
-        class(budgets_time_avg_deficit_compact), intent(inout), target :: this
-        integer, intent(in) :: rid, cid, tid
-        character(len=clen) :: dir
-        character(len=clen) :: fname, tempname 
-        integer :: ios
+    ! subroutine readTimeSum(this, dir, rid, tid, cid)
+    !     class(budgets_time_avg_deficit_compact), intent(inout), target :: this
+    !     integer, intent(in) :: rid, cid, tid
+    !     character(len=clen) :: dir
+    !     character(len=clen) :: fname, tempname 
+    !     integer :: ios
 
-        write(tempname,"(A3,I2.2,A14,I6.6,A2,I6.6,A4)") "Run",rid,"_time_weight_t",tid,"_n",cid,".txt"
-        fname = trim(dir)//"/"//trim(tempname)
-        open(unit=10, file=trim(fname), status='old', action='read', form='formatted', iostat=ios)
-        read(10,'(ES23.15)') this%timeSum
-        close(10)        
-    end subroutine
+    !     write(tempname,"(A3,I2.2,A14,I6.6,A2,I6.6,A4)") "Run",rid,"_time_weight_t",tid,"_n",cid,".txt"
+    !     fname = trim(dir)//"/"//trim(tempname)
+    !     open(unit=10, file=trim(fname), status='old', action='read', form='formatted', iostat=ios)
+    !     read(10,'(ES23.15)') this%timeSum
+    !     close(10)        
+    ! end subroutine
 
     subroutine dump_budget_field(this, field, fieldID, BudgetID)
         use decomp_2d_io
@@ -1387,13 +1390,14 @@ module budgets_time_avg_deficit_compact_mod
         buffer => this%prim_budget%igrid_sim%rbuffxC(:,:,:,4)
         this%counter = cid
 
-        if(this%time_weighted_average)then
-            ! If this is time-weighted averaging, we should read the sum of times
-            call this%readTimeSum(trim(dir),rid,tid,cid)
-            totalWeight = this%timeSum + 1.d-18
-        else
-            totalWeight = real(this%counter,rkind) + 1.d-18
-        end if        
+        ! if(this%time_weighted_average)then
+        !     ! If this is time-weighted averaging, we should read the sum of times
+        !     call this%readTimeSum(trim(dir),rid,tid,cid)
+        !     totalWeight = this%timeSum + 1.d-18
+        ! else
+        !     totalWeight = real(this%counter,rkind) + 1.d-18
+        ! end if        
+        totalWeight = real(this%counter,rkind) + 1.d-18
 
         ! I assume here that this%pre_budget%budget_0 and 
         ! this%pre_budget%budget_1 are already restarted 
