@@ -222,6 +222,7 @@ module budgets_time_avg_deficit_compact_mod
         ! Interpolate SGS stresses to cells
         call this%pre_budget%igrid_sim%sgsmodel%populate_tauij_E_to_C()
         call this%prim_budget%igrid_sim%sgsmodel%populate_tauij_E_to_C()
+        this%delta_tauij = this%prim_budget%igrid_sim%tauSGS_ij - this%pre_budget%igrid_sim%tauSGS_ij
 
         ! To be multiplied by every term added to the sum
         if(this%time_weighted_average)then
@@ -359,7 +360,7 @@ module budgets_time_avg_deficit_compact_mod
         end if
 
         ! Step 4: SGS stresses (also viscous stress if finite reynolds number is being used)
-        this%budget_0(:,:,:,6:11) = this%budget_0(:,:,:,6:11) + this%weight*(this%prim_budget%igrid_sim%tauSGS_ij - this%pre_budget%igrid_sim%tauSGS_ij)
+        this%budget_0(:,:,:,6:11) = this%budget_0(:,:,:,6:11) + this%weight * this%delta_tauij
 
         ! Step 5: SGS stress gradients
         ! Reverse signs of usgs, vsgs, wsgs
@@ -602,7 +603,6 @@ module budgets_time_avg_deficit_compact_mod
         du = this%prim_budget%igrid_sim%u  - this%pre_budget%igrid_sim%u
         dv = this%prim_budget%igrid_sim%v  - this%pre_budget%igrid_sim%v
         dw = this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC
-        this%delta_tauij = this%prim_budget%igrid_sim%tauSGS_ij - this%pre_budget%igrid_sim%tauSGS_ij
 
         ubase => this%pre_budget%igrid_sim%u
         vbase => this%pre_budget%igrid_sim%v
