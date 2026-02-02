@@ -64,6 +64,7 @@ module budgets_time_avg_deficit_compact_mod
         procedure, private :: ddy_R2R
         procedure, private :: ddz_R2R
         procedure, private :: ddz_C2R
+        procedure, private :: dealias
         procedure, private :: interp_Edge2Cell
         procedure, private :: interp_Cell2Edge
         procedure, private :: multiply_CellFieldsOnEdges
@@ -489,17 +490,20 @@ module budgets_time_avg_deficit_compact_mod
     ! ---------------------- Budget 2 ------------------------
     subroutine AssembleBudget2(this)
         class(budgets_time_avg_deficit_compact), intent(inout), target :: this
-        real(rkind), dimension(:,:,:), pointer :: du, dv, buffC
+        real(rkind), dimension(:,:,:), pointer :: du, dv, buffC, dw, buffer
         real(rkind), dimension(:,:,:), pointer :: dwE, buffE, duE, dvE
         real(rkind), dimension(:,:,:), pointer :: ubase, vbase, wbaseE, ubaseE, vbaseE
         real(rkind), dimension(:,:,:), pointer :: dudxC_prim, dudyC_prim, dudzE_prim, dudxC_pre, dudyC_pre, dudzE_pre
+        real(rkind), dimension(:,:,:), pointer :: dudzC_prim, dvdzC_prim, dudzC_pre, dvdzC_pre 
         real(rkind), dimension(:,:,:), pointer :: dvdxC_prim, dvdyC_prim, dvdzE_prim, dvdxC_pre, dvdyC_pre, dvdzE_pre
         real(rkind), dimension(:,:,:), pointer :: dwdxE_prim, dwdyE_prim, dwdzE_prim, dwdxE_pre, dwdyE_pre, dwdzE_pre
-
+    
         ! Cell x-pencil buffers 
         du => this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)
         dv => this%prim_budget%igrid_sim%rbuffxC(:,:,:,2)
         buffC => this%prim_budget%igrid_sim%rbuffxC(:,:,:,3)
+        dw => this%prim_budget%igrid_sim%rbuffxC(:,:,:,4)
+        buffer => this%pre_budget%igrid_sim%rbuffxC(:,:,:,1)
         dwE => this%prim_budget%igrid_sim%rbuffxE(:,:,:,1)         
         buffE => this%prim_budget%igrid_sim%rbuffxE(:,:,:,2) 
         duE => this%pre_budget%igrid_sim%rbuffxE(:,:,:,1)         
@@ -508,6 +512,7 @@ module budgets_time_avg_deficit_compact_mod
         ! Perturbation fields
         du = this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u
         dv = this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v
+        dw = this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC
         duE = this%prim_budget%igrid_sim%uE - this%pre_budget%igrid_sim%uE
         dvE = this%prim_budget%igrid_sim%vE - this%pre_budget%igrid_sim%vE
         dwE = this%prim_budget%igrid_sim%w - this%pre_budget%igrid_sim%w
@@ -524,6 +529,7 @@ module budgets_time_avg_deficit_compact_mod
         ! Cell gradients
         dudxC_prim => this%prim_budget%igrid_sim%duidxjC(:,:,:,1)
         dudyC_prim => this%prim_budget%igrid_sim%duidxjC(:,:,:,2)
+        dudzC_prim => this%prim_budget%igrid_sim%duidxjC(:,:,:,3)
         dvdxC_prim => this%prim_budget%igrid_sim%duidxjC(:,:,:,4)
         dvdyC_prim => this%prim_budget%igrid_sim%duidxjC(:,:,:,5)
 
@@ -539,6 +545,7 @@ module budgets_time_avg_deficit_compact_mod
         ! Cell gradients
         dudxC_pre => this%pre_budget%igrid_sim%duidxjC(:,:,:,1)
         dudyC_pre => this%pre_budget%igrid_sim%duidxjC(:,:,:,2)
+        dudzC_pre => this%pre_budget%igrid_sim%duidxjC(:,:,:,3)
         dvdxC_pre => this%pre_budget%igrid_sim%duidxjC(:,:,:,4)
         dvdyC_pre => this%pre_budget%igrid_sim%duidxjC(:,:,:,5)       
 
@@ -551,10 +558,18 @@ module budgets_time_avg_deficit_compact_mod
         ! -----------------------------------------------------------
 
         ! Term 1: delta u_j d_j(delta u)
-        this%budget_2(:,:,:,1) = this%budget_2(:,:,:,1) + du * (dudxC_prim - dudxC_pre) + dv * (dudyC_prim - dudyC_pre)
-        buffE = dwE * (dudzE_prim - dudzE_pre)
-        call this%interp_Edge2Cell(buffE, buffC)
+        ! buffE = dwE * (dudzE_prim - dudzE_pre)
+        ! call this%interp_Edge2Cell(buffE, buffC)
+        buffC = du * (dudxC_prim - dudxC_pre) + dv * (dudyC_prim - dudyC_pre) + dw * (dudzC_prim - dudzC_pre)
+        call this%dealias(buffC)
         this%budget_2(:,:,:,1) = this%budget_2(:,:,:,1) + buffC
+        
+        ! this%budget_2(:,:,:,1) = this%budget_2(:,:,:,1) + & 
+        !         du * (dudxC_prim - dudxC_pre) + dv * (dudyC_prim - dudyC_pre) + dw * (dudzC_prim - dudzC_pre)
+        !buffE = dwE * (dudzE_prim - dudzE_pre)
+        ! buffE = dudzE_prim - dudzE_pre
+        ! call this%interp_Edge2Cell(buffE, buffC)
+        ! this%budget_2(:,:,:,1) = this%budget_2(:,:,:,1) + buffC * dw
 
         ! Term 2: delta u_j d_j(delta v)
         this%budget_2(:,:,:,2) = this%budget_2(:,:,:,2) +  du * (dvdxC_prim - dvdxC_pre) + dv * (dvdyC_prim - dvdyC_pre)
@@ -619,7 +634,7 @@ module budgets_time_avg_deficit_compact_mod
         this%budget_2(:,:,:,12) = this%budget_2(:,:,:,12) + buffC
 
         ! Release memory        
-        nullify(du, dv, buffC)
+        nullify(du, dv, dw, buffC)
         nullify(dwE, buffE, duE, dvE)
         nullify(ubase, vbase, wbaseE, ubaseE, vbaseE)
         nullify(dudxC_prim, dudyC_prim, dudzE_prim, dudxC_pre, dudyC_pre, dudzE_pre)
@@ -1049,6 +1064,7 @@ module budgets_time_avg_deficit_compact_mod
                 call this%ddy_R2R(this%pre_budget%budget_0(:,:,:,3), bf); buffer = buffer + bf*this%pre_budget%budget_0(:,:,:,2)
                 call this%ddz_R2R(this%pre_budget%budget_0(:,:,:,3), bf); buffer = buffer + bf*this%pre_budget%budget_0(:,:,:,3)
             end select
+            call this%dealias(buffer)
 
         else if(budgetid.eq.3)then
             select case(idx)
@@ -1537,6 +1553,15 @@ module budgets_time_avg_deficit_compact_mod
     end subroutine 
 
     ! ----------------------private derivative operators ------------------------
+    subroutine dealias(this, f)
+        class(budgets_time_avg_deficit_compact), intent(inout) :: this
+        real(rkind), dimension(this%nx,this%ny,this%nz), intent(inout) :: f
+        
+        call this%prim_budget%igrid_sim%spectC%fft(f,this%prim_budget%igrid_sim%cbuffyC(:,:,:,1))
+        call this%prim_budget%igrid_sim%spectC%dealias(this%prim_budget%igrid_sim%cbuffyC(:,:,:,1))
+        call this%prim_budget%igrid_sim%spectC%ifft(this%prim_budget%igrid_sim%cbuffyC(:,:,:,1), f)
+    end subroutine
+
     subroutine ddx_R2R(this, f, dfdx)
         class(budgets_time_avg_deficit_compact), intent(inout) :: this
         real(rkind), dimension(this%nx,this%ny,this%nz), intent(in) :: f
