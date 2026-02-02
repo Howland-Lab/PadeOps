@@ -15,7 +15,7 @@ module budgets_time_avg_deficit_compact_mod
 
     type :: budgets_time_avg_deficit_compact
         private
-        integer :: run_id, nx, ny, nz
+        integer :: run_id, nx, ny, nz!, nxE, nyE, nzE
         logical :: do_budget0=.false., do_budget1=.false., do_budget2=.false., do_budget3=.false.
         logical :: write_budget0=.false., write_budget1=.false., write_budget2=.false., write_budget3=.false.
         
@@ -23,6 +23,8 @@ module budgets_time_avg_deficit_compact_mod
         
         real(rkind), dimension(:,:,:,:), allocatable :: budget_0, budget_1, budget_2, budget_3
         integer :: size_budget_0, size_budget_1, size_budget_2, size_budget_3
+        real(rkind), dimension(:,:,:,:), allocatable :: extraCellFields!, extraEdgeFields
+        logical :: doExtraFields = .false.
         integer :: counter
         real(rkind) :: timeSum, weight
         character(len=clen) :: budgets_dir
@@ -55,6 +57,7 @@ module budgets_time_avg_deficit_compact_mod
         procedure, private  :: AssembleBudget1
         procedure, private  :: AssembleBudget2
         procedure, private  :: AssembleBudget3
+        procedure, private  :: AssembleExtraFields
    
         procedure, private  :: getProductOfMeans
         ! procedure, private  :: writeTimeSum
@@ -103,6 +106,9 @@ module budgets_time_avg_deficit_compact_mod
         this%nx = this%prim_budget%igrid_sim%gpC%xsz(1)
         this%ny = this%prim_budget%igrid_sim%gpC%xsz(2)
         this%nz = this%prim_budget%igrid_sim%gpC%xsz(3)  ! centered grid x, y, z
+        ! this%nxE = this%prim_budget%igrid_sim%gpE%xsz(1)
+        ! this%nyE = this%prim_budget%igrid_sim%gpE%xsz(2)
+        ! this%nzE = this%prim_budget%igrid_sim%gpE%xsz(3) 
         this%do_budgets = do_budgets
         this%tidx_dump = tidx_dump
         this%tidx_compute = tidx_compute
@@ -132,6 +138,7 @@ module budgets_time_avg_deficit_compact_mod
             this%do_budget1=.true.
             this%do_budget2=.true.
         end if
+        if(this%do_budget2)this%doExtraFields = .true.
         this%budgets_dir = budgets_dir
 
         if(this%do_budgets) then 
@@ -166,6 +173,11 @@ module budgets_time_avg_deficit_compact_mod
                 end if
                 allocate(this%budget_3(this%nx,this%ny,this%nz,this%size_budget_3))
                 allocate(this%delta_tauij(this%nx,this%ny,this%nz,6))
+            end if
+
+            if(this%doExtraFields)then
+                allocate(this%extraCellFields(this%nx,this%ny,this%nz,18))
+                !allocate(this%extraEdgeFields(this%nxE,this%nyE,this%nzE,8))
             end if
 
             if ((trim(budgets_dir) .eq. "null") .or.(trim(budgets_dir) .eq. "NULL")) then 
@@ -234,6 +246,7 @@ module budgets_time_avg_deficit_compact_mod
         !     this%weight = real(1., rkind)
         ! end if
 
+        if(this%doExtraFields) call this%AssembleExtraFields()
         if(this%do_budget0) call this%AssembleBudget0()
         if(this%do_budget1) call this%AssembleBudget1()
         if(this%do_budget2) call this%AssembleBudget2()
@@ -268,6 +281,10 @@ module budgets_time_avg_deficit_compact_mod
         if(this%do_budget1) this%budget_1 = this%budget_1/totalWeight
         if(this%do_budget2) this%budget_2 = this%budget_2/totalWeight
         if(this%do_budget3) this%budget_3 = this%budget_3/totalWeight
+        if(this%doExtraFields)then
+            this%extraCellFields = this%extraCellFields/totalWeight
+            !this%extraEdgeFields = this%extraEdgeFields/totalWeight
+        end if
         this%pre_budget%budget_0 = this%pre_budget%budget_0/totalWeight
         this%pre_budget%budget_1 = this%pre_budget%budget_1/totalWeight
 
@@ -328,9 +345,77 @@ module budgets_time_avg_deficit_compact_mod
         if(this%do_budget1) this%budget_1 = this%budget_1*totalWeight
         if(this%do_budget2) this%budget_2 = this%budget_2*totalWeight
         if(this%do_budget3) this%budget_3 = this%budget_3*totalWeight
+        if(this%doExtraFields)then
+            this%extraCellFields = this%extraCellFields*totalWeight
+            !this%extraEdgeFields = this%extraEdgeFields*totalWeight
+        end if
         this%pre_budget%budget_0 = this%pre_budget%budget_0*totalWeight
         this%pre_budget%budget_1 = this%pre_budget%budget_1*totalWeight
     end subroutine
+
+    ! ---------------------- Extra Fields  ------------------------
+    subroutine AssembleExtraFields(this)
+        class(budgets_time_avg_deficit_compact), intent(inout), target :: this
+        !real(rkind), dimension(:,:,:,:), pointer :: prim_Cgrads, pre_Cgrads, prim_Egrads, pre_Egrads
+
+        ! prim_Cgrads => this%prim_budget%igrid_sim%duidxjC
+        ! pre_Cgrads => this%pre_budget%igrid_sim%duidxjC
+        ! prim_Egrads => this%prim_budget%igrid_sim%duidxjE
+        ! pre_Egrads => this%pre_budget%igrid_sim%duidxjE
+
+        this%extraCellFields(:,:,:,1:9) = this%extraCellFields(:,:,:,1:9) + this%prim_budget%igrid_sim%duidxjC(:,:,:,1:9) - this%pre_budget%igrid_sim%duidxjC(:,:,:,1:9)
+        this%extraCellFields(:,:,:,10:18) = this%extraCellFields(:,:,:,10:18) + this%pre_budget%igrid_sim%duidxjC(:,:,:,1:9)
+
+        ! Cell fields
+        ! ----------------
+        ! 1) dudx
+        ! this%extraCellFields(:,:,:,1) = this%extraCellFields(:,:,:,1) + prim_Cgrads(:,:,:,1) - pre_Cgrads(:,:,:,1)
+        
+        ! ! 2) dudy
+        ! this%extraCellFields(:,:,:,2) = this%extraCellFields(:,:,:,2) + prim_Cgrads(:,:,:,2) - pre_Cgrads(:,:,:,2)
+    
+        ! ! 3) dvdx
+        ! this%extraCellFields(:,:,:,3) = this%extraCellFields(:,:,:,3) + prim_Cgrads(:,:,:,4) - pre_Cgrads(:,:,:,4)
+    
+        ! ! 4) dvdy
+        ! this%extraCellFields(:,:,:,4) = this%extraCellFields(:,:,:,4) + prim_Cgrads(:,:,:,5) - pre_Cgrads(:,:,:,5)
+
+        ! ! 5) dudz
+        ! this%extraCellFields(:,:,:,5) = this%extraCellFields(:,:,:,5) + prim_Cgrads(:,:,:,3) - pre_Cgrads(:,:,:,3)
+
+        ! ! 6) dvdz
+        ! this%extraCellFields(:,:,:,6) = this%extraCellFields(:,:,:,6) + prim_Cgrads(:,:,:,6) - pre_Cgrads(:,:,:,6)
+
+        
+        ! Edge fields
+        ! ----------------
+        ! 1) delta u at edges
+        ! this%extraEdgeFields(:,:,:,1) = this%extraEdgeFields(:,:,:,1) + this%prim_budget%igrid_sim%uE - this%pre_budget%igrid_sim%uE
+
+        ! ! 2) delta v at edges
+        ! this%extraEdgeFields(:,:,:,2) = this%extraEdgeFields(:,:,:,2) + this%prim_budget%igrid_sim%vE - this%pre_budget%igrid_sim%vE
+
+        ! ! 3) delta w at edges
+        ! this%extraEdgeFields(:,:,:,3) = this%extraEdgeFields(:,:,:,3) + this%prim_budget%igrid_sim%w - this%pre_budget%igrid_sim%w
+
+        ! ! 4) dudz at edges
+        ! this%extraEdgeFields(:,:,:,4) = this%extraEdgeFields(:,:,:,4) + prim_Egrads(:,:,:,3) - pre_Egrads(:,:,:,3)
+
+        ! ! 5) dvdz at edges
+        ! this%extraEdgeFields(:,:,:,5) = this%extraEdgeFields(:,:,:,5) + prim_Egrads(:,:,:,6) - pre_Egrads(:,:,:,6)
+
+        ! ! 6) dwdx at edges
+        ! this%extraEdgeFields(:,:,:,6) = this%extraEdgeFields(:,:,:,6) + prim_Egrads(:,:,:,7) - pre_Egrads(:,:,:,7)
+
+        ! ! 7) dwdy at edges
+        ! this%extraEdgeFields(:,:,:,7) = this%extraEdgeFields(:,:,:,7) + prim_Egrads(:,:,:,8) - pre_Egrads(:,:,:,8)
+
+        ! ! 8) dwdz at edges
+        ! this%extraEdgeFields(:,:,:,8) = this%extraEdgeFields(:,:,:,8) + prim_Egrads(:,:,:,9) - pre_Egrads(:,:,:,9)
+
+        !nullify(prim_Cgrads, pre_Cgrads, prim_Egrads, prim_Egrads, pre_Egrads)
+    end subroutine
+    
 
     ! ---------------------- Budget 0 ------------------------
     subroutine AssembleBudget0(this)
@@ -490,39 +575,40 @@ module budgets_time_avg_deficit_compact_mod
     ! ---------------------- Budget 2 ------------------------
     subroutine AssembleBudget2(this)
         class(budgets_time_avg_deficit_compact), intent(inout), target :: this
-        real(rkind), dimension(:,:,:), pointer :: du, dv, buffC, dw, buffer
-        real(rkind), dimension(:,:,:), pointer :: dwE, buffE, duE, dvE
-        real(rkind), dimension(:,:,:), pointer :: ubase, vbase, wbaseE, ubaseE, vbaseE
-        real(rkind), dimension(:,:,:), pointer :: dudxC_prim, dudyC_prim, dudzE_prim, dudxC_pre, dudyC_pre, dudzE_pre
-        real(rkind), dimension(:,:,:), pointer :: dudzC_prim, dvdzC_prim, dudzC_pre, dvdzC_pre 
-        real(rkind), dimension(:,:,:), pointer :: dvdxC_prim, dvdyC_prim, dvdzE_prim, dvdxC_pre, dvdyC_pre, dvdzE_pre
-        real(rkind), dimension(:,:,:), pointer :: dwdxE_prim, dwdyE_prim, dwdzE_prim, dwdxE_pre, dwdyE_pre, dwdzE_pre
-    
+        real(rkind), dimension(:,:,:), pointer :: du, dv, buffC, dw!, buffer
+        !real(rkind), dimension(:,:,:), pointer :: dwE, buffE, duE, dvE
+        real(rkind), dimension(:,:,:), pointer :: ubase, vbase, wbase !wbaseE, ubaseE, vbaseE
+        real(rkind), dimension(:,:,:), pointer :: dudxC_prim, dudyC_prim, dudzC_prim, dudxC_pre, dudyC_pre, dudzC_pre
+        real(rkind), dimension(:,:,:), pointer :: dvdxC_prim, dvdyC_prim, dvdzC_prim, dvdxC_pre, dvdyC_pre, dvdzC_pre
+        real(rkind), dimension(:,:,:), pointer :: dwdxC_prim, dwdyC_prim, dwdzC_prim, dwdxC_pre, dwdyC_pre, dwdzC_pre
+        integer :: k
+
         ! Cell x-pencil buffers 
         du => this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)
-        dv => this%prim_budget%igrid_sim%rbuffxC(:,:,:,2)
-        buffC => this%prim_budget%igrid_sim%rbuffxC(:,:,:,3)
-        dw => this%prim_budget%igrid_sim%rbuffxC(:,:,:,4)
-        buffer => this%pre_budget%igrid_sim%rbuffxC(:,:,:,1)
-        dwE => this%prim_budget%igrid_sim%rbuffxE(:,:,:,1)         
-        buffE => this%prim_budget%igrid_sim%rbuffxE(:,:,:,2) 
-        duE => this%pre_budget%igrid_sim%rbuffxE(:,:,:,1)         
-        dvE => this%pre_budget%igrid_sim%rbuffxE(:,:,:,2)     
+        dv => this%prim_budget%igrid_sim%rbuffxC(:,:,:,2)        
+        dw => this%prim_budget%igrid_sim%rbuffxC(:,:,:,3)
+        buffC => this%prim_budget%igrid_sim%rbuffxC(:,:,:,4)
+        ! buffer => this%pre_budget%igrid_sim%rbuffxC(:,:,:,1)
+        ! dwE => this%prim_budget%igrid_sim%rbuffxE(:,:,:,1)         
+        ! buffE => this%prim_budget%igrid_sim%rbuffxE(:,:,:,2) 
+        ! duE => this%pre_budget%igrid_sim%rbuffxE(:,:,:,1)         
+        ! dvE => this%pre_budget%igrid_sim%rbuffxE(:,:,:,2)     
         
         ! Perturbation fields
         du = this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u
         dv = this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v
         dw = this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC
-        duE = this%prim_budget%igrid_sim%uE - this%pre_budget%igrid_sim%uE
-        dvE = this%prim_budget%igrid_sim%vE - this%pre_budget%igrid_sim%vE
-        dwE = this%prim_budget%igrid_sim%w - this%pre_budget%igrid_sim%w
+        ! duE = this%prim_budget%igrid_sim%uE - this%pre_budget%igrid_sim%uE
+        ! dvE = this%prim_budget%igrid_sim%vE - this%pre_budget%igrid_sim%vE
+        ! dwE = this%prim_budget%igrid_sim%w - this%pre_budget%igrid_sim%w
 
         ! Base-flow fields
         ubase => this%pre_budget%igrid_sim%u
         vbase => this%pre_budget%igrid_sim%v
-        ubaseE => this%pre_budget%igrid_sim%uE
-        vbaseE => this%pre_budget%igrid_sim%vE
-        wbaseE=> this%pre_budget%igrid_sim%w
+        wbase => this%pre_budget%igrid_sim%wC
+        ! ubaseE => this%pre_budget%igrid_sim%uE
+        ! vbaseE => this%pre_budget%igrid_sim%vE
+        ! wbaseE=> this%pre_budget%igrid_sim%w
         ! -----------------------------------------------------------
         !
         ! Primary simulation:
@@ -532,13 +618,17 @@ module budgets_time_avg_deficit_compact_mod
         dudzC_prim => this%prim_budget%igrid_sim%duidxjC(:,:,:,3)
         dvdxC_prim => this%prim_budget%igrid_sim%duidxjC(:,:,:,4)
         dvdyC_prim => this%prim_budget%igrid_sim%duidxjC(:,:,:,5)
+        dvdzC_prim => this%prim_budget%igrid_sim%duidxjC(:,:,:,6)
+        dwdxC_prim => this%prim_budget%igrid_sim%duidxjC(:,:,:,7)
+        dwdyC_prim => this%prim_budget%igrid_sim%duidxjC(:,:,:,8)
+        dwdzC_prim => this%prim_budget%igrid_sim%duidxjC(:,:,:,9)
 
         ! Edge gradients
-        dudzE_prim => this%prim_budget%igrid_sim%duidxjE(:,:,:,3)
-        dvdzE_prim => this%prim_budget%igrid_sim%duidxjE(:,:,:,6)
-        dwdxE_prim => this%prim_budget%igrid_sim%duidxjE(:,:,:,7)
-        dwdyE_prim => this%prim_budget%igrid_sim%duidxjE(:,:,:,8)
-        dwdzE_prim => this%prim_budget%igrid_sim%duidxjE(:,:,:,9)        
+        ! dudzE_prim => this%prim_budget%igrid_sim%duidxjE(:,:,:,3)
+        ! dvdzE_prim => this%prim_budget%igrid_sim%duidxjE(:,:,:,6)
+        ! dwdxE_prim => this%prim_budget%igrid_sim%duidxjE(:,:,:,7)
+        ! dwdyE_prim => this%prim_budget%igrid_sim%duidxjE(:,:,:,8)
+        ! dwdzE_prim => this%prim_budget%igrid_sim%duidxjE(:,:,:,9)        
         ! -----------------------------------------------------------
         !
         ! Precursor simulation:
@@ -547,99 +637,57 @@ module budgets_time_avg_deficit_compact_mod
         dudyC_pre => this%pre_budget%igrid_sim%duidxjC(:,:,:,2)
         dudzC_pre => this%pre_budget%igrid_sim%duidxjC(:,:,:,3)
         dvdxC_pre => this%pre_budget%igrid_sim%duidxjC(:,:,:,4)
-        dvdyC_pre => this%pre_budget%igrid_sim%duidxjC(:,:,:,5)       
+        dvdyC_pre => this%pre_budget%igrid_sim%duidxjC(:,:,:,5)
+        dvdzC_pre => this%pre_budget%igrid_sim%duidxjC(:,:,:,6) 
+        dwdxC_pre => this%pre_budget%igrid_sim%duidxjC(:,:,:,7)
+        dwdyC_pre => this%pre_budget%igrid_sim%duidxjC(:,:,:,8)
+        dwdzC_pre => this%pre_budget%igrid_sim%duidxjC(:,:,:,9)       
 
         ! Edge gradients
-        dudzE_pre => this%pre_budget%igrid_sim%duidxjE(:,:,:,3)
-        dvdzE_pre => this%pre_budget%igrid_sim%duidxjE(:,:,:,6)
-        dwdxE_pre => this%pre_budget%igrid_sim%duidxjE(:,:,:,7)
-        dwdyE_pre => this%pre_budget%igrid_sim%duidxjE(:,:,:,8)
-        dwdzE_pre => this%pre_budget%igrid_sim%duidxjE(:,:,:,9)
+        ! dudzE_pre => this%pre_budget%igrid_sim%duidxjE(:,:,:,3)
+        ! dvdzE_pre => this%pre_budget%igrid_sim%duidxjE(:,:,:,6)
+        ! dwdxE_pre => this%pre_budget%igrid_sim%duidxjE(:,:,:,7)
+        ! dwdyE_pre => this%pre_budget%igrid_sim%duidxjE(:,:,:,8)
+        ! dwdzE_pre => this%pre_budget%igrid_sim%duidxjE(:,:,:,9)
         ! -----------------------------------------------------------
 
-        ! Term 1: delta u_j d_j(delta u)
-        ! buffE = dwE * (dudzE_prim - dudzE_pre)
-        ! call this%interp_Edge2Cell(buffE, buffC)
-        buffC = du * (dudxC_prim - dudxC_pre) + dv * (dudyC_prim - dudyC_pre) + dw * (dudzC_prim - dudzC_pre)
-        call this%dealias(buffC)
-        this%budget_2(:,:,:,1) = this%budget_2(:,:,:,1) + buffC
-        
-        ! this%budget_2(:,:,:,1) = this%budget_2(:,:,:,1) + & 
-        !         du * (dudxC_prim - dudxC_pre) + dv * (dudyC_prim - dudyC_pre) + dw * (dudzC_prim - dudzC_pre)
-        !buffE = dwE * (dudzE_prim - dudzE_pre)
-        ! buffE = dudzE_prim - dudzE_pre
-        ! call this%interp_Edge2Cell(buffE, buffC)
-        ! this%budget_2(:,:,:,1) = this%budget_2(:,:,:,1) + buffC * dw
-
-        ! Term 2: delta u_j d_j(delta v)
-        this%budget_2(:,:,:,2) = this%budget_2(:,:,:,2) +  du * (dvdxC_prim - dvdxC_pre) + dv * (dvdyC_prim - dvdyC_pre)
-        buffE = dwE * (dvdzE_prim - dvdzE_pre)
-        call this%interp_Edge2Cell(buffE, buffC)
-        this%budget_2(:,:,:,2) = this%budget_2(:,:,:,2) + buffC
-
-        ! Term 3: delta u_j d_j(delta w)
-        buffE = duE * (dwdxE_prim - dwdxE_pre) + dvE * (dwdyE_prim - dwdyE_pre) + dwE * (dwdzE_prim - dwdzE_pre)
-        call this%interp_Edge2Cell(buffE, buffC)
-        this%budget_2(:,:,:,3) = this%budget_2(:,:,:,3) + buffC
-        
-        ! Term 4: delta u_j d_j(base u)
-        this%budget_2(:,:,:,4) = this%budget_2(:,:,:,4) + du * dudxC_pre +  dv * dudyC_pre
-        buffE = dwE * dudzE_pre
-        call this%interp_Edge2Cell(buffE, buffC)
-        this%budget_2(:,:,:,4) = this%budget_2(:,:,:,4) + buffC
-
-        ! Term 5: delta u_j d_j(base v)
-        this%budget_2(:,:,:,5) = this%budget_2(:,:,:,5) +  du * dvdxC_pre + dv * dvdyC_pre
-        buffE = dwE * dvdzE_pre
-        call this%interp_Edge2Cell(buffE, buffC)
-        this%budget_2(:,:,:,5) = this%budget_2(:,:,:,5) + buffC
-
-        ! Term 6: delta u_j d_j(base w)
-        buffE = duE * dwdxE_pre + dvE * dwdyE_pre + dwE * dwdzE_pre
-        call this%interp_Edge2Cell(buffE, buffC)
-        this%budget_2(:,:,:,6) = this%budget_2(:,:,:,6) + buffC
-        
-        ! Term 7: base u_j d_j(delta u)
-        this%budget_2(:,:,:,7) = this%budget_2(:,:,:,7) + ubase * (dudxC_prim - dudxC_pre) + vbase * (dudyC_prim - dudyC_pre)
-        buffE = wbaseE * (dudzE_prim - dudzE_pre)
-        call this%interp_Edge2Cell(buffE, buffC)
-        this%budget_2(:,:,:,7) = this%budget_2(:,:,:,7) + buffC
-
-        ! Term 8: base u_j d_j(delta v)
-        this%budget_2(:,:,:,8) = this%budget_2(:,:,:,8) + ubase * (dvdxC_prim - dvdxC_pre) + vbase * (dvdyC_prim - dvdyC_pre)
-        buffE = wbaseE * (dvdzE_prim - dvdzE_pre)
-        call this%interp_Edge2Cell(buffE, buffC)
-        this%budget_2(:,:,:,8) = this%budget_2(:,:,:,8) + buffC
-
-        ! Term 9: base u_j d_j(delta w)
-        buffE = ubaseE * (dwdxE_prim - dwdxE_pre) + vbaseE * (dwdyE_prim-dwdyE_pre) + wbaseE * (dwdzE_prim-dwdzE_pre)
-        call this%interp_Edge2Cell(buffE, buffC)
-        this%budget_2(:,:,:,9) = this%budget_2(:,:,:,9) + buffC
-
-        ! Term 10: base u_j d_j(base u)
-        this%budget_2(:,:,:,10) = this%budget_2(:,:,:,10) + ubase * dudxC_pre + vbase * dudyC_pre
-        buffE = wbaseE * dudzE_pre
-        call this%interp_Edge2Cell(buffE, buffC)
-        this%budget_2(:,:,:,10) = this%budget_2(:,:,:,10) + buffC
-
-        ! Term 11: base u_j d_j(base v)
-        this%budget_2(:,:,:,11) = this%budget_2(:,:,:,11) + ubase * dvdxC_pre +  vbase * dvdyC_pre
-        buffE = wbaseE * dvdzE_pre
-        call this%interp_Edge2Cell(buffE, buffC)
-        this%budget_2(:,:,:,11) = this%budget_2(:,:,:,11) + buffC
-
-        ! Term 12: base u_j d_j(base w)
-        buffE=ubaseE * dwdxE_pre + vbaseE * dwdyE_pre + wbaseE * dwdzE_pre        
-        call this%interp_Edge2Cell(buffE, buffC)
-        this%budget_2(:,:,:,12) = this%budget_2(:,:,:,12) + buffC
+        do k=1, this%size_budget_2
+            select case(k)
+            case(1) ! delta u_j d_j(delta u)
+                buffC = du * (dudxC_prim - dudxC_pre) + dv * (dudyC_prim - dudyC_pre) + dw * (dudzC_prim - dudzC_pre)
+            case(2) ! delta u_j d_j(delta v)
+                buffC = du * (dvdxC_prim - dvdxC_pre) + dv * (dvdyC_prim - dvdyC_pre) + dw * (dvdzC_prim - dvdzC_pre)
+            case(3) ! delta u_j d_j(delta w)
+                buffC = du * (dwdxC_prim - dwdxC_pre) + dv * (dwdyC_prim - dwdyC_pre) + dw * (dwdzC_prim - dwdzC_pre)
+            case(4) ! delta u_j d_j(base u)
+                buffC = du * dudxC_pre + dv * dudyC_pre + dw * dudzC_pre
+            case(5) ! delta u_j d_j(base v)
+                buffC = du * dvdxC_pre + dv * dvdyC_pre + dw * dvdzC_pre
+            case(6) ! delta u_j d_j(base w)
+                buffC = du * dwdxC_pre + dv * dwdyC_pre + dw * dwdzC_pre
+            case(7) ! base u_j d_j(delta u)
+                buffC = ubase * (dudxC_prim - dudxC_pre) + vbase * (dudyC_prim - dudyC_pre) + wbase * (dudzC_prim - dudzC_pre)
+            case(8) ! base u_j d_j(delta v)
+                buffC = ubase * (dvdxC_prim - dvdxC_pre) + vbase * (dvdyC_prim - dvdyC_pre) + wbase * (dvdzC_prim - dvdzC_pre)
+            case(9) ! base u_j d_j(delta w)
+                buffC = ubase * (dwdxC_prim - dwdxC_pre) + vbase * (dwdyC_prim - dwdyC_pre) + wbase * (dwdzC_prim - dwdzC_pre)
+            case(10) ! base u_j d_j(base u)
+                buffC = ubase * dudxC_pre + vbase * dudyC_pre + wbase * dudzC_pre
+            case(11) ! base u_j d_j(base v)
+                buffC = ubase * dvdxC_pre + vbase * dvdyC_pre + wbase * dvdzC_pre
+            case(12) ! base u_j d_j(base w)
+                buffC = ubase * dwdxC_pre + vbase * dwdyC_pre + wbase * dwdzC_pre           
+            end select
+            call this%dealias(buffC)
+            this%budget_2(:,:,:,k) = this%budget_2(:,:,:,k) + buffC
+        end do
 
         ! Release memory        
         nullify(du, dv, dw, buffC)
-        nullify(dwE, buffE, duE, dvE)
-        nullify(ubase, vbase, wbaseE, ubaseE, vbaseE)
-        nullify(dudxC_prim, dudyC_prim, dudzE_prim, dudxC_pre, dudyC_pre, dudzE_pre)
-        nullify(dvdxC_prim, dvdyC_prim, dvdzE_prim, dvdxC_pre, dvdyC_pre, dvdzE_pre)
-        nullify(dwdxE_prim, dwdyE_prim, dwdzE_prim, dwdxE_pre, dwdyE_pre, dwdzE_pre)
+        nullify(ubase, vbase, wbase)
+        nullify(dudxC_prim, dudyC_prim, dudzC_prim, dudxC_pre, dudyC_pre, dudzC_pre)
+        nullify(dvdxC_prim, dvdyC_prim, dvdzC_prim, dvdxC_pre, dvdyC_pre, dvdzC_pre)
+        nullify(dwdxC_prim, dwdyC_prim, dwdzC_prim, dwdxC_pre, dwdyC_pre, dwdzC_pre)
     end subroutine
 
     ! ---------------------- Budget 3 ------------------------
@@ -1016,53 +1064,53 @@ module budgets_time_avg_deficit_compact_mod
         else if(budgetid.eq.2)then
             select case(idx)
             case(1)
-                call this%ddx_R2R(this%budget_0(:,:,:,1), bf); buffer = buffer + bf*this%budget_0(:,:,:,1)
-                call this%ddy_R2R(this%budget_0(:,:,:,1), bf); buffer = buffer + bf*this%budget_0(:,:,:,2)
-                call this%ddz_R2R(this%budget_0(:,:,:,1), bf); buffer = buffer + bf*this%budget_0(:,:,:,3)
+                buffer = this%budget_0(:,:,:,1)*this%extraCellFields(:,:,:,1) + &
+                         this%budget_0(:,:,:,2)*this%extraCellFields(:,:,:,2) + &
+                         this%budget_0(:,:,:,3)*this%extraCellFields(:,:,:,3)
             case(2)
-                call this%ddx_R2R(this%budget_0(:,:,:,2), bf); buffer = buffer + bf*this%budget_0(:,:,:,1)
-                call this%ddy_R2R(this%budget_0(:,:,:,2), bf); buffer = buffer + bf*this%budget_0(:,:,:,2)
-                call this%ddz_R2R(this%budget_0(:,:,:,2), bf); buffer = buffer + bf*this%budget_0(:,:,:,3)
+                buffer = this%budget_0(:,:,:,1)*this%extraCellFields(:,:,:,4) + &
+                         this%budget_0(:,:,:,2)*this%extraCellFields(:,:,:,5) + &
+                         this%budget_0(:,:,:,3)*this%extraCellFields(:,:,:,6)
             case(3)
-                call this%ddx_R2R(this%budget_0(:,:,:,3), bf); buffer = buffer + bf*this%budget_0(:,:,:,1)
-                call this%ddy_R2R(this%budget_0(:,:,:,3), bf); buffer = buffer + bf*this%budget_0(:,:,:,2)
-                call this%ddz_R2R(this%budget_0(:,:,:,3), bf); buffer = buffer + bf*this%budget_0(:,:,:,3)
+                buffer = this%budget_0(:,:,:,1)*this%extraCellFields(:,:,:,7) + &
+                         this%budget_0(:,:,:,2)*this%extraCellFields(:,:,:,8) + &
+                         this%budget_0(:,:,:,3)*this%extraCellFields(:,:,:,9)
             case(4)
-                call this%ddx_R2R(this%pre_budget%budget_0(:,:,:,1), bf); buffer = buffer + bf*this%budget_0(:,:,:,1)
-                call this%ddy_R2R(this%pre_budget%budget_0(:,:,:,1), bf); buffer = buffer + bf*this%budget_0(:,:,:,2)
-                call this%ddz_R2R(this%pre_budget%budget_0(:,:,:,1), bf); buffer = buffer + bf*this%budget_0(:,:,:,3)
+                buffer = this%pre_budget%budget_0(:,:,:,1)*this%extraCellFields(:,:,:,1) + &
+                         this%pre_budget%budget_0(:,:,:,2)*this%extraCellFields(:,:,:,2) + &
+                         this%pre_budget%budget_0(:,:,:,3)*this%extraCellFields(:,:,:,3)
             case(5)
-                call this%ddx_R2R(this%pre_budget%budget_0(:,:,:,2), bf); buffer = buffer + bf*this%budget_0(:,:,:,1)
-                call this%ddy_R2R(this%pre_budget%budget_0(:,:,:,2), bf); buffer = buffer + bf*this%budget_0(:,:,:,2)
-                call this%ddz_R2R(this%pre_budget%budget_0(:,:,:,2), bf); buffer = buffer + bf*this%budget_0(:,:,:,3)
+                buffer = this%pre_budget%budget_0(:,:,:,1)*this%extraCellFields(:,:,:,4) + &
+                         this%pre_budget%budget_0(:,:,:,2)*this%extraCellFields(:,:,:,5) + &
+                         this%pre_budget%budget_0(:,:,:,3)*this%extraCellFields(:,:,:,6)
             case(6)
-                call this%ddx_R2R(this%pre_budget%budget_0(:,:,:,3), bf); buffer = buffer + bf*this%budget_0(:,:,:,1)
-                call this%ddy_R2R(this%pre_budget%budget_0(:,:,:,3), bf); buffer = buffer + bf*this%budget_0(:,:,:,2)
-                call this%ddz_R2R(this%pre_budget%budget_0(:,:,:,3), bf); buffer = buffer + bf*this%budget_0(:,:,:,3)
-            case(7)
-                call this%ddx_R2R(this%budget_0(:,:,:,1), bf); buffer = buffer + bf*this%pre_budget%budget_0(:,:,:,1)
-                call this%ddy_R2R(this%budget_0(:,:,:,1), bf); buffer = buffer + bf*this%pre_budget%budget_0(:,:,:,2)
-                call this%ddz_R2R(this%budget_0(:,:,:,1), bf); buffer = buffer + bf*this%pre_budget%budget_0(:,:,:,3)
+                buffer = this%pre_budget%budget_0(:,:,:,1)*this%extraCellFields(:,:,:,7) + &
+                         this%pre_budget%budget_0(:,:,:,2)*this%extraCellFields(:,:,:,8) + &
+                         this%pre_budget%budget_0(:,:,:,3)*this%extraCellFields(:,:,:,9)
+            case(7) 
+                buffer = this%budget_0(:,:,:,1)*this%extraCellFields(:,:,:,10) + &
+                         this%budget_0(:,:,:,2)*this%extraCellFields(:,:,:,11) + &
+                         this%budget_0(:,:,:,3)*this%extraCellFields(:,:,:,12)
             case(8)
-                call this%ddx_R2R(this%budget_0(:,:,:,2), bf); buffer = buffer + bf*this%pre_budget%budget_0(:,:,:,1)
-                call this%ddy_R2R(this%budget_0(:,:,:,2), bf); buffer = buffer + bf*this%pre_budget%budget_0(:,:,:,2)
-                call this%ddz_R2R(this%budget_0(:,:,:,2), bf); buffer = buffer + bf*this%pre_budget%budget_0(:,:,:,3)
+                buffer = this%budget_0(:,:,:,1)*this%extraCellFields(:,:,:,13) + &
+                         this%budget_0(:,:,:,2)*this%extraCellFields(:,:,:,14) + &
+                         this%budget_0(:,:,:,3)*this%extraCellFields(:,:,:,15)
             case(9)
-                call this%ddx_R2R(this%budget_0(:,:,:,3), bf); buffer = buffer + bf*this%pre_budget%budget_0(:,:,:,1)
-                call this%ddy_R2R(this%budget_0(:,:,:,3), bf); buffer = buffer + bf*this%pre_budget%budget_0(:,:,:,2)
-                call this%ddz_R2R(this%budget_0(:,:,:,3), bf); buffer = buffer + bf*this%pre_budget%budget_0(:,:,:,3)
+                buffer = this%budget_0(:,:,:,1)*this%extraCellFields(:,:,:,16) + &
+                         this%budget_0(:,:,:,2)*this%extraCellFields(:,:,:,17) + &
+                         this%budget_0(:,:,:,3)*this%extraCellFields(:,:,:,18)
             case(10)
-                call this%ddx_R2R(this%pre_budget%budget_0(:,:,:,1), bf); buffer = buffer + bf*this%pre_budget%budget_0(:,:,:,1)
-                call this%ddy_R2R(this%pre_budget%budget_0(:,:,:,1), bf); buffer = buffer + bf*this%pre_budget%budget_0(:,:,:,2)
-                call this%ddz_R2R(this%pre_budget%budget_0(:,:,:,1), bf); buffer = buffer + bf*this%pre_budget%budget_0(:,:,:,3)
+                buffer = this%pre_budget%budget_0(:,:,:,1)*this%extraCellFields(:,:,:,10) + &
+                         this%pre_budget%budget_0(:,:,:,2)*this%extraCellFields(:,:,:,11) + &
+                         this%pre_budget%budget_0(:,:,:,3)*this%extraCellFields(:,:,:,12)
             case(11)
-                call this%ddx_R2R(this%pre_budget%budget_0(:,:,:,2), bf); buffer = buffer + bf*this%pre_budget%budget_0(:,:,:,1)
-                call this%ddy_R2R(this%pre_budget%budget_0(:,:,:,2), bf); buffer = buffer + bf*this%pre_budget%budget_0(:,:,:,2)
-                call this%ddz_R2R(this%pre_budget%budget_0(:,:,:,2), bf); buffer = buffer + bf*this%pre_budget%budget_0(:,:,:,3)
+                buffer = this%pre_budget%budget_0(:,:,:,1)*this%extraCellFields(:,:,:,13) + &
+                         this%pre_budget%budget_0(:,:,:,2)*this%extraCellFields(:,:,:,14) + &
+                         this%pre_budget%budget_0(:,:,:,3)*this%extraCellFields(:,:,:,15)
             case(12)
-                call this%ddx_R2R(this%pre_budget%budget_0(:,:,:,3), bf); buffer = buffer + bf*this%pre_budget%budget_0(:,:,:,1)
-                call this%ddy_R2R(this%pre_budget%budget_0(:,:,:,3), bf); buffer = buffer + bf*this%pre_budget%budget_0(:,:,:,2)
-                call this%ddz_R2R(this%pre_budget%budget_0(:,:,:,3), bf); buffer = buffer + bf*this%pre_budget%budget_0(:,:,:,3)
+                buffer = this%pre_budget%budget_0(:,:,:,1)*this%extraCellFields(:,:,:,16) + &
+                         this%pre_budget%budget_0(:,:,:,2)*this%extraCellFields(:,:,:,17) + &
+                         this%pre_budget%budget_0(:,:,:,3)*this%extraCellFields(:,:,:,18)
             end select
             call this%dealias(buffer)
 
@@ -1536,7 +1584,9 @@ module budgets_time_avg_deficit_compact_mod
         if(allocated(this%budget_1)) this%budget_1 = zero 
         if(allocated(this%budget_2)) this%budget_2 = zero 
         if(allocated(this%budget_3)) this%budget_3 = zero
-        if(allocated(this%delta_tauij)) this%delta_tauij = zero   
+        if(allocated(this%delta_tauij)) this%delta_tauij = zero 
+        if(allocated(this%extraCellFields)) this%extraCellFields = zero 
+        if(allocated(this%extraEdgeFields)) this%extraEdgeFields = zero   
     end subroutine 
 
     subroutine destroy(this)
@@ -1549,6 +1599,7 @@ module budgets_time_avg_deficit_compact_mod
             if(allocated(this%budget_2)) deallocate(this%budget_2)
             if(allocated(this%budget_3)) deallocate(this%budget_3)
             if(allocated(this%delta_tauij)) deallocate(this%delta_tauij)
+            if(allocated(this%extraCellFields)) deallocate(this%extraCellFields)
         end if
     end subroutine 
 
