@@ -32,7 +32,10 @@ module IncompressibleGrid
     external :: MPI_BCAST, MPI_RECV, MPI_SEND, MPI_REDUCE
 
     private
-    public :: igrid, wBC_bottom, wBC_top  
+    public :: igrid 
+    public :: uBC_bottom, uBC_top, vBC_bottom, vBC_top, wBC_bottom, wBC_top, &
+              TBC_bottom, TBC_top, UWBC_bottom, UWBC_top, VWBC_bottom, VWBC_top, &
+              WTBC_bottom, WTBC_top 
 
     complex(rkind), parameter :: zeroC = zero + imi*zero 
 
