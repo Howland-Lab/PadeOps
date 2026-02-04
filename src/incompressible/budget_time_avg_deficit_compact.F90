@@ -165,9 +165,9 @@ module budgets_time_avg_deficit_compact_mod
 
             if(this%do_budget3)then
                 if(this%useWindTurbines)then
-                    this%size_budget_3 = 19
+                    this%size_budget_3 = 21
                 else
-                    this%size_budget_3 = 17
+                    this%size_budget_3 = 19
                 end if
                 allocate(this%budget_3(this%nx,this%ny,this%nz,this%size_budget_3))
                 allocate(this%delta_tauij(this%nx,this%ny,this%nz,6))
@@ -234,13 +234,6 @@ module budgets_time_avg_deficit_compact_mod
         call this%prim_budget%igrid_sim%sgsmodel%populate_tauij_E_to_C()
         this%delta_tauij = this%prim_budget%igrid_sim%tauSGS_ij - this%pre_budget%igrid_sim%tauSGS_ij
 
-        ! To be multiplied by every term added to the sum
-        ! if(this%time_weighted_average)then
-        !     this%weight = this%prim_budget%igrid_sim%dt
-        ! else
-        !     this%weight = real(1., rkind)
-        ! end if
-
         if(this%doMCG) call this%AssembleMCG()
         if(this%do_budget0) call this%AssembleBudget0()
         if(this%do_budget1) call this%AssembleBudget1()
@@ -248,7 +241,6 @@ module budgets_time_avg_deficit_compact_mod
         if(this%do_budget3) call this%AssembleBudget3()
 
         this%counter = this%counter + 1
-        ! this%timeSum = this%timeSum + this%prim_budget%igrid_sim%dt
     end subroutine 
 
     subroutine DumpBudget(this)
@@ -259,12 +251,6 @@ module budgets_time_avg_deficit_compact_mod
         real(rkind), dimension(:,:,:,:), pointer :: budget
         logical :: doBudget
 
-        ! if(this%time_weighted_average)then
-        !     totalWeight = this%timeSum + 1.d-18
-        !     call this%writeTimeSum()
-        ! else
-        !     totalWeight = real(this%counter,rkind) + 1.d-18
-        ! end if
         totalWeight = real(this%counter,rkind) + 1.d-18
 
         ! Cell x-pencil buffers 
@@ -295,28 +281,21 @@ module budgets_time_avg_deficit_compact_mod
         end if
 
         ! Dealias budgets 1-3 as they hold product of multiple fields
-        do budgetid=1,3
-            select case(budgetid)
-            case(1)
-                budget => this%budget_1
-                budgetsize = this%size_budget_1
-                doBudget = this%do_budget1
-            case(2)
-                budget => this%budget_2
-                budgetsize = this%size_budget_2
-                doBudget = this%do_budget2
-            case(3)
-                budget => this%budget_3
-                budgetsize = this%size_budget_3
-                doBudget = this%do_budget2
-            end select
-
-            if(doBudget)then
-                do idx = 1,budgetsize
-                    call this%dealias(budget(:,:,:,idx))
-                end do
-            end if
-        end do
+        if(this%do_budget1)then
+            do idx = 1, this%size_budget_1
+                call this%dealias(this%budget_1(:,:,:,idx))
+            end do
+        end if
+        if(this%do_budget2)then
+            do idx = 1, this%size_budget_2
+                call this%dealias(this%budget_2(:,:,:,idx))
+            end do
+        end if
+        if(this%do_budget3)then
+            do idx = 1, this%size_budget_3
+                call this%dealias(this%budget_3(:,:,:,idx))
+            end do
+        end if
 
         do budgetid=1,3
             select case(budgetid)
@@ -355,13 +334,6 @@ module budgets_time_avg_deficit_compact_mod
                 end do
             end if
         end do
-
-        ! MCG. Need to write it to be able to restart budgets
-        ! if(this%this%doMCG)then
-        !     do idx = 1, size(this%MCG, 4)
-        !         call this%dump_budget_field(this%MCG(:,:,:,idx), idx, 4)
-        !     end do
-        ! end if
 
         ! Return to summing
         if(this%do_budget0) this%budget_0 = this%budget_0*totalWeight
@@ -658,7 +630,7 @@ module budgets_time_avg_deficit_compact_mod
         buffer => this%prim_budget%igrid_sim%rbuffxC(:,:,:,4)
         
         ! Cell y-pencil buffer 
-        cbuffyC1 => this%prim_budget%igrid_sim%cbuffyC(:,:,:,2)
+        cbuffyC1 => this%prim_budget%igrid_sim%cbuffyC(:,:,:,2) ! 1 is used in ddx, ddy, ddz routines 
 
         ! Edge x-pencil buffer
         rbuffxE1 => this%prim_budget%igrid_sim%rbuffxE(:,:,:,1)
@@ -1457,12 +1429,15 @@ module budgets_time_avg_deficit_compact_mod
 
     ! ----------------------private derivative operators ------------------------
     subroutine dealias(this, f)
-        class(budgets_time_avg_deficit_compact), intent(inout) :: this
+        class(budgets_time_avg_deficit_compact), intent(inout), target :: this
         real(rkind), dimension(this%nx,this%ny,this%nz), intent(inout) :: f
+        complex(rkind), dimension(:,:,:), pointer :: cbuffyC
+
+        cbuffyC => this%prim_budget%igrid_sim%cbuffyC(:,:,:,1)
         
-        call this%prim_budget%igrid_sim%spectC%fft(f,this%prim_budget%igrid_sim%cbuffyC(:,:,:,1))
-        call this%prim_budget%igrid_sim%spectC%dealias(this%prim_budget%igrid_sim%cbuffyC(:,:,:,1))
-        call this%prim_budget%igrid_sim%spectC%ifft(this%prim_budget%igrid_sim%cbuffyC(:,:,:,1), f)
+        call this%prim_budget%igrid_sim%spectC%fft(f, cbuffyC)
+        call this%prim_budget%igrid_sim%spectC%dealias(cbuffyC)
+        call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC, f)
     end subroutine
 
     subroutine ddx_R2R(this, f, dfdx)
