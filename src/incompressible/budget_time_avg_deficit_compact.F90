@@ -165,9 +165,9 @@ module budgets_time_avg_deficit_compact_mod
 
             if(this%do_budget3)then
                 if(this%useWindTurbines)then
-                    this%size_budget_3 = 21
-                else
                     this%size_budget_3 = 19
+                else
+                    this%size_budget_3 = 17
                 end if
                 allocate(this%budget_3(this%nx,this%ny,this%nz,this%size_budget_3))
                 allocate(this%delta_tauij(this%nx,this%ny,this%nz,6))
@@ -834,17 +834,17 @@ module budgets_time_avg_deficit_compact_mod
         this%budget_3(:,:,:,16) = this%budget_3(:,:,:,16) + wbase * buffer
         this%budget_3(:,:,:,19) = this%budget_3(:,:,:,19) + dw * buffer
 
-        if (this%useWindTurbines)then
-            cbuffyC1 = this%prim_budget%uturb - this%pre_budget%uturb
-            call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, buffer)
-            this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) + du * buffer 
-            this%budget_3(:,:,:,21) = this%budget_3(:,:,:,21) + ubase * buffer
+        ! if (this%useWindTurbines)then
+        !     cbuffyC1 = this%prim_budget%uturb - this%pre_budget%uturb
+        !     call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, buffer)
+        !     this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) + du * buffer 
+        !     this%budget_3(:,:,:,21) = this%budget_3(:,:,:,21) + ubase * buffer
 
-            cbuffyC1 = this%prim_budget%vturb - this%pre_budget%vturb
-            call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, buffer)
-            this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) + dv * buffer 
-            this%budget_3(:,:,:,21) = this%budget_3(:,:,:,21) + vbase * buffer
-        end if 
+        !     cbuffyC1 = this%prim_budget%vturb - this%pre_budget%vturb
+        !     call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, buffer)
+        !     this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) + dv * buffer 
+        !     this%budget_3(:,:,:,21) = this%budget_3(:,:,:,21) + vbase * buffer
+        ! end if 
 
         nullify(du, dv, dw, rbuffxE1, rbuffxE2, buffer, buffer, cbuffyE1, cbuffyC1, ubase, vbase, wbase)  
         nullify(dudxC_prim, dudyC_prim, dudzC_prim, dudxC_pre, dudyC_pre, dudzC_pre)
@@ -1195,10 +1195,10 @@ module budgets_time_avg_deficit_compact_mod
                     this%MCG(:,:,:,8) * (this%budget_1(:,:,:,5) - two*this%budget_0(:,:,:,3)*this%budget_0(:,:,:,2)) + &
                     this%MCG(:,:,:,9) * (this%budget_1(:,:,:,6) - two*this%budget_0(:,:,:,3)*this%budget_0(:,:,:,3))
 
-            case(20)
-                buffer = this%budget_0(:,:,:,1)*this%budget_0(:,:,:,21) + this%budget_0(:,:,:,2)*this%budget_0(:,:,:,22)
-            case(21)
-                buffer = this%pre_budget%budget_0(:,:,:,1)*this%budget_0(:,:,:,21) + this%pre_budget%budget_0(:,:,:,2)*this%budget_0(:,:,:,22)
+            ! case(20)
+            !     buffer = this%budget_0(:,:,:,1)*this%budget_0(:,:,:,21) + this%budget_0(:,:,:,2)*this%budget_0(:,:,:,22)
+            ! case(21)
+            !     buffer = this%pre_budget%budget_0(:,:,:,1)*this%budget_0(:,:,:,21) + this%pre_budget%budget_0(:,:,:,2)*this%budget_0(:,:,:,22)
             end select
         end if
 
