@@ -21,7 +21,7 @@ module actuatorDisk_FilteredMod
         integer :: xLoc_idx, ActutorDisk_T2ID, tInd = 1
         real(rkind) :: yaw, tilt, ut, powerBaseline, hubDirection
         real(rkind) :: xLoc, yLoc, zLoc, dx, dy, dz, dV
-        real(rkind) :: diam, cT, pfactor, normfactor, OneBydelSq, Cp, thick, npts
+        real(rkind) :: diam, cT, pfactor, normfactor, OneBydelSq, Cp, thick, npts, upsample_fact
         real(rkind) :: uface = zero, vface = zero, wface = zero  ! LES velocity, disk-averaged
         real(rkind) :: uturb, vturb, wturb  ! turbine motion vector
 
@@ -30,7 +30,7 @@ module actuatorDisk_FilteredMod
         logical :: useDynamicYaw, quickDecomp
 
         ! Grid Info
-        integer :: nxLoc, nyLoc, nzLoc 
+        integer :: nxLoc, nyLoc, nzLoc
         real(rkind) :: delta, M  ! Shapiro smearing size, corr. factor M<1
         real(rkind), dimension(:), allocatable :: xline, yline, zline
         real(rkind), dimension(:,:,:), pointer :: xG, yG, zG
@@ -77,7 +77,7 @@ subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG, dx, dy, dz)
     character(len=*), intent(in) :: inputDir
     character(len=clen) :: tempname, fname
     integer :: ioUnit, ierr
-    real(rkind) :: xLoc=1.d0, yLoc=1.d0, zLoc=0.1d0
+    real(rkind) :: xLoc=1.d0, yLoc=1.d0, zLoc=0.1d0, upsample_fact=two
     real(rkind) :: diam=0.08d0, cT=0.65d0, yaw=0.d0, tilt=0.d0, h  !, Cp = 0.3
     real(rkind) :: thickness=1.5d0, filterWidth=0.5, time2initialize=0.d0
     logical :: useCorrection=.true., useDynamicYaw=.false., quickDecomp=.false., use_h=.false.
@@ -105,6 +105,7 @@ subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG, dx, dy, dz)
     this%xLoc = xLoc; this%yLoc = yLoc; this%zLoc = zLoc
     this%cT = cT; this%diam = diam; this%yaw = yaw; this%tilt = tilt
     this%ut = 1.d0!; this%Cp = Cp
+    this%upsample_fact = upsample_fact
 
     this%uturb = zero; this%vturb = zero; this%wturb = zero
     
@@ -159,7 +160,7 @@ subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG, dx, dy, dz)
     end if
 
     ! Get (unrotated) turbine location points
-    call sample_on_circle(this%diam, this%yLoc, this%zLoc, this%ys, this%zs, this%dy, this%dz)
+    call sample_on_circle(this%diam, this%yLoc, this%zLoc, this%ys, this%zs, this%dy, this%dz, this%upsample_fact)
     this%npts = size(this%ys,1)
     call message(1, "NUMBER OF POINTS: ", this%npts)
     allocate(this%xs(size(this%ys)))
@@ -177,7 +178,7 @@ subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG, dx, dy, dz)
         call message(2, "Using Dynamic Yaw")
     else
         call message(2, "Using static turbine.")
-        call this%redraw()  ! get_weights(this) 
+        call this%get_weights()
     end if
     
     call message(2, "Smearing grid parameter, Delta", this%delta)
@@ -348,10 +349,10 @@ subroutine get_weights(this)
 end subroutine
 
 ! sample a circle with points spaced dx, dy apart and centered at xcen, ycen
-subroutine sample_on_circle(diam, xcen, ycen, xloc, yloc, dx, dy)
+subroutine sample_on_circle(diam, xcen, ycen, xloc, yloc, dx, dy, upsample_fact)
     use gridtools, only: linspace
-    real(rkind), intent(in) :: diam, xcen, ycen, dx, dy
-    real(rkind) :: R
+    real(rkind), intent(in) :: diam, xcen, ycen, dx, dy, upsample_fact
+    real(rkind) :: R, dxi
     integer, dimension(:), allocatable :: tag
     real(rkind), dimension(:), allocatable :: xline, yline
     real(rkind), dimension(:), allocatable, intent(out) :: xloc, yloc
@@ -359,7 +360,8 @@ subroutine sample_on_circle(diam, xcen, ycen, xloc, yloc, dx, dy)
     integer :: idx, i, j, nsz, iidx, nx_per_R, ny_per_R, nx, ny, np
     
     R = diam/two
-    nx_per_R = ceiling(R/dx); ny_per_R = ceiling(R/dy)
+    dxi = min(dx, dy) / upsample_fact  ! upsample the resolution of the LES grid
+    nx_per_R = ceiling(R/dxi); ny_per_R = ceiling(R/dxi)
     nx = nx_per_R*2 + 1
     ny = ny_per_R*2 + 1
     np = nx*ny  ! total number of points
@@ -370,19 +372,12 @@ subroutine sample_on_circle(diam, xcen, ycen, xloc, yloc, dx, dy)
     ! initialize linearly-spaced arrays 
     ! this is necessary to do independently of the grid xG, yG, zG 
     ! because parallelization splits the grid up
-    xline = (/(i, i=-nx_per_R, nx_per_R)/) * dx
-    yline = (/(i, i=-ny_per_R, ny_per_R)/) * dy
+    xline = (/(i, i=-nx_per_R, nx_per_R)/) * dxi
+    yline = (/(i, i=-ny_per_R, ny_per_R)/) * dxi
     
     ! reshapes xline, yline: 
-!    xtmp = reshape(spread(xline, 1, ny), [np])
-!    ytmp = reshape(spread(yline, 2, nx), [np])  ! why doesn't reshape() work? 
-    idx = 1
-    do j = 1,ny
-        do i = 1,nx
-            xtmp(idx) = xline(i); ytmp(idx) = yline(j)
-            idx = idx + 1
-        end do 
-    end do
+    xtmp = reshape(spread(xline, 2, ny), [np])  ! Spread along dim 2, then flatten
+    ytmp = reshape(spread(yline, 1, nx), [np])  ! Spread along dim 1, then flatten
     rtmp = sqrt(xtmp**2 + ytmp**2) 
     tag = 0
     where (rtmp < R) 
@@ -555,7 +550,7 @@ subroutine redraw(this)
     class(actuatordisk_filtered), intent(inout) :: this
 
     ! (re)sample points, this is quick
-    call sample_on_circle(this%diam, this%yloc, this%zloc, this%ys, this%zs, this%dy, this%dz)
+    call sample_on_circle(this%diam, this%yloc, this%zloc, this%ys, this%zs, this%dy, this%dz, this%upsample_fact)
     this%npts = size(this%ys, 1)  
     this%xs = this%xloc
     
