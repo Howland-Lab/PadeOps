@@ -2104,7 +2104,7 @@ module budgets_time_avg_deficit_mod
      subroutine destroy(this)
          class(budgets_time_avg_deficit), intent(inout) :: this
  
-         nullify(this%prim_budget%igrid_sim)
+         nullify(this%prim_budget, this%pre_budget)
          if(this%do_budgets) then
       !       deallocate(this%uc, this%vc, this%wc, this%usgs, this%vsgs, this%wsgs, this%px, this%py, this%pz, this%uturb)  
             deallocate(this%budget_0)

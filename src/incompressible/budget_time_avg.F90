@@ -2465,7 +2465,13 @@ subroutine DumpBudget4_23(this)
         class(budgets_time_avg), intent(inout) :: this
         nullify(this%igrid_sim)
         if(this%do_budgets) then
-            deallocate(this%uc, this%vc, this%wc, this%usgs, this%vsgs, this%wsgs, this%px, this%py, this%pz, this%uturb)  
+            ! deallocate(this%uc, this%vc, this%wc, this%usgs, this%vsgs, this%wsgs, this%px, this%py, this%pz, this%uturb)  
+            deallocate(this%uc, this%usgs, this%px, this%uturb, this%vturb, this%wturb, &
+                       this%vc, this%vsgs, this%py, &
+                       this%wc, this%wsgs, this%pz, &
+                       this%pxdns, this%pydns, this%pzdns, &
+                       this%uvisc, this%vvisc, this%wvisc, &
+                       this%ucor, this%vcor, this%wcor, this%wb)
             deallocate(this%budget_0)
             if (this%budgetType>0) then
                 deallocate(this%budget_1)
