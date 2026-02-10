@@ -117,7 +117,7 @@ module budgets_time_avg_deficit_compact_mod
         this%tidx_compute = tidx_compute
         this%tidx_budget_start = tidx_budget_start  
         this%time_budget_start = time_budget_start  
-        this%useWindTurbines = this%prim_budget%igrid_sim%useWindTurbines
+        !this%useWindTurbines = this%prim_budget%igrid_sim%useWindTurbines
         this%isStratified    = this%prim_budget%igrid_sim%isStratified
         this%useCoriolis    = this%prim_budget%igrid_sim%useCoriolis
         ! Deactivate time-weighted sum till time-averaged budgets are weighted similarily
@@ -165,9 +165,9 @@ module budgets_time_avg_deficit_compact_mod
 
             if(this%do_budget3)then
                 if(this%useWindTurbines)then
-                    this%size_budget_3 = 19
+                    this%size_budget_3 = 21
                 else
-                    this%size_budget_3 = 17
+                    this%size_budget_3 = 19
                 end if
                 allocate(this%budget_3(this%nx,this%ny,this%nz,this%size_budget_3))
                 allocate(this%delta_tauij(this%nx,this%ny,this%nz,6))
@@ -1153,6 +1153,7 @@ module budgets_time_avg_deficit_compact_mod
                          this%MCG(:,:,:,16)*(this%budget_1(:,:,:,3) - two*this%budget_0(:,:,:,3)*this%budget_0(:,:,:,1)) + &
                          this%MCG(:,:,:,17)*(this%budget_1(:,:,:,5) - two*this%budget_0(:,:,:,3)*this%budget_0(:,:,:,2)) + &
                          this%MCG(:,:,:,18)*(this%budget_1(:,:,:,6) - two*this%budget_0(:,:,:,3)*this%budget_0(:,:,:,3))
+            
             case(18) ! delta u_i' base u_j' d_j(delta u_i')  [Turbulent transport of TKE]
                 ! Differentiate mean(delta u_i delta u_i) numerically
                 bf = half*(this%budget_1(:,:,:,1) + this%budget_1(:,:,:,4) + this%budget_1(:,:,:,6))
@@ -1272,15 +1273,7 @@ module budgets_time_avg_deficit_compact_mod
 
         ! Cell x-pencil buffers 
         buffer => this%prim_budget%igrid_sim%rbuffxC(:,:,:,4)
-        this%counter = cid
-
-        ! if(this%time_weighted_average)then
-        !     ! If this is time-weighted averaging, we should read the sum of times
-        !     call this%readTimeSum(trim(dir),rid,tid,cid)
-        !     totalWeight = this%timeSum + 1.d-18
-        ! else
-        !     totalWeight = real(this%counter,rkind) + 1.d-18
-        ! end if        
+        this%counter = cid     
         totalWeight = real(this%counter,rkind) + 1.d-18
 
         ! I assume here that this%pre_budget%budget_0 and 
