@@ -78,15 +78,15 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     real(rkind), dimension(:,:,:,:), intent(inout), target :: fieldsE
     integer :: ioUnit
     real(rkind), dimension(:,:,:), pointer :: u, v, w, wC, T, x, y, z
-    real(rkind), dimension(:,:,:), allocatable :: ybuffC, ybuffE, zbuffC, zbuffE, ztmp
+    real(rkind), dimension(:,:,:), allocatable :: ybuffC, ybuffE, zbuffC, zbuffE
     integer :: nz, nzE, k
     real(rkind) :: sig
-    real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, dTsurf_dt = -0.05d0, z_Tref = zero, T_inv = zero, dTdz = zero
+    real(rkind) :: Lx = one, Ly = one, Lz = one, Tref = one, Tsurf0 = one, dTsurf_dt = zero, inv_height = zero, lapse_rate = zero, inv_thickness = one, inv_strength = zero
     real(rkind), dimension(:,:,:), allocatable :: randArr, Tpurt, eta
-
+    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, inv_height, inv_thickness, inv_strength, lapse_rate
+    
     ! NOTE: Although `xdim` is computed, z_Tref and dTdz are still w.r.t. non-dim length scale for consistency with `neutral_pbl`
     ! only temperature and time are dimensional inputs in this namelist
-    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z_Tref, T_inv, dTdz
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -103,12 +103,12 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     v = zero
     wC = zero
 
-    allocate(ztmp(decompC%xsz(1),decompC%xsz(2),decompC%xsz(3)))
     allocate(Tpurt(decompC%xsz(1),decompC%xsz(2),decompC%xsz(3)))
-    ztmp = z*xDim
-    T = dTdz*(z - z_Tref) + Tsurf0 + T_inv
-    where(z < z_Tref)
-        T = Tsurf0
+    T = Tsurf0
+    where (z >= inv_height .and. z < inv_height + inv_thickness)
+        T = Tsurf0 + inv_strength * (z - inv_height) / inv_thickness
+    elsewhere (z >= inv_height + inv_thickness)
+        T = Tsurf0 + inv_strength + lapse_rate * (z - inv_height - inv_thickness)
     end where
 
     ! Add random numbers
@@ -121,12 +121,12 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     end do
     deallocate(randArr)
 
-    where (ztmp > 50.d0)
+    where (z > 50.d0/xdim)
         Tpurt = zero
     end where
     T = T + Tpurt
 
-    deallocate(ztmp, Tpurt)
+    deallocate(Tpurt)
 
     !!!!!!!!!!!!!!!!!!!!! DON'T CHANGE ANYTHING UNDER THIS !!!!!!!!!!!!!!!!!!!!!!
     ! Interpolate wC to w
@@ -159,8 +159,8 @@ subroutine setInhomogeneousNeumannBC_Temp(inputfile, wTh_surf)
     character(len=*),                intent(in)    :: inputfile
     real(rkind), intent(out) :: wTh_surf
     integer :: ioUnit
-    real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, dTsurf_dt, z_Tref, T_inv, dTdz
-    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z_Tref, T_inv, dTdz
+    real(rkind) :: Lx = one, Ly = one, Lz = one, Tref = one, Tsurf0 = one, dTsurf_dt = zero, inv_height = zero, lapse_rate = zero, inv_thickness = one, inv_strength = zero
+    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, inv_height, inv_thickness, inv_strength, lapse_rate
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -178,9 +178,9 @@ subroutine setDirichletBC_Temp(inputfile, Tsurf, dTsurf_dt)
     real(rkind), intent(out) :: Tsurf, dTsurf_dt
     character(len=*),                intent(in)    :: inputfile
     integer :: ioUnit
-    real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, z_Tref, T_inv, dTdz
-    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z_Tref, T_inv, dTdz
-
+    real(rkind) :: Lx = one, Ly = one, Lz = one, Tref = one, Tsurf0 = one, inv_height = zero, lapse_rate = zero, inv_thickness = one, inv_strength = zero
+    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, inv_height, inv_thickness, inv_strength, lapse_rate
+    
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
     read(unit=ioUnit, NML=PROBLEM_INPUT)
@@ -249,11 +249,9 @@ subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
     integer :: i,j,k, ioUnit
     character(len=*),                intent(in)    :: inputfile
     integer :: ix1, ixn, iy1, iyn, iz1, izn
-    real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, dTsurf_dt = -0.05d0, z_Tref, T_inv, dTdz
-    !real(rkind)  :: beta, sigma, phi_ref
-    !integer :: z_ref
-    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z_Tref, T_inv, dTdz
-
+    real(rkind) :: Lx = one, Ly = one, Lz = one, Tref = one, Tsurf0 = one, dTsurf_dt = zero, inv_height = zero, lapse_rate = zero, inv_thickness = one, inv_strength = zero
+    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, inv_height, inv_thickness, inv_strength, lapse_rate
+    
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
     read(unit=ioUnit, NML=PROBLEM_INPUT)
@@ -299,9 +297,9 @@ subroutine set_Reference_Temperature(inputfile, Thetaref)
     character(len=*),                intent(in)    :: inputfile
     real(rkind), intent(out) :: Thetaref
     integer :: ioUnit
-    real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, dTsurf_dt = -0.05d0, z_Tref, T_inv, dTdz
-    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z_Tref, T_inv, dTdz
-
+    real(rkind) :: Lx = one, Ly = one, Lz = one, Tref = one, Tsurf0 = one, dTsurf_dt = zero, inv_height = zero, lapse_rate = zero, inv_thickness = one, inv_strength = zero
+    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, inv_height, inv_thickness, inv_strength, lapse_rate
+    
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
     read(unit=ioUnit, NML=PROBLEM_INPUT)

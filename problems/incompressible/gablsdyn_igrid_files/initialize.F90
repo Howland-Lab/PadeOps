@@ -81,10 +81,10 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     real(rkind), dimension(:,:,:), allocatable :: ybuffC, ybuffE, zbuffC, zbuffE
     integer :: nz, nzE, k
     real(rkind) :: sig
-    real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, dTsurf_dt = -0.05d0, z0init = 1.d-4, frameAngle = -26.d0, z_Tref = zero, T_inv = zero, dTdz = zero 
+    real(rkind) :: Lx = one, Ly = one, Lz = one, Tref = one, Tsurf0 = one, dTsurf_dt = zero, inv_height = zero, lapse_rate = zero, inv_thickness = one, inv_strength = zero
     real(rkind), dimension(:,:,:), allocatable :: randArr, Tpurt, eta
     
-    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, z_Tref, T_inv, dTdz
+    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, inv_height, inv_thickness, inv_strength, lapse_rate
     
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -104,21 +104,19 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     u = one
     v = zero
     wC = zero
-    ! Added to account for frame angle    
-    !u = u * cos(frameAngle * pi / 180.d0)
-    !v = v * sin(frameAngle * pi / 180.d0) 
 
     allocate(Tpurt(decompC%xsz(1),decompC%xsz(2),decompC%xsz(3)))
 
-    T = dTdz*(z - z_Tref) + Tsurf0 + T_inv
-    where(z < z_Tref)
-        T = Tsurf0
+    T = Tsurf0
+    where (z >= inv_height .and. z < inv_height + inv_thickness)
+        T = Tsurf0 + inv_strength * (z - inv_height) / inv_thickness
+    elsewhere (z >= inv_height + inv_thickness)
+        T = Tsurf0 + inv_strength + lapse_rate * (z - inv_height - inv_thickness)
     end where
     
     ! Add random numbers
     allocate(randArr(size(T,1),size(T,2),size(T,3)))
     call gaussian_random(randArr,zero,one,seedu + 10*nrank)
-    !randArr = cos(4.d0*2.d0*pi*x)*sin(4.d0*2.d0*pi*y)
     do k = 1,size(u,3)
         sig = 0.08
         Tpurt(:,:,k) = sig*randArr(:,:,k)
@@ -163,8 +161,8 @@ subroutine setInhomogeneousNeumannBC_Temp(inputfile, wTh_surf)
     character(len=*),                intent(in)    :: inputfile
     real(rkind), intent(out) :: wTh_surf
     integer :: ioUnit 
-    real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, z0init = 1.d-4, dTsurf_dt, z_Tref, T_inv, dTdz
-    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, z_Tref, T_inv, dTdz  
+    real(rkind) :: Lx = one, Ly = one, Lz = one, Tref = one, Tsurf0 = one, dTsurf_dt = zero, inv_height = zero, lapse_rate = zero, inv_thickness = one, inv_strength = zero
+    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, inv_height, inv_thickness, inv_strength, lapse_rate
      
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -182,9 +180,9 @@ subroutine setDirichletBC_Temp(inputfile, Tsurf, dTsurf_dt)
     real(rkind), intent(out) :: Tsurf, dTsurf_dt
     character(len=*),                intent(in)    :: inputfile
     integer :: ioUnit 
-    real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, z0init = 1.d-4, frameAngle = 0.d0, z_Tref, T_inv, dTdz
-    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, z_Tref, T_inv, dTdz
-
+    real(rkind) :: Lx = one, Ly = one, Lz = one, Tref = one, Tsurf0 = one, inv_height = zero, lapse_rate = zero, inv_thickness = one, inv_strength = zero
+    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, inv_height, inv_thickness, inv_strength, lapse_rate
+    
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
     read(unit=ioUnit, NML=PROBLEM_INPUT)
@@ -253,11 +251,9 @@ subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
     integer :: i,j,k, ioUnit
     character(len=*),                intent(in)    :: inputfile
     integer :: ix1, ixn, iy1, iyn, iz1, izn
-    real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, dTsurf_dt = -0.05d0, z0init = 1.d-4, frameAngle = 0.d0, z_Tref, T_inv, dTdz
-    !real(rkind)  :: beta, sigma, phi_ref
-    !integer :: z_ref 
-    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, z_Tref, T_inv, dTdz 
-
+    real(rkind) :: Lx = one, Ly = one, Lz = one, Tref = one, Tsurf0 = one, dTsurf_dt = zero, inv_height = zero, lapse_rate = zero, inv_thickness = one, inv_strength = zero   
+    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, inv_height, inv_thickness, inv_strength, lapse_rate
+    
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
     read(unit=ioUnit, NML=PROBLEM_INPUT)
@@ -303,12 +299,9 @@ subroutine set_Reference_Temperature(inputfile, Thetaref)
     character(len=*),                intent(in)    :: inputfile
     real(rkind), intent(out) :: Thetaref
     integer :: ioUnit 
-    real(rkind)  :: Lx = one, Ly = one, Lz = one, Tref = zero, Tsurf0 = one, dTsurf_dt = -0.05d0, z0init = 2.5d-4, frameAngle = 0.d0, z_Tref, T_inv, dTdz 
-    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, z_Tref, T_inv, dTdz  
-    !real(rkind)  :: beta, sigma, phi_ref
-    !integer :: z_ref
-    !namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle!, beta, sigma, phi_ref, z_ref     
-
+    real(rkind) :: Lx = one, Ly = one, Lz = one, Tref = one, Tsurf0 = one, dTsurf_dt = zero, inv_height = zero, lapse_rate = zero, inv_thickness = one, inv_strength = zero
+    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, inv_height, inv_thickness, inv_strength, lapse_rate
+    
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
     read(unit=ioUnit, NML=PROBLEM_INPUT)
