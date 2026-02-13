@@ -1,5 +1,5 @@
 #!/bin/bash
-
+module purge
 module load cmake/3.31.9
 module load intel impi
 module load fftw3/3.3.10

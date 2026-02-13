@@ -287,51 +287,57 @@ contains
             call GracefulExit("Both tidx_budget_start and time_budget_start in budget_time_avg are positive. Turn one negative", 100)
         endif
 
-        if(this%do_budgets) then 
-            !if (this%isStratified) then
-            ! Always assume that you are stratified
-
-                if (this%HaveScalars) then
-                    allocate(this%budget_0(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),31+2*this%igrid_sim%n_scalars))
-                else
-                    allocate(this%budget_0(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),31))
-                end if
-                allocate(this%budget_2(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
+        if(this%do_budgets) then
+            ! allocate budget 0 -> minimum needed!
+            if (this%HaveScalars) then
+                allocate(this%budget_0(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),31+2*this%igrid_sim%n_scalars))
+            else
+                allocate(this%budget_0(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),31))
+            end if
+            ! allocate budget 1
+            if (this%budgetType > 0) then
                 allocate(this%budget_1(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),16))
-            !else
-            !    allocate(this%budget_0(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),25))
-            !    allocate(this%budget_2(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),07))
-            !    allocate(this%budget_1(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
-            !end if
-            allocate(this%budget_3(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),08))
-            allocate(this%budget_4_11(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
-            allocate(this%budget_4_22(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
-            allocate(this%budget_4_13(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
-            allocate(this%budget_4_23(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
-            allocate(this%budget_4_33(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
-
+            end if
+            ! allocate budget 2
+            if (this%budgetType > 1) then
+                allocate(this%budget_2(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
+            end if
+            ! allocate budget 3
             if (this%budgetType > 2) then
-                allocate(this%tke(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
-                allocate(this%tke_old(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
+                allocate(this%budget_3(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),08))
+            end if
+            ! allocate budget 4
+            if (this%budgetType > 3) then
+                allocate(this%budget_4_11(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
+                allocate(this%budget_4_22(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
+                allocate(this%budget_4_13(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
+                allocate(this%budget_4_23(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
+                allocate(this%budget_4_33(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
+            end if
+            ! allocate additional fields needed for budget 3 and above!
+            if (this%budgetType > 2) then
+                ! allocate(this%tke(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
+                ! allocate(this%tke_old(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
                                 
-                allocate(this%u_old(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
-                allocate(this%v_old(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
-                allocate(this%wC_old(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
+                ! allocate(this%u_old(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
+                ! allocate(this%v_old(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
+                ! allocate(this%wC_old(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
                 
                 allocate(this%dUdt(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
                 allocate(this%dVdt(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
                 allocate(this%dWdt(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
             end if 
-                
-            
+
+            ! set buget output directory if not provided
             if ((trim(budgets_dir) .eq. "null") .or.(trim(budgets_dir) .eq. "NULL")) then
                 this%budgets_dir = igrid_sim%outputDir
             end if 
-            
+            ! set buget restart directory if not provided
             if ((trim(restart_dir) .eq. "null") .or.(trim(restart_dir) .eq. "NULL")) then
                 restart_dir = this%budgets_dir
             end if 
 
+            ! if restarting bugets
             if (restart_budgets) then
                call message(0, "budget_time_avg: Initializing budget restart")
                this%counter = restart_counter
@@ -341,7 +347,7 @@ contains
                 call this%resetBudget()
             end if
 
-            ! STEP 2: Allocate memory (massive amount of memory needed)
+            ! STEP 2: Allocate memory (large amount of memory needed)
             call igrid_sim%spectC%alloc_r2c_out(this%uc)
             call igrid_sim%spectC%alloc_r2c_out(this%usgs)
             call igrid_sim%spectC%alloc_r2c_out(this%px)
@@ -370,15 +376,13 @@ contains
             call igrid_sim%spectE%alloc_r2c_out(this%wcor)
             call igrid_sim%spectE%alloc_r2c_out(this%wb)
 
-            ! STEP 3: Now instrument igrid 
+            ! STEP 3: Now instrument igrid -> links pointers in the grid object to arrays created for budget
             call igrid_sim%instrumentForBudgets_TimeAvg(this%uc, this%vc, this%wc, this%usgs, this%vsgs, this%wsgs, &
                      & this%px, this%py, this%pz, this%uturb, this%vturb, this%wturb, this%pxdns, this%pydns, this%pzdns, & 
                      & this%uvisc, this%vvisc, this%wvisc, this%ucor, this%vcor, this%wcor, this%wb)  
             
                  
-            ! STEP 4: For horizontally-averaged surface quantities (called
-            ! Scalar here), and turbine statistics
-            !allocate(this%inst_horz_avg(5)) ! [ustar, uw, vw, Linv, wT]
+            ! STEP 4: For horizontally-averaged surface quantities (called Scalar here), and turbine statistics
             allocate(this%runningSum_sc(5))
             this%runningSum_sc = zero
             if(this%useWindTurbines) then
@@ -387,9 +391,7 @@ contains
                 this%runningSum_sc_turb = zero
                 this%runningSum_turb = zero
             endif
-
         end if
-
     end subroutine 
 
 
@@ -2461,20 +2463,40 @@ subroutine DumpBudget4_23(this)
     
     subroutine destroy(this)
         class(budgets_time_avg), intent(inout) :: this
-
         nullify(this%igrid_sim)
         if(this%do_budgets) then
-            deallocate(this%uc, this%vc, this%wc, this%usgs, this%vsgs, this%wsgs, this%px, this%py, this%pz, this%uturb)  
-            deallocate(this%budget_0, this%budget_1)
-            deallocate(this%runningSum_sc)
+            ! deallocate(this%uc, this%vc, this%wc, this%usgs, this%vsgs, this%wsgs, this%px, this%py, this%pz, this%uturb)  
+            deallocate(this%uc, this%usgs, this%px, this%uturb, this%vturb, this%wturb, &
+                       this%vc, this%vsgs, this%py, &
+                       this%wc, this%wsgs, this%pz, &
+                       this%pxdns, this%pydns, this%pzdns, &
+                       this%uvisc, this%vvisc, this%wvisc, &
+                       this%ucor, this%vcor, this%wcor, this%wb)
+            deallocate(this%budget_0)
+            if (this%budgetType>0) then
+                deallocate(this%budget_1)
+            end if
+            if (this%budgetType>1) then
+                deallocate(this%budget_2)
+            end if
+            if (this%budgetType>2) then
+                deallocate(this%budget_3)
+            end if
+            if (this%budgetType>3) then
+                deallocate(this%budget_4_11)
+                deallocate(this%budget_4_13)
+                deallocate(this%budget_4_22)
+                deallocate(this%budget_4_23)
+                deallocate(this%budget_4_33)
+            end if
 
+            deallocate(this%runningSum_sc)
             if(this%useWindTurbines) then
                 deallocate(this%runningSum_sc_turb)
                 deallocate(this%runningSum_turb)
-            endif
+            end if
         end if
-
-    end subroutine 
+    end subroutine destroy
 
     ! ----------------------private derivative operators ------------------------
     subroutine ddx_R2R(this, f, dfdx)
