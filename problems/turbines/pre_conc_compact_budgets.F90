@@ -11,7 +11,6 @@ program pre_conc_compactbudgets
     use temporalhook, only: doTemporalStuff
     use timer, only: tic, toc
     use budgets_time_avg_mod, only: budgets_time_avg
-    use budgets_time_avg_deficit_mod, only: budgets_time_avg_deficit
     use budgets_time_avg_deficit_compact_mod, only: budgets_time_avg_deficit_compact
     use exits, only: message, gracefulExit
 
@@ -21,7 +20,6 @@ program pre_conc_compactbudgets
     character(len=clen) :: inputfile, primary_inputfile, precursor_inputfile
     integer :: ierr, ioUnit
     type(budgets_time_avg) :: budg_tavg, pre_budg_tavg
-    !type(budgets_time_avg_deficit) :: budg_tavg_deficit
     type(budgets_time_avg_deficit_compact) :: budg_tavg_deficit_compact
     real(rkind) :: dt1, dt2, dt
     logical :: synchronize_RK_fringe = .true., do_deficit_budgets = .false.
@@ -73,7 +71,6 @@ program pre_conc_compactbudgets
     call budg_tavg%init(primary_inputfile, primary)             !<-- Budget class initialization
     call pre_budg_tavg%init(precursor_inputfile, precursor)     !<-- Budget class initialization
     if (do_deficit_budgets) then                                !<-- Budget class initialization for the deficit
-        ! call budg_tavg_deficit%init(pre_budg_tavg, primary_inputfile, budg_tavg)
         call budg_tavg_deficit_compact%init(pre_budg_tavg, primary_inputfile, budg_tavg)
     end if
 
@@ -117,7 +114,6 @@ program pre_conc_compactbudgets
 
         call budg_tavg%doBudgets()
         call pre_budg_tavg%doBudgets()
-        !if (do_deficit_budgets) call budg_tavg_deficit%doBudgets()
         if (do_deficit_budgets) call budg_tavg_deficit_compact%doBudgets()        
 
         call doTemporalStuff(primary,  1)
@@ -130,7 +126,6 @@ program pre_conc_compactbudgets
 
     call budg_tavg%destroy()                !<-- release memory taken by the budget classes
     call pre_budg_tavg%destroy()
-    !if (do_deficit_budgets) call budg_tavg_deficit%destroy()
     if (do_deficit_budgets) call budg_tavg_deficit_compact%destroy()
 
     call precursor%finalize_io()

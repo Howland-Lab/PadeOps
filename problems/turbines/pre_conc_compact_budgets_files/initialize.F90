@@ -68,7 +68,7 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     use random,             only: gaussian_random
     use decomp_2d
     use reductions,         only: p_maxval
-    use pre_conc_compact_budgets_parameters, only: xdim, seedu, message
+    use pre_conc_compact_budgets_parameters
     implicit none
     type(decomp_info),               intent(in)    :: decompC
     type(decomp_info),               intent(in)    :: decompE
@@ -172,7 +172,7 @@ end subroutine
 
 subroutine setDirichletBC_Temp(inputfile, Tsurf, dTsurf_dt)
     use kind_parameters,       only: rkind
-    use pre_conc_compact_budgets_parameters, only: timeDim
+    use pre_conc_compact_budgets_parameters
     use constants, only: one, zero
     implicit none
     real(rkind), intent(out) :: Tsurf, dTsurf_dt
@@ -237,7 +237,7 @@ end subroutine
 
 
 subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
-    use pre_conc_compact_budgets_parameters, only: nxg, nyg, nzg
+    use pre_conc_compact_budgets_parameters
     use kind_parameters,  only: rkind
     use constants,        only: zero, one, two
     use decomp_2d,        only: decomp_info
