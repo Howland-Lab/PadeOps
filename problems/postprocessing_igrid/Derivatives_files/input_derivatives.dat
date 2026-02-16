@@ -1,0 +1,18 @@
+&INPUT
+inputdir                      = "null"   ! Directory for any input files
+outputdir                     = "null"   ! Directory for all output files
+nx                            = 100          ! Number of points in X
+ny                            = 100          ! Number of points in Y
+nz                            = 100          ! Number of points in Z
+Lx                            = 1000         ! Length in X
+Ly                            = 1000         ! Length in Y
+Lz                            = 1000         ! Length in Z
+prow                          = 0           ! Number of rows in 2D processor decomposition (set 0 for auto-tuning)
+pcol                          = 0           ! Number of rows in 2D processor decomposition (set 0 for auto-tuning)
+filename                      = 'null'     ! Name of file holding the field to be differentiated
+derivative_type               = 'x'       ! <x,y,z>
+NumericalSchemeVert           = 1 
+is_staggered                  = .false.  ! Is the field stored in edges (e.g., the w field)
+bottom_BC                     = 1  ! <-1:odd, 0, 1:even> Type of parity at the bottom BC
+top_BC                        = 1  ! <-1:odd, 0, 1:even> Type of parity at the top BC
+/
