@@ -27,6 +27,7 @@ elseif( CMAKE_Fortran_COMPILER_ID MATCHES "Cray" )
 else()
    # Replace $ENV{CRAY_LIBSCI_PREFIX_DIR}/lib/libsci_gnu.a with local library if needed
    target_link_libraries(PadeOps fftw3 2decomp_fft $ENV{CRAY_LIBSCI_PREFIX_DIR}/lib/libsci_gnu.a  ${HDF5_LIBRARY_PATH}/libhdf5hl_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5_hl.a ${HDF5_LIBRARY_PATH}/libhdf5_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5.a ${MPI_LIBRARIES} -lz -ldl -lm -Wl,-rpath -Wl,${HDF5_LIBRARY_PATH})
+endif()
 
 if ( CMAKE_Fortran_COMPILER_ID MATCHES "Intel" )
    target_link_libraries(PadeOps fftw3 2decomp_fft  ${MPI_LIBRARIES})
