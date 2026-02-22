@@ -184,6 +184,7 @@ module budgets_time_avg_mod
         logical :: do_budgets
         logical :: forceDump
         logical :: splitPressureDNS
+        logical :: squeeze = .false. ! if ture, limits the number of dumped budgets 
 
     contains
         procedure           :: init        
@@ -253,7 +254,8 @@ contains
         integer :: tidx_compute = 1000000, tidx_dump = 1000000, tidx_budget_start = -100
         real(rkind) :: time_budget_start = -1.0d0
         logical :: do_budgets = .false. 
-        namelist /BUDGET_TIME_AVG/ budgetType, budgets_dir, restart_budgets, restart_dir, restart_rid, restart_tid, restart_counter, tidx_dump, tidx_compute, do_budgets, tidx_budget_start, time_budget_start
+        logical :: squeeze = .false.
+        namelist /BUDGET_TIME_AVG/ budgetType, budgets_dir, restart_budgets, restart_dir, restart_rid, restart_tid, restart_counter, tidx_dump, tidx_compute, do_budgets, tidx_budget_start, time_budget_start, squeeze
         
         restart_dir = "NULL"
 
@@ -275,6 +277,7 @@ contains
         this%isStratified    = igrid_sim%isStratified
         this%useCoriolis    = igrid_sim%useCoriolis
         this%forceDump = .false.
+        this%squeeze = squeeze
 
         this%budgets_dir = budgets_dir
         this%budgetType = budgetType
@@ -560,6 +563,13 @@ contains
 
         ! Step 7: Dump the full budget 
         do idx = 1,size(this%budget_0,4)
+            if(this%squeeze)then
+                if((idx <= 16) .or. (idx == 26) .or. (idx == 31))then 
+                    continue
+                else
+                    cycle
+                end if
+            end if
             call this%dump_budget_field(this%budget_0(:,:,:,idx),idx,0)
         end do 
         
@@ -647,38 +657,40 @@ contains
         this%budget_0(:,:,:,11:16) = this%budget_0(:,:,:,11:16) + this%igrid_sim%tauSGS_ij 
 
         ! STEP 5: Pressure flux for TKE transport
-        this%budget_0(:,:,:,17) = this%budget_0(:,:,:,17) + this%igrid_sim%pressure*this%igrid_sim%u
-        this%budget_0(:,:,:,18) = this%budget_0(:,:,:,18) + this%igrid_sim%pressure*this%igrid_sim%v
-        this%budget_0(:,:,:,19) = this%budget_0(:,:,:,19) + this%igrid_sim%pressure*this%igrid_sim%wC
+        if(.not. this%squeeze)then
+            this%budget_0(:,:,:,17) = this%budget_0(:,:,:,17) + this%igrid_sim%pressure*this%igrid_sim%u
+            this%budget_0(:,:,:,18) = this%budget_0(:,:,:,18) + this%igrid_sim%pressure*this%igrid_sim%v
+            this%budget_0(:,:,:,19) = this%budget_0(:,:,:,19) + this%igrid_sim%pressure*this%igrid_sim%wC
 
-        ! STEP 6: Turbulent flux for TKE transport
-        this%igrid_sim%rbuffxC(:,:,:,1) = half*(this%igrid_sim%u * this%igrid_sim%u + &
-                                                this%igrid_sim%v * this%igrid_sim%v + &
-                                                this%igrid_sim%wC* this%igrid_sim%wC ) 
-        this%budget_0(:,:,:,20) = this%budget_0(:,:,:,20) + this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%u
-        this%budget_0(:,:,:,21) = this%budget_0(:,:,:,21) + this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%v
-        this%budget_0(:,:,:,22) = this%budget_0(:,:,:,22) + this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%wC
+            ! STEP 6: Turbulent flux for TKE transport
+            this%igrid_sim%rbuffxC(:,:,:,1) = half*(this%igrid_sim%u * this%igrid_sim%u + &
+                                                    this%igrid_sim%v * this%igrid_sim%v + &
+                                                    this%igrid_sim%wC* this%igrid_sim%wC ) 
+            this%budget_0(:,:,:,20) = this%budget_0(:,:,:,20) + this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%u
+            this%budget_0(:,:,:,21) = this%budget_0(:,:,:,21) + this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%v
+            this%budget_0(:,:,:,22) = this%budget_0(:,:,:,22) + this%igrid_sim%rbuffxC(:,:,:,1)*this%igrid_sim%wC
 
-        ! STEP 7: SGS flux for TKE transport
-        this%budget_0(:,:,:,23) = this%budget_0(:,:,:,23) + this%igrid_sim%tauSGS_ij(:,:,:,1)*this%igrid_sim%u
-        this%budget_0(:,:,:,23) = this%budget_0(:,:,:,23) + this%igrid_sim%tauSGS_ij(:,:,:,2)*this%igrid_sim%v
-        this%budget_0(:,:,:,23) = this%budget_0(:,:,:,23) + this%igrid_sim%tauSGS_ij(:,:,:,3)*this%igrid_sim%wC
+            ! STEP 7: SGS flux for TKE transport
+            this%budget_0(:,:,:,23) = this%budget_0(:,:,:,23) + this%igrid_sim%tauSGS_ij(:,:,:,1)*this%igrid_sim%u
+            this%budget_0(:,:,:,23) = this%budget_0(:,:,:,23) + this%igrid_sim%tauSGS_ij(:,:,:,2)*this%igrid_sim%v
+            this%budget_0(:,:,:,23) = this%budget_0(:,:,:,23) + this%igrid_sim%tauSGS_ij(:,:,:,3)*this%igrid_sim%wC
 
-        this%budget_0(:,:,:,24) = this%budget_0(:,:,:,24) + this%igrid_sim%tauSGS_ij(:,:,:,2)*this%igrid_sim%u
-        this%budget_0(:,:,:,24) = this%budget_0(:,:,:,24) + this%igrid_sim%tauSGS_ij(:,:,:,4)*this%igrid_sim%v
-        this%budget_0(:,:,:,24) = this%budget_0(:,:,:,24) + this%igrid_sim%tauSGS_ij(:,:,:,5)*this%igrid_sim%wC
+            this%budget_0(:,:,:,24) = this%budget_0(:,:,:,24) + this%igrid_sim%tauSGS_ij(:,:,:,2)*this%igrid_sim%u
+            this%budget_0(:,:,:,24) = this%budget_0(:,:,:,24) + this%igrid_sim%tauSGS_ij(:,:,:,4)*this%igrid_sim%v
+            this%budget_0(:,:,:,24) = this%budget_0(:,:,:,24) + this%igrid_sim%tauSGS_ij(:,:,:,5)*this%igrid_sim%wC
 
-        this%budget_0(:,:,:,25) = this%budget_0(:,:,:,25) + this%igrid_sim%tauSGS_ij(:,:,:,3)*this%igrid_sim%u
-        this%budget_0(:,:,:,25) = this%budget_0(:,:,:,25) + this%igrid_sim%tauSGS_ij(:,:,:,5)*this%igrid_sim%v
-        this%budget_0(:,:,:,25) = this%budget_0(:,:,:,25) + this%igrid_sim%tauSGS_ij(:,:,:,6)*this%igrid_sim%wC
+            this%budget_0(:,:,:,25) = this%budget_0(:,:,:,25) + this%igrid_sim%tauSGS_ij(:,:,:,3)*this%igrid_sim%u
+            this%budget_0(:,:,:,25) = this%budget_0(:,:,:,25) + this%igrid_sim%tauSGS_ij(:,:,:,5)*this%igrid_sim%v
+            this%budget_0(:,:,:,25) = this%budget_0(:,:,:,25) + this%igrid_sim%tauSGS_ij(:,:,:,6)*this%igrid_sim%wC
 
-        ! STEP 8: Potential temperature terms for stratified flow
-        if (this%isStratified) then
-            this%budget_0(:,:,:,27) = this%budget_0(:,:,:,27) + this%igrid_sim%u*this%igrid_sim%T
-            this%budget_0(:,:,:,28) = this%budget_0(:,:,:,28) + this%igrid_sim%v*this%igrid_sim%T
-            ! compute w'T' on edge cells for implicit dealiasing
-            this%budget_0(:,:,:,29) = this%budget_0(:,:,:,29) +  this%multiply_Edges_interp_cell(this%igrid_sim%TE, this%igrid_sim%w)
-            this%budget_0(:,:,:,30) = this%budget_0(:,:,:,30) + this%igrid_sim%T*this%igrid_sim%T
+            ! STEP 8: Potential temperature terms for stratified flow
+            if (this%isStratified) then
+                this%budget_0(:,:,:,27) = this%budget_0(:,:,:,27) + this%igrid_sim%u*this%igrid_sim%T
+                this%budget_0(:,:,:,28) = this%budget_0(:,:,:,28) + this%igrid_sim%v*this%igrid_sim%T
+                ! compute w'T' on edge cells for implicit dealiasing
+                this%budget_0(:,:,:,29) = this%budget_0(:,:,:,29) +  this%multiply_Edges_interp_cell(this%igrid_sim%TE, this%igrid_sim%w)
+                this%budget_0(:,:,:,30) = this%budget_0(:,:,:,30) + this%igrid_sim%T*this%igrid_sim%T
+            end if
         end if
 
         !STEP 9: Scalar Means
