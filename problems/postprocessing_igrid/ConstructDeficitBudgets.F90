@@ -41,6 +41,7 @@ module constructDeficitBudgets_mod
    real(rkind), dimension(:,:,:), pointer :: dvdx_base, dvdy_base, dvdz_base
    real(rkind), dimension(:,:,:), pointer :: dwdx_base, dwdy_base, dwdz_base
    character(len=:), allocatable :: sorted_keys(:), sorted_stamps(:)
+   logical :: do_box_averaging=.true.
 
    contains
 
@@ -146,7 +147,7 @@ module constructDeficitBudgets_mod
          end select
 
          ! Average this budget term across the box
-         call integrate_box_yz(buffer, profiles(:,idx))
+         if(do_box_averaging) call integrate_box_yz(buffer, profiles(:,idx))
 
          ! Write to file calculated dependent variables if requested
          if(writeDependentVariables .and. depedent_variable(idx))then
@@ -1185,8 +1186,10 @@ module constructDeficitBudgets_mod
       call message(0,'Identified boundary condition stenciles')
 
       ! Intersect the box with the mesh
-      call intersectBoxAndMesh()
-      call message(0,'Control volume box intersected with the mesh')
+      if(do_box_averaging)then
+         call intersectBoxAndMesh()
+         call message(0,'Control volume box intersected with the mesh')
+      end if
 
       ! Allocate holder of x-profiles
       select case (budgettype)
@@ -1230,9 +1233,12 @@ module constructDeficitBudgets_mod
 
       deallocate(mesh, duidxj, duidxj_base, Budget0, Budget1, Budget2, baseBudget0)
       if(allocated(Budget3)) deallocate(Budget3)
-      deallocate(rbuffxC, cbuffyC, cbuffzC)
-      deallocate(profiles, xstations)  
-
+      if(allocated(rbuffxC)) deallocate(rbuffxC)
+      if(allocated(cbuffyC)) deallocate(cbuffyC)
+      if(allocated(cbuffzC)) deallocate(cbuffzC)
+      if(allocated(profiles)) deallocate(profiles)
+      if(allocated(xstations)) deallocate(xstations)
+      
       nullify(dudx, dudy, dudz, dvdx, dvdy, dvdz, dwdx, dwdy, dwdz)
       nullify(dudx_base, dudy_base, dudz_base, dvdx_base, dvdy_base, dvdz_base, dwdx_base, dwdy_base, dwdz_base)
 
@@ -1255,7 +1261,8 @@ program constructDeficitBudgets
    character(len=clen) :: inputfile
       
    namelist /INPUT/ inputdir, outputdir, nx, ny, nz, Lx, Ly, Lz, prow, pcol, RID, &
-                    BRID, budgettype, writeDependentVariables, startIDX, endIDX, tag
+                    BRID, budgettype, writeDependentVariables, startIDX, endIDX, tag, &
+                    do_box_averaging
    namelist /NUMERICS/ NumericalSchemeVert
    namelist /BCs/ PeriodicInZ, botWall, topWall, botBC_temp
    namelist /BOX/ x1, x2, y1, y2, z1, z2
@@ -1308,7 +1315,7 @@ program constructDeficitBudgets
       call compute_budgets(trim(sorted_keys(k)), trim(sorted_stamps(k)))  
 
       ! Export profiles
-      if(nrank == 0)then
+      if((nrank == 0) .and. do_box_averaging)then
          call export_csv(trim(sorted_keys(k)), trim(sorted_stamps(k)))
       end if
 
