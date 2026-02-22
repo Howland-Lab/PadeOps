@@ -380,6 +380,7 @@ module IncompressibleGrid
             procedure          :: instrumentForBudgets
             procedure          :: instrumentForBudgets_timeAvg
             procedure          :: instrumentForBudgets_volAvg
+            procedure          :: instrumentForDeficitBudgets
             procedure          :: getMomentumTerms
             procedure          :: set_budget_rhs_to_zero
             procedure, private :: advance_SSP_RK45_all_stages

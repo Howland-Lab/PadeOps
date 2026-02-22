@@ -5,9 +5,10 @@ module budgets_time_avg_deficit_compact_mod
     use exits, only: message, GracefulExit
     use constants, only: zero, half, two
     use mpi
-    use incompressibleGrid, only : uBC_bottom, uBC_top, vBC_bottom, vBC_top, wBC_bottom, wBC_top, &
-                      TBC_bottom, TBC_top, UWBC_bottom, UWBC_top, VWBC_bottom, VWBC_top, &
-                      WTBC_bottom, WTBC_top
+    use incompressibleGrid, only : igrid, &
+        uBC_bottom, uBC_top, vBC_bottom, vBC_top, wBC_bottom, wBC_top, &
+        TBC_bottom, TBC_top, UWBC_bottom, UWBC_top, VWBC_bottom, VWBC_top, &
+        WTBC_bottom, WTBC_top
  
     implicit none 
  
@@ -21,8 +22,11 @@ module budgets_time_avg_deficit_compact_mod
         integer :: run_id, nx, ny, nz
         logical :: do_budget0=.false., do_budget1=.false., do_budget2=.false., do_budget3=.false.
         
-        type(budgets_time_avg), pointer :: pre_budget, prim_budget
-        
+        type(igrid), pointer :: prim_igrid_sim
+        type(budgets_time_avg), pointer :: pre_budget
+
+        complex(rkind), dimension(:,:,:), allocatable, public :: uc, vc, wc, usgs, vsgs, wsgs, px, py, pz, uturb, vturb, wturb, ucor, vcor, wcor, wb
+                
         real(rkind), dimension(:,:,:,:), allocatable :: budget_0, budget_1, budget_2, budget_3
         integer :: size_budget_0, size_budget_1, size_budget_2, size_budget_3
         real(rkind), dimension(:,:,:,:), allocatable :: MCG
@@ -60,29 +64,22 @@ module budgets_time_avg_deficit_compact_mod
         procedure, private  :: AssembleBudget2
         procedure, private  :: AssembleBudget3
         procedure, private  :: AssembleMCG
-        procedure, private  :: restartMCG
-   
+        procedure, private  :: restartMCG   
         procedure, private  :: getProductOfMeans
-        ! procedure, private  :: writeTimeSum
-        ! procedure, private  :: readTimeSum
-
         procedure, private :: ddx_R2R
         procedure, private :: ddy_R2R
         procedure, private :: ddz_R2R
-        !procedure, private :: ddz_C2R
         procedure, private :: dealias
         procedure, private :: interp_Edge2Cell
-        ! procedure, private :: interp_Cell2Edge
-        ! procedure, private :: multiply_CellFieldsOnEdges
-        ! procedure, private :: multiply_edges_interp_cell
      end type
 
     contains
 
-    subroutine init(this, pre_budget, primary_inputfile, prim_budget) 
+    subroutine init(this, pre_budget, primary_inputfile, prim_igrid_sim) 
         class(budgets_time_avg_deficit_compact), intent(inout) :: this
         character(len=*), intent(in) :: primary_inputfile 
-        type(budgets_time_avg), intent(inout), target :: pre_budget, prim_budget        
+        type(budgets_time_avg), intent(inout), target :: pre_budget       
+        type(igrid), intent(inout), target :: prim_igrid_sim
         character(len=clen) :: budgets_dir = "NULL"
         character(len=clen) :: restart_dir = "NULL"
         integer :: ioUnit, ierr,  restart_tid = 0, restart_rid = 0, restart_counter = 0
@@ -104,22 +101,19 @@ module budgets_time_avg_deficit_compact_mod
         close(ioUnit)
 
         this%pre_budget => pre_budget 
-        this%prim_budget => prim_budget
-        this%run_id = this%prim_budget%igrid_sim%runid
-        this%nx = this%prim_budget%igrid_sim%gpC%xsz(1)
-        this%ny = this%prim_budget%igrid_sim%gpC%xsz(2)
-        this%nz = this%prim_budget%igrid_sim%gpC%xsz(3)  ! centered grid x, y, z
-        ! this%nxE = this%prim_budget%igrid_sim%gpE%xsz(1)
-        ! this%nyE = this%prim_budget%igrid_sim%gpE%xsz(2)
-        ! this%nzE = this%prim_budget%igrid_sim%gpE%xsz(3) 
+        this%prim_igrid_sim => prim_igrid_sim
+        this%run_id = this%prim_igrid_sim%runid
+        this%nx = this%prim_igrid_sim%gpC%xsz(1)
+        this%ny = this%prim_igrid_sim%gpC%xsz(2)
+        this%nz = this%prim_igrid_sim%gpC%xsz(3)  ! centered grid x, y, z
         this%do_budgets = do_budgets
         this%tidx_dump = tidx_dump
         this%tidx_compute = tidx_compute
         this%tidx_budget_start = tidx_budget_start  
         this%time_budget_start = time_budget_start  
-        !this%useWindTurbines = this%prim_budget%igrid_sim%useWindTurbines
-        this%isStratified    = this%prim_budget%igrid_sim%isStratified
-        this%useCoriolis    = this%prim_budget%igrid_sim%useCoriolis
+        !this%useWindTurbines = this%prim_igrid_sim%useWindTurbines
+        this%isStratified    = this%prim_igrid_sim%isStratified
+        this%useCoriolis    = this%prim_igrid_sim%useCoriolis
         ! Deactivate time-weighted sum till time-averaged budgets are weighted similarily
         !this%time_weighted_average = use_time_weighted_average
         this%time_weighted_average = .False.
@@ -176,7 +170,7 @@ module budgets_time_avg_deficit_compact_mod
             if(this%doMCG)allocate(this%MCG(this%nx,this%ny,this%nz,18))
 
             if ((trim(budgets_dir) .eq. "null") .or.(trim(budgets_dir) .eq. "NULL")) then 
-                this%budgets_dir = this%prim_budget%igrid_sim%outputDir
+                this%budgets_dir = this%prim_igrid_sim%outputDir
             end if 
 
             if ((trim(restart_dir) .eq. "null") .or.(trim(restart_dir) .eq. "NULL")) then
@@ -189,6 +183,36 @@ module budgets_time_avg_deficit_compact_mod
             else
                 call this%resetBudget()
             end if 
+
+            ! STEP 2: Allocate memory (large amount of memory needed)
+
+            call prim_igrid_sim%spectC%alloc_r2c_out(this%uc)
+            call prim_igrid_sim%spectC%alloc_r2c_out(this%vc)
+            call prim_igrid_sim%spectE%alloc_r2c_out(this%wc)
+            call prim_igrid_sim%spectC%alloc_r2c_out(this%usgs)
+            call prim_igrid_sim%spectC%alloc_r2c_out(this%vsgs)
+            call prim_igrid_sim%spectE%alloc_r2c_out(this%wsgs)
+            call prim_igrid_sim%spectC%alloc_r2c_out(this%px)
+            call prim_igrid_sim%spectC%alloc_r2c_out(this%py)
+            call prim_igrid_sim%spectE%alloc_r2c_out(this%pz)
+            if(this%useWindTurbines)then
+                call prim_igrid_sim%spectC%alloc_r2c_out(this%uturb)
+                call prim_igrid_sim%spectC%alloc_r2c_out(this%vturb)
+                call prim_igrid_sim%spectE%alloc_r2c_out(this%wturb)
+            end if
+            call prim_igrid_sim%spectC%alloc_r2c_out(this%ucor)
+            call prim_igrid_sim%spectC%alloc_r2c_out(this%vcor)
+            call prim_igrid_sim%spectC%alloc_r2c_out(this%wcor)
+            call prim_igrid_sim%spectE%alloc_r2c_out(this%wb)
+
+            ! STEP 3: Now instrument igrid -> links pointers in the grid object to arrays created for budget
+            if(this%useWindTurbines)then
+                call prim_igrid_sim%instrumentForDeficitBudgets(this%uc, this%vc, this%wc, this%usgs, this%vsgs, this%wsgs, this%px, this%py, this%pz, & 
+                        this%ucor, this%vcor, this%wcor, this%wb, this%uturb, this%vturb, this%wturb) 
+            else
+                call prim_igrid_sim%instrumentForDeficitBudgets(this%uc, this%vc, this%wc, this%usgs, this%vsgs, this%wsgs, this%px, this%py, this%pz, & 
+                    this%ucor, this%vcor, this%wcor, this%wb) 
+            end if             
         end if 
      end subroutine
 
@@ -200,19 +224,19 @@ module budgets_time_avg_deficit_compact_mod
             this%forceDump = forceDump
         endif
 
-        if(this%prim_budget%igrid_sim%tsim > this%prim_budget%igrid_sim%tstop) then
+        if(this%prim_igrid_sim%tsim > this%prim_igrid_sim%tstop) then
             this%forceDump = .TRUE.
         endif
 
         if (this%do_budgets)  then
-            if( ( (this%tidx_budget_start>0) .and. (this%prim_budget%igrid_sim%step>this%tidx_budget_start) ) .or. &
-                ( (this%time_budget_start>0) .and. (this%prim_budget%igrid_sim%tsim>this%time_budget_start) ) ) then
+            if( ( (this%tidx_budget_start>0) .and. (this%prim_igrid_sim%step>this%tidx_budget_start) ) .or. &
+                ( (this%time_budget_start>0) .and. (this%prim_igrid_sim%tsim>this%time_budget_start) ) ) then
         
-                if (mod(this%prim_budget%igrid_sim%step,this%tidx_compute) .eq. 0) then
+                if (mod(this%prim_igrid_sim%step,this%tidx_compute) .eq. 0) then
                     call this%updateBudget()
                 end if
 
-                if ((mod(this%prim_budget%igrid_sim%step,this%tidx_dump) .eq. 0) .or. this%forceDump) then
+                if ((mod(this%prim_igrid_sim%step,this%tidx_dump) .eq. 0) .or. this%forceDump) then
                     call this%dumpBudget()
                     call message(0,"Dumped a compact deficit budget file")
                 end if 
@@ -226,13 +250,13 @@ module budgets_time_avg_deficit_compact_mod
         class(budgets_time_avg_deficit_compact), intent(inout) :: this
 
         ! This step computes the pressure field of the primary and precursor simulations.
-        call this%prim_budget%igrid_sim%getMomentumTerms()  
+        call this%prim_igrid_sim%getMomentumTerms()  
         call this%pre_budget%igrid_sim%getMomentumTerms()  
 
         ! Interpolate SGS stresses to cells
         call this%pre_budget%igrid_sim%sgsmodel%populate_tauij_E_to_C()
-        call this%prim_budget%igrid_sim%sgsmodel%populate_tauij_E_to_C()
-        this%delta_tauij = this%prim_budget%igrid_sim%tauSGS_ij - this%pre_budget%igrid_sim%tauSGS_ij
+        call this%prim_igrid_sim%sgsmodel%populate_tauij_E_to_C()
+        this%delta_tauij = this%prim_igrid_sim%tauSGS_ij - this%pre_budget%igrid_sim%tauSGS_ij
 
         if(this%doMCG) call this%AssembleMCG()
         if(this%do_budget0) call this%AssembleBudget0()
@@ -255,7 +279,7 @@ module budgets_time_avg_deficit_compact_mod
 
         ! Cell x-pencil buffers 
         ! Buffers 1 and 2 are used locally inside getProductOfMeans
-        buffer => this%prim_budget%igrid_sim%rbuffxC(:,:,:,4)
+        buffer => this%prim_igrid_sim%rbuffxC(:,:,:,4)
 
         ! Convert assembled budgets to mean instead of sum
         if(this%do_budget0) this%budget_0 = this%budget_0/totalWeight
@@ -348,7 +372,7 @@ module budgets_time_avg_deficit_compact_mod
     ! ---------------------- Mean Cell Gradients (MCG) ------------------------
     subroutine AssembleMCG(this)
         class(budgets_time_avg_deficit_compact), intent(inout) :: this  
-        this%MCG(:,:,:,1:9) = this%MCG(:,:,:,1:9) + this%prim_budget%igrid_sim%duidxjC(:,:,:,1:9) - this%pre_budget%igrid_sim%duidxjC(:,:,:,1:9)
+        this%MCG(:,:,:,1:9) = this%MCG(:,:,:,1:9) + this%prim_igrid_sim%duidxjC(:,:,:,1:9) - this%pre_budget%igrid_sim%duidxjC(:,:,:,1:9)
         this%MCG(:,:,:,10:18) = this%MCG(:,:,:,10:18) + this%pre_budget%igrid_sim%duidxjC(:,:,:,1:9)
     end subroutine    
 
@@ -359,26 +383,26 @@ module budgets_time_avg_deficit_compact_mod
         complex(rkind), dimension(:,:,:), pointer :: cbuffyE1, cbuffyC1
         
         ! Link pointers
-        cbuffyE1 => this%prim_budget%igrid_sim%cbuffyE(:,:,:,1)
-        cbuffyC1 => this%prim_budget%igrid_sim%cbuffyC(:,:,:,2) ! 1 is used in ddx, ddy, ddz routines        
-        rbuffxE1 => this%prim_budget%igrid_sim%rbuffxE(:,:,:,1)
-        rbuffxC1 => this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)
-        rbuffxC2 => this%prim_budget%igrid_sim%rbuffxC(:,:,:,2)        
+        cbuffyE1 => this%prim_igrid_sim%cbuffyE(:,:,:,1)
+        cbuffyC1 => this%prim_igrid_sim%cbuffyC(:,:,:,2) ! 1 is used in ddx, ddy, ddz routines        
+        rbuffxE1 => this%prim_igrid_sim%rbuffxE(:,:,:,1)
+        rbuffxC1 => this%prim_igrid_sim%rbuffxC(:,:,:,1)
+        rbuffxC2 => this%prim_igrid_sim%rbuffxC(:,:,:,2)        
         
         ! STEP 1: Compute mean Delta U, Delta V, and Delta W
-        this%budget_0(:,:,:,1) = this%budget_0(:,:,:,1) + (this%prim_budget%igrid_sim%u  - this%pre_budget%igrid_sim%u)
-        this%budget_0(:,:,:,2) = this%budget_0(:,:,:,2) + (this%prim_budget%igrid_sim%v  - this%pre_budget%igrid_sim%v)
-        this%budget_0(:,:,:,3) = this%budget_0(:,:,:,3) + (this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC)
+        this%budget_0(:,:,:,1) = this%budget_0(:,:,:,1) + (this%prim_igrid_sim%u  - this%pre_budget%igrid_sim%u)
+        this%budget_0(:,:,:,2) = this%budget_0(:,:,:,2) + (this%prim_igrid_sim%v  - this%pre_budget%igrid_sim%v)
+        this%budget_0(:,:,:,3) = this%budget_0(:,:,:,3) + (this%prim_igrid_sim%wC - this%pre_budget%igrid_sim%wC)
 
         ! STEP 2: Pressure
-        this%budget_0(:,:,:,4) = this%budget_0(:,:,:,4) + (this%prim_budget%igrid_sim%pressure - this%pre_budget%igrid_sim%pressure)
+        this%budget_0(:,:,:,4) = this%budget_0(:,:,:,4) + (this%prim_igrid_sim%pressure - this%pre_budget%igrid_sim%pressure)
 
         ! STEP 3: Potential temperature
         if (this%isStratified)then 
-            this%budget_0(:,:,:,5) = this%budget_0(:,:,:,5) + (this%prim_budget%igrid_sim%T - this%pre_budget%igrid_sim%T)
+            this%budget_0(:,:,:,5) = this%budget_0(:,:,:,5) + (this%prim_igrid_sim%T - this%pre_budget%igrid_sim%T)
             
-            cbuffyE1 = this%prim_budget%wb - this%pre_budget%wb
-            call this%prim_budget%igrid_sim%spectE%ifft(cbuffyE1, rbuffxE1)
+            cbuffyE1 = this%wb - this%pre_budget%wb
+            call this%prim_igrid_sim%spectE%ifft(cbuffyE1, rbuffxE1)
             call this%interp_Edge2Cell(rbuffxE1, rbuffxC1, TBC_bottom, TBC_top)
             this%budget_0(:,:,:,17) = this%budget_0(:,:,:,17) + rbuffxC1
         end if
@@ -388,17 +412,17 @@ module budgets_time_avg_deficit_compact_mod
 
         ! Step 5: SGS stress gradients
         ! Reverse signs of usgs, vsgs, wsgs
-        cbuffyC1 = this%pre_budget%usgs - this%prim_budget%usgs
-        call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
+        cbuffyC1 = this%pre_budget%usgs - this%usgs
+        call this%prim_igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
         this%budget_0(:,:,:,12) = this%budget_0(:,:,:,12) + rbuffxC1
 
-        cbuffyC1 = this%pre_budget%vsgs - this%prim_budget%vsgs
-        call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
+        cbuffyC1 = this%pre_budget%vsgs - this%vsgs
+        call this%prim_igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
         this%budget_0(:,:,:,13) = this%budget_0(:,:,:,13) + rbuffxC1
 
         ! wsgs is odd
-        cbuffyE1 = this%pre_budget%wsgs - this%prim_budget%wsgs
-        call this%prim_budget%igrid_sim%spectE%ifft(cbuffyE1, rbuffxE1)
+        cbuffyE1 = this%pre_budget%wsgs - this%wsgs
+        call this%prim_igrid_sim%spectE%ifft(cbuffyE1, rbuffxE1)
         call this%interp_Edge2Cell(rbuffxE1, rbuffxC1, -1, -1)
         this%budget_0(:,:,:,14) = this%budget_0(:,:,:,14) + rbuffxC1
         
@@ -409,47 +433,47 @@ module budgets_time_avg_deficit_compact_mod
             this%budget_0(:,:,:,15) = this%budget_0(:,:,:,15) + rbuffxC1
             this%budget_0(:,:,:,16) = this%budget_0(:,:,:,16) + rbuffxC2      
 
-            call this%prim_budget%igrid_sim%get_geostrophic_forcing(rbuffxC1, rbuffxC2)
+            call this%prim_igrid_sim%get_geostrophic_forcing(rbuffxC1, rbuffxC2)
             this%budget_0(:,:,:,15) = this%budget_0(:,:,:,15) - rbuffxC1
             this%budget_0(:,:,:,16) = this%budget_0(:,:,:,16) - rbuffxC2              
             
             ! Coriolis term, X 
-            cbuffyC1 = this%prim_budget%ucor - this%pre_budget%ucor      
-            call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
+            cbuffyC1 = this%ucor - this%pre_budget%ucor      
+            call this%prim_igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
             this%budget_0(:,:,:,15) = this%budget_0(:,:,:,15) + rbuffxC1
 
             ! Coriolis term, Y       
-            cbuffyC1 = this%prim_budget%vcor - this%pre_budget%vcor
-            call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)            
+            cbuffyC1 = this%vcor - this%pre_budget%vcor
+            call this%prim_igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)            
             this%budget_0(:,:,:,16) = this%budget_0(:,:,:,16) + rbuffxC1
         end if
 
         ! Step 7: Pressure gradient force
         ! px sign is reversed
-        cbuffyC1 = this%pre_budget%px - this%prim_budget%px
-        call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
+        cbuffyC1 = this%pre_budget%px - this%px
+        call this%prim_igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
         this%budget_0(:,:,:,18) = this%budget_0(:,:,:,18) + rbuffxC1
 
         ! py sign is reversed
-        cbuffyC1 = this%pre_budget%py - this%prim_budget%py
-        call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
+        cbuffyC1 = this%pre_budget%py - this%py
+        call this%prim_igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
         this%budget_0(:,:,:,19) = this%budget_0(:,:,:,19) + rbuffxC1
 
         ! pz sign is reversed
         ! pz is odd
-        cbuffyE1 = this%pre_budget%pz - this%prim_budget%pz
-        call this%prim_budget%igrid_sim%spectE%ifft(cbuffyE1, rbuffxE1)
+        cbuffyE1 = this%pre_budget%pz - this%pz
+        call this%prim_igrid_sim%spectE%ifft(cbuffyE1, rbuffxE1)
         call this%interp_Edge2Cell(rbuffxE1, rbuffxC1, -1, -1)
         this%budget_0(:,:,:,20) = this%budget_0(:,:,:,20) + rbuffxC1         
 
         ! Step 8: turbine forcing
         if(this%useWindTurbines)then        
-            cbuffyC1 = this%prim_budget%uturb - this%pre_budget%uturb
-            call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
+            cbuffyC1 = this%uturb - this%pre_budget%uturb
+            call this%prim_igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
             this%budget_0(:,:,:,21) = this%budget_0(:,:,:,21) + rbuffxC1
 
-            cbuffyC1 = this%prim_budget%vturb - this%pre_budget%vturb
-            call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
+            cbuffyC1 = this%vturb - this%pre_budget%vturb
+            call this%prim_igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
             this%budget_0(:,:,:,22) = this%budget_0(:,:,:,22) + rbuffxC1
         end if
 
@@ -462,25 +486,25 @@ module budgets_time_avg_deficit_compact_mod
         real(rkind), dimension(:,:,:), pointer :: du, dv, dw, duE, dvE, dwE, buffer, buffE
 
         ! Cell x-pencil buffers 
-        du =>  this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)
-        dv =>  this%prim_budget%igrid_sim%rbuffxC(:,:,:,2)
-        dw =>  this%prim_budget%igrid_sim%rbuffxC(:,:,:,3)
-        buffer =>  this%prim_budget%igrid_sim%rbuffxC(:,:,:,4)
+        du =>  this%prim_igrid_sim%rbuffxC(:,:,:,1)
+        dv =>  this%prim_igrid_sim%rbuffxC(:,:,:,2)
+        dw =>  this%prim_igrid_sim%rbuffxC(:,:,:,3)
+        buffer =>  this%prim_igrid_sim%rbuffxC(:,:,:,4)
         
         ! Edge x-pencil buffers (only 2 are allocated in igrid.F90)
-        duE => this%prim_budget%igrid_sim%rbuffxE(:,:,:,1)
-        dvE => this%prim_budget%igrid_sim%rbuffxE(:,:,:,2)
+        duE => this%prim_igrid_sim%rbuffxE(:,:,:,1)
+        dvE => this%prim_igrid_sim%rbuffxE(:,:,:,2)
         dwE => this%pre_budget%igrid_sim%rbuffxE(:,:,:,1)
         buffE => this%pre_budget%igrid_sim%rbuffxE(:,:,:,2)
 
         ! Perturbation fields
-        du = this%prim_budget%igrid_sim%u  - this%pre_budget%igrid_sim%u
-        dv = this%prim_budget%igrid_sim%v  - this%pre_budget%igrid_sim%v
-        dw = this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC
+        du = this%prim_igrid_sim%u  - this%pre_budget%igrid_sim%u
+        dv = this%prim_igrid_sim%v  - this%pre_budget%igrid_sim%v
+        dw = this%prim_igrid_sim%wC - this%pre_budget%igrid_sim%wC
         
-        duE = this%prim_budget%igrid_sim%uE - this%pre_budget%igrid_sim%uE
-        dvE = this%prim_budget%igrid_sim%vE - this%pre_budget%igrid_sim%vE
-        dwE = this%prim_budget%igrid_sim%w  - this%pre_budget%igrid_sim%w
+        duE = this%prim_igrid_sim%uE - this%pre_budget%igrid_sim%uE
+        dvE = this%prim_igrid_sim%vE - this%pre_budget%igrid_sim%vE
+        dwE = this%prim_igrid_sim%w  - this%pre_budget%igrid_sim%w
 
         ! Reynolds stresses
         this%budget_1(:,:,:,1) = this%budget_1(:,:,:,1) + du * du
@@ -521,15 +545,15 @@ module budgets_time_avg_deficit_compact_mod
         real(rkind), dimension(:,:,:), pointer :: dwdxC_prim, dwdyC_prim, dwdzC_prim, dwdxC_pre, dwdyC_pre, dwdzC_pre
 
         ! Cell x-pencil buffers 
-        du => this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)
-        dv => this%prim_budget%igrid_sim%rbuffxC(:,:,:,2)        
-        dw => this%prim_budget%igrid_sim%rbuffxC(:,:,:,3)
-        buffC => this%prim_budget%igrid_sim%rbuffxC(:,:,:,4)
+        du => this%prim_igrid_sim%rbuffxC(:,:,:,1)
+        dv => this%prim_igrid_sim%rbuffxC(:,:,:,2)        
+        dw => this%prim_igrid_sim%rbuffxC(:,:,:,3)
+        buffC => this%prim_igrid_sim%rbuffxC(:,:,:,4)
 
         ! Perturbation fields
-        du = this%prim_budget%igrid_sim%u - this%pre_budget%igrid_sim%u
-        dv = this%prim_budget%igrid_sim%v - this%pre_budget%igrid_sim%v
-        dw = this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC
+        du = this%prim_igrid_sim%u - this%pre_budget%igrid_sim%u
+        dv = this%prim_igrid_sim%v - this%pre_budget%igrid_sim%v
+        dw = this%prim_igrid_sim%wC - this%pre_budget%igrid_sim%wC
 
         ! Base-flow fields
         ubase => this%pre_budget%igrid_sim%u
@@ -537,15 +561,15 @@ module budgets_time_avg_deficit_compact_mod
         wbase => this%pre_budget%igrid_sim%wC
 
         ! Primary simulation:
-        dudxC_prim => this%prim_budget%igrid_sim%duidxjC(:,:,:,1)
-        dudyC_prim => this%prim_budget%igrid_sim%duidxjC(:,:,:,2)
-        dudzC_prim => this%prim_budget%igrid_sim%duidxjC(:,:,:,3)
-        dvdxC_prim => this%prim_budget%igrid_sim%duidxjC(:,:,:,4)
-        dvdyC_prim => this%prim_budget%igrid_sim%duidxjC(:,:,:,5)
-        dvdzC_prim => this%prim_budget%igrid_sim%duidxjC(:,:,:,6)
-        dwdxC_prim => this%prim_budget%igrid_sim%duidxjC(:,:,:,7)
-        dwdyC_prim => this%prim_budget%igrid_sim%duidxjC(:,:,:,8)
-        dwdzC_prim => this%prim_budget%igrid_sim%duidxjC(:,:,:,9)
+        dudxC_prim => this%prim_igrid_sim%duidxjC(:,:,:,1)
+        dudyC_prim => this%prim_igrid_sim%duidxjC(:,:,:,2)
+        dudzC_prim => this%prim_igrid_sim%duidxjC(:,:,:,3)
+        dvdxC_prim => this%prim_igrid_sim%duidxjC(:,:,:,4)
+        dvdyC_prim => this%prim_igrid_sim%duidxjC(:,:,:,5)
+        dvdzC_prim => this%prim_igrid_sim%duidxjC(:,:,:,6)
+        dwdxC_prim => this%prim_igrid_sim%duidxjC(:,:,:,7)
+        dwdyC_prim => this%prim_igrid_sim%duidxjC(:,:,:,8)
+        dwdzC_prim => this%prim_igrid_sim%duidxjC(:,:,:,9)
 
         ! Precursor simulation:
         dudxC_pre => this%pre_budget%igrid_sim%duidxjC(:,:,:,1)
@@ -624,40 +648,40 @@ module budgets_time_avg_deficit_compact_mod
         real(rkind), dimension(:,:,:,:), pointer :: base_tauij
 
         ! Cell x-pencil buffers 
-        du => this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)
-        dv => this%prim_budget%igrid_sim%rbuffxC(:,:,:,2)
-        dw => this%prim_budget%igrid_sim%rbuffxC(:,:,:,3)
-        buffer => this%prim_budget%igrid_sim%rbuffxC(:,:,:,4)
+        du => this%prim_igrid_sim%rbuffxC(:,:,:,1)
+        dv => this%prim_igrid_sim%rbuffxC(:,:,:,2)
+        dw => this%prim_igrid_sim%rbuffxC(:,:,:,3)
+        buffer => this%prim_igrid_sim%rbuffxC(:,:,:,4)
         
         ! Cell y-pencil buffer 
-        cbuffyC1 => this%prim_budget%igrid_sim%cbuffyC(:,:,:,2) ! 1 is used in ddx, ddy, ddz routines 
+        cbuffyC1 => this%prim_igrid_sim%cbuffyC(:,:,:,2) ! 1 is used in ddx, ddy, ddz routines 
 
         ! Edge x-pencil buffer
-        rbuffxE1 => this%prim_budget%igrid_sim%rbuffxE(:,:,:,1)
-        rbuffxE2 => this%prim_budget%igrid_sim%rbuffxE(:,:,:,2)
+        rbuffxE1 => this%prim_igrid_sim%rbuffxE(:,:,:,1)
+        rbuffxE2 => this%prim_igrid_sim%rbuffxE(:,:,:,2)
 
         ! Edge y-pencil buffer
-        cbuffyE1 => this%prim_budget%igrid_sim%cbuffyE(:,:,:,1)
+        cbuffyE1 => this%prim_igrid_sim%cbuffyE(:,:,:,1)
 
         ! Perturbation fields
-        du = this%prim_budget%igrid_sim%u  - this%pre_budget%igrid_sim%u
-        dv = this%prim_budget%igrid_sim%v  - this%pre_budget%igrid_sim%v
-        dw = this%prim_budget%igrid_sim%wC - this%pre_budget%igrid_sim%wC
+        du = this%prim_igrid_sim%u  - this%pre_budget%igrid_sim%u
+        dv = this%prim_igrid_sim%v  - this%pre_budget%igrid_sim%v
+        dw = this%prim_igrid_sim%wC - this%pre_budget%igrid_sim%wC
 
         ubase => this%pre_budget%igrid_sim%u
         vbase => this%pre_budget%igrid_sim%v
         wbase => this%pre_budget%igrid_sim%wC
 
         ! Primary simulation gradients:
-        dudxC_prim => this%prim_budget%igrid_sim%duidxjC(:,:,:,1)
-        dudyC_prim => this%prim_budget%igrid_sim%duidxjC(:,:,:,2)
-        dudzC_prim => this%prim_budget%igrid_sim%duidxjC(:,:,:,3)
-        dvdxC_prim => this%prim_budget%igrid_sim%duidxjC(:,:,:,4)
-        dvdyC_prim => this%prim_budget%igrid_sim%duidxjC(:,:,:,5)
-        dvdzC_prim => this%prim_budget%igrid_sim%duidxjC(:,:,:,6)
-        dwdxC_prim => this%prim_budget%igrid_sim%duidxjC(:,:,:,7)
-        dwdyC_prim => this%prim_budget%igrid_sim%duidxjC(:,:,:,8)
-        dwdzC_prim => this%prim_budget%igrid_sim%duidxjC(:,:,:,9)
+        dudxC_prim => this%prim_igrid_sim%duidxjC(:,:,:,1)
+        dudyC_prim => this%prim_igrid_sim%duidxjC(:,:,:,2)
+        dudzC_prim => this%prim_igrid_sim%duidxjC(:,:,:,3)
+        dvdxC_prim => this%prim_igrid_sim%duidxjC(:,:,:,4)
+        dvdyC_prim => this%prim_igrid_sim%duidxjC(:,:,:,5)
+        dvdzC_prim => this%prim_igrid_sim%duidxjC(:,:,:,6)
+        dwdxC_prim => this%prim_igrid_sim%duidxjC(:,:,:,7)
+        dwdyC_prim => this%prim_igrid_sim%duidxjC(:,:,:,8)
+        dwdzC_prim => this%prim_igrid_sim%duidxjC(:,:,:,9)
         
         ! Precursor simulation gradients:
         dudxC_pre => this%pre_budget%igrid_sim%duidxjC(:,:,:,1)
@@ -674,19 +698,19 @@ module budgets_time_avg_deficit_compact_mod
         ! Term 1: delta u_j' d_j(delta p')
         ! Term 2: base  u_j' d_j(delta p')        
         ! px, py, pz signs are reversed
-        cbuffyC1 = this%pre_budget%px - this%prim_budget%px
-        call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, buffer)
+        cbuffyC1 = this%pre_budget%px - this%px
+        call this%prim_igrid_sim%spectC%ifft(cbuffyC1, buffer)
         this%budget_3(:,:,:,1)=this%budget_3(:,:,:,1)+ buffer * du
         this%budget_3(:,:,:,2)=this%budget_3(:,:,:,2)+ buffer * ubase
 
-        cbuffyC1 = this%pre_budget%py - this%prim_budget%py
-        call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, buffer)
+        cbuffyC1 = this%pre_budget%py - this%py
+        call this%prim_igrid_sim%spectC%ifft(cbuffyC1, buffer)
         this%budget_3(:,:,:,1)=this%budget_3(:,:,:,1)+ buffer * dv
         this%budget_3(:,:,:,2)=this%budget_3(:,:,:,2)+ buffer * vbase
 
         ! pz is odd
-        cbuffyE1 = this%pre_budget%pz - this%prim_budget%pz
-        call this%prim_budget%igrid_sim%spectE%ifft(cbuffyE1, rbuffxE1)
+        cbuffyE1 = this%pre_budget%pz - this%pz
+        call this%prim_igrid_sim%spectE%ifft(cbuffyE1, rbuffxE1)
         call this%interp_Edge2Cell(rbuffxE1, buffer, -1, -1)
         this%budget_3(:,:,:,1)=this%budget_3(:,:,:,1)+ buffer * dw        
         this%budget_3(:,:,:,2)=this%budget_3(:,:,:,2)+ buffer * wbase
@@ -707,19 +731,19 @@ module budgets_time_avg_deficit_compact_mod
         ! Term 4: d_j(base  u_i' * delta tau_ij') [SGS transport] 
         ! Term 6: d_j(delta u_i' * delta tau_ij')  [SGS transport]
         ! sign of usgs, vsgs, and wsgs are reversed.
-        cbuffyC1 = this%pre_budget%usgs - this%prim_budget%usgs
-        call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, buffer)
+        cbuffyC1 = this%pre_budget%usgs - this%usgs
+        call this%prim_igrid_sim%spectC%ifft(cbuffyC1, buffer)
         this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + buffer * ubase 
         this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + buffer * du
 
-        cbuffyC1 = this%pre_budget%vsgs - this%prim_budget%vsgs
-        call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, buffer) 
+        cbuffyC1 = this%pre_budget%vsgs - this%vsgs
+        call this%prim_igrid_sim%spectC%ifft(cbuffyC1, buffer) 
         this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + buffer * vbase  
         this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + buffer * dv
 
         ! wsgs is odd
-        cbuffyE1 = this%pre_budget%wsgs - this%prim_budget%wsgs
-        call this%prim_budget%igrid_sim%spectE%ifft(cbuffyE1, rbuffxE1)
+        cbuffyE1 = this%pre_budget%wsgs - this%wsgs
+        call this%prim_igrid_sim%spectE%ifft(cbuffyE1, rbuffxE1)
         call this%interp_Edge2Cell(rbuffxE1, buffer, -1, -1)
         this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + buffer * wbase
         this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + buffer * dw
@@ -769,10 +793,10 @@ module budgets_time_avg_deficit_compact_mod
         ! Term 12: base u_3' delta wb'
         ! Multiply on edges
         if(this%isStratified)then
-            cbuffyE1 = this%prim_budget%wb - this%pre_budget%wb 
-            call this%prim_budget%igrid_sim%spectE%ifft(cbuffyE1, rbuffxE1)
+            cbuffyE1 = this%wb - this%pre_budget%wb 
+            call this%prim_igrid_sim%spectE%ifft(cbuffyE1, rbuffxE1)
             
-            rbuffxE2 = rbuffxE1 * (this%prim_budget%igrid_sim%w - this%pre_budget%igrid_sim%w)
+            rbuffxE2 = rbuffxE1 * (this%prim_igrid_sim%w - this%pre_budget%igrid_sim%w)
             call this%interp_Edge2Cell(rbuffxE2, buffer, WTBC_bottom, WTBC_top)        
             this%budget_3(:,:,:,10) = this%budget_3(:,:,:,10) + buffer
 
@@ -781,7 +805,7 @@ module budgets_time_avg_deficit_compact_mod
             this%budget_3(:,:,:,12) = this%budget_3(:,:,:,12) + buffer
             
             call this%pre_budget%igrid_sim%spectE%ifft(this%pre_budget%wb, rbuffxE1)
-            rbuffxE2 = (this%prim_budget%igrid_sim%w - this%pre_budget%igrid_sim%w) * rbuffxE1
+            rbuffxE2 = (this%prim_igrid_sim%w - this%pre_budget%igrid_sim%w) * rbuffxE1
             call this%interp_Edge2Cell(rbuffxE2, buffer, WTBC_bottom, WTBC_top)
             this%budget_3(:,:,:,11) = this%budget_3(:,:,:,11) + buffer    
         end if  
@@ -835,13 +859,13 @@ module budgets_time_avg_deficit_compact_mod
         this%budget_3(:,:,:,19) = this%budget_3(:,:,:,19) + dw * buffer
 
         ! if (this%useWindTurbines)then
-        !     cbuffyC1 = this%prim_budget%uturb - this%pre_budget%uturb
-        !     call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, buffer)
+        !     cbuffyC1 = this%uturb - this%pre_budget%uturb
+        !     call this%prim_igrid_sim%spectC%ifft(cbuffyC1, buffer)
         !     this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) + du * buffer 
         !     this%budget_3(:,:,:,21) = this%budget_3(:,:,:,21) + ubase * buffer
 
-        !     cbuffyC1 = this%prim_budget%vturb - this%pre_budget%vturb
-        !     call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC1, buffer)
+        !     cbuffyC1 = this%vturb - this%pre_budget%vturb
+        !     call this%prim_igrid_sim%spectC%ifft(cbuffyC1, buffer)
         !     this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) + dv * buffer 
         !     this%budget_3(:,:,:,21) = this%budget_3(:,:,:,21) + vbase * buffer
         ! end if 
@@ -859,8 +883,8 @@ module budgets_time_avg_deficit_compact_mod
         real(rkind), dimension(:,:,:), pointer :: bf, bf2
         
         ! Cell x-pencil buffers 
-        bf => this%prim_budget%igrid_sim%rbuffxC(:,:,:,1)
-        bf2 => this%prim_budget%igrid_sim%rbuffxC(:,:,:,2)
+        bf => this%prim_igrid_sim%rbuffxC(:,:,:,1)
+        bf2 => this%prim_igrid_sim%rbuffxC(:,:,:,2)
         buffer = 0.d0
 
         if(budgetid.eq.1)then
@@ -1216,7 +1240,7 @@ module budgets_time_avg_deficit_compact_mod
     !     character(len=clen) :: fname, tempname 
     !     integer :: ios
 
-    !     write(tempname,"(A3,I2.2,A14,I6.6,A2,I6.6,A4)") "Run",this%run_id,"_time_weight_t",this%prim_budget%igrid_sim%step,"_n",this%counter,".txt"
+    !     write(tempname,"(A3,I2.2,A14,I6.6,A2,I6.6,A4)") "Run",this%run_id,"_time_weight_t",this%prim_igrid_sim%step,"_n",this%counter,".txt"
     !     fname = this%budgets_Dir(:len_trim(this%budgets_Dir))//"/"//trim(tempname)
     !     open(unit=10, file=trim(fname), status='replace', action='write', form='formatted', iostat=ios)
     !     write(10,'(ES23.15)') this%timeSum
@@ -1244,10 +1268,10 @@ module budgets_time_avg_deficit_compact_mod
         integer, intent(in) :: fieldID, BudgetID
         character(len=clen) :: fname, tempname 
 
-        write(tempname,"(A3,I2.2,A20,I1.1,A5,I2.2,A2,I6.6,A2,I6.6,A4)") "Run",this%run_id,"_comp_deficit_budget",BudgetID,"_term",fieldID,"_t",this%prim_budget%igrid_sim%step,"_n",this%counter,".s3D"
+        write(tempname,"(A3,I2.2,A20,I1.1,A5,I2.2,A2,I6.6,A2,I6.6,A4)") "Run",this%run_id,"_comp_deficit_budget",BudgetID,"_term",fieldID,"_t",this%prim_igrid_sim%step,"_n",this%counter,".s3D"
         fname = this%budgets_Dir(:len_trim(this%budgets_Dir))//"/"//trim(tempname)
 
-        call decomp_2d_write_one(1,field,fname, this%prim_budget%igrid_sim%gpC)
+        call decomp_2d_write_one(1,field,fname, this%prim_igrid_sim%gpC)
     end subroutine 
 
     subroutine restart_budget_field(this, field, dir, runID, timeID, counterID, budgetID, fieldID)
@@ -1260,7 +1284,7 @@ module budgets_time_avg_deficit_compact_mod
 
         write(tempname,"(A3,I2.2,A20,I1.1,A5,I2.2,A2,I6.6,A2,I6.6,A4)") "Run",runID,"_comp_deficit_budget",budgetID,"_term",fieldID,"_t",timeID,"_n",counterID,".s3D"
         fname = dir(:len_trim(dir))//"/"//trim(tempname)
-        call decomp_2d_read_one(1,field,fname, this%prim_budget%igrid_sim%gpC)           
+        call decomp_2d_read_one(1,field,fname, this%prim_igrid_sim%gpC)           
      end subroutine 
 
      subroutine RestartBudget(this, dir, rid, tid, cid)
@@ -1272,7 +1296,7 @@ module budgets_time_avg_deficit_compact_mod
         real(rkind) :: totalWeight
 
         ! Cell x-pencil buffers 
-        buffer => this%prim_budget%igrid_sim%rbuffxC(:,:,:,4)
+        buffer => this%prim_igrid_sim%rbuffxC(:,:,:,4)
         this%counter = cid     
         totalWeight = real(this%counter,rkind) + 1.d-18
 
@@ -1409,7 +1433,7 @@ module budgets_time_avg_deficit_compact_mod
     subroutine destroy(this)
         class(budgets_time_avg_deficit_compact), intent(inout) :: this
 
-        nullify(this%prim_budget, this%pre_budget)
+        nullify(this%pre_budget, this%prim_igrid_sim)
         if(this%do_budgets) then
             if(allocated(this%budget_0)) deallocate(this%budget_0)
             if(allocated(this%budget_1)) deallocate(this%budget_1)
@@ -1426,11 +1450,11 @@ module budgets_time_avg_deficit_compact_mod
         real(rkind), dimension(this%nx,this%ny,this%nz), intent(inout) :: f
         complex(rkind), dimension(:,:,:), pointer :: cbuffyC
 
-        cbuffyC => this%prim_budget%igrid_sim%cbuffyC(:,:,:,1)
+        cbuffyC => this%prim_igrid_sim%cbuffyC(:,:,:,1)
         
-        call this%prim_budget%igrid_sim%spectC%fft(f, cbuffyC)
-        call this%prim_budget%igrid_sim%spectC%dealias(cbuffyC)
-        call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC, f)
+        call this%prim_igrid_sim%spectC%fft(f, cbuffyC)
+        call this%prim_igrid_sim%spectC%dealias(cbuffyC)
+        call this%prim_igrid_sim%spectC%ifft(cbuffyC, f)
     end subroutine
 
     subroutine ddx_R2R(this, f, dfdx)
@@ -1439,12 +1463,12 @@ module budgets_time_avg_deficit_compact_mod
         real(rkind), dimension(this%nx,this%ny,this%nz), intent(out) :: dfdx
         complex(rkind), dimension(:,:,:), pointer :: cbuffyC
 
-        cbuffyC => this%prim_budget%igrid_sim%cbuffyC(:,:,:,1)
+        cbuffyC => this%prim_igrid_sim%cbuffyC(:,:,:,1)
         
-        call this%prim_budget%igrid_sim%spectC%fft(f, cbuffyC)
-        call this%prim_budget%igrid_sim%spectC%mtimes_ik1_ip(cbuffyC)
-        call this%prim_budget%igrid_sim%spectC%dealias(cbuffyC)
-        call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC, dfdx)
+        call this%prim_igrid_sim%spectC%fft(f, cbuffyC)
+        call this%prim_igrid_sim%spectC%mtimes_ik1_ip(cbuffyC)
+        call this%prim_igrid_sim%spectC%dealias(cbuffyC)
+        call this%prim_igrid_sim%spectC%ifft(cbuffyC, dfdx)
 
         nullify(cbuffyC)
     end subroutine 
@@ -1455,12 +1479,12 @@ module budgets_time_avg_deficit_compact_mod
         real(rkind), dimension(this%nx,this%ny,this%nz), intent(out) :: dfdy
         complex(rkind), dimension(:,:,:), pointer :: cbuffyC
 
-        cbuffyC => this%prim_budget%igrid_sim%cbuffyC(:,:,:,1)
+        cbuffyC => this%prim_igrid_sim%cbuffyC(:,:,:,1)
         
-        call this%prim_budget%igrid_sim%spectC%fft(f, cbuffyC)
-        call this%prim_budget%igrid_sim%spectC%mtimes_ik2_ip(cbuffyC)
-        call this%prim_budget%igrid_sim%spectC%dealias(cbuffyC)
-        call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC, dfdy)
+        call this%prim_igrid_sim%spectC%fft(f, cbuffyC)
+        call this%prim_igrid_sim%spectC%mtimes_ik2_ip(cbuffyC)
+        call this%prim_igrid_sim%spectC%dealias(cbuffyC)
+        call this%prim_igrid_sim%spectC%ifft(cbuffyC, dfdy)
 
         nullify(cbuffyC)
     end subroutine 
@@ -1472,96 +1496,38 @@ module budgets_time_avg_deficit_compact_mod
         integer, intent(in) :: n1, n2
         complex(rkind), dimension(:,:,:), pointer :: cbuffyC, cbuffzC1, cbuffzC2
 
-        cbuffyC => this%prim_budget%igrid_sim%cbuffyC(:,:,:,1)
-        cbuffzC1 => this%prim_budget%igrid_sim%cbuffzC(:,:,:,1)
-        cbuffzC2 => this%prim_budget%igrid_sim%cbuffzC(:,:,:,2)
+        cbuffyC => this%prim_igrid_sim%cbuffyC(:,:,:,1)
+        cbuffzC1 => this%prim_igrid_sim%cbuffzC(:,:,:,1)
+        cbuffzC2 => this%prim_igrid_sim%cbuffzC(:,:,:,2)
 
-        call this%prim_budget%igrid_sim%spectC%fft(f, cbuffyC)
-        call transpose_y_to_z(cbuffyC, cbuffzC1, this%prim_budget%igrid_sim%sp_gpC)
-        call this%prim_budget%igrid_sim%Pade6opZ%ddz_C2C(cbuffzC1, cbuffzC2, n1, n2)
-        call transpose_z_to_y(cbuffzC2, cbuffyC, this%prim_budget%igrid_sim%sp_gpC)
-        call this%prim_budget%igrid_sim%spectC%dealias(cbuffyC)
-        call this%prim_budget%igrid_sim%spectC%ifft(cbuffyC, dfdz)
+        call this%prim_igrid_sim%spectC%fft(f, cbuffyC)
+        call transpose_y_to_z(cbuffyC, cbuffzC1, this%prim_igrid_sim%sp_gpC)
+        call this%prim_igrid_sim%Pade6opZ%ddz_C2C(cbuffzC1, cbuffzC2, n1, n2)
+        call transpose_z_to_y(cbuffzC2, cbuffyC, this%prim_igrid_sim%sp_gpC)
+        call this%prim_igrid_sim%spectC%dealias(cbuffyC)
+        call this%prim_igrid_sim%spectC%ifft(cbuffyC, dfdz)
 
         nullify(cbuffyC, cbuffzC1, cbuffzC2)
     end subroutine
-     
-    ! subroutine ddz_C2R(this, fhat, dfdz, n1, n2)
-    !     class(budgets_time_avg_deficit_compact), intent(inout) :: this
-    !     complex(rkind), dimension(this%prim_budget%igrid_sim%spectC%spectdecomp%ysz(1),this%prim_budget%igrid_sim%spectC%spectdecomp%ysz(2),this%prim_budget%igrid_sim%spectC%spectdecomp%ysz(3)), intent(in) :: fhat
-    !     real(rkind), dimension(this%nx,this%ny,this%nz), intent(out) :: dfdz
-    !     integer, intent(in) :: n1, n2
-        
-    !     call transpose_y_to_z(fhat,this%prim_budget%igrid_sim%cbuffzC(:,:,:,1),this%prim_budget%igrid_sim%sp_gpC)
-    !     call this%prim_budget%igrid_sim%Pade6opZ%ddz_C2C(this%prim_budget%igrid_sim%cbuffzC(:,:,:,1),this%prim_budget%igrid_sim%cbuffzC(:,:,:,2),n1,n2)
-    !     call transpose_z_to_y(this%prim_budget%igrid_sim%cbuffzC(:,:,:,2),this%prim_budget%igrid_sim%cbuffyC(:,:,:,1),this%prim_budget%igrid_sim%sp_gpC)
-    !     call this%prim_budget%igrid_sim%spectC%dealias(this%prim_budget%igrid_sim%cbuffyC(:,:,:,1))
-    !     call this%prim_budget%igrid_sim%spectC%ifft(this%prim_budget%igrid_sim%cbuffyC(:,:,:,1), dfdz)
-    ! end subroutine 
- 
+
     subroutine interp_Edge2Cell(this, fE, fC, n1, n2)
         class(budgets_time_avg_deficit_compact), intent(inout), target :: this
-        real(rkind), dimension(this%prim_budget%igrid_sim%gpE%xsz(1),this%prim_budget%igrid_sim%gpE%xsz(2),this%prim_budget%igrid_sim%gpE%xsz(3)), intent(in) :: fE
+        real(rkind), dimension(this%prim_igrid_sim%gpE%xsz(1),this%prim_igrid_sim%gpE%xsz(2),this%prim_igrid_sim%gpE%xsz(3)), intent(in) :: fE
         real(rkind), dimension(this%nx,this%ny,this%nz), intent(out) :: fC
         integer, intent(in) :: n1, n2
         real(rkind), dimension(:,:,:), pointer :: rbuffyE, rbuffzE, rbuffzC, rbuffyC
 
-        rbuffyE => this%prim_budget%igrid_sim%rbuffyE(:,:,:,1)
-        rbuffzE => this%prim_budget%igrid_sim%rbuffzE(:,:,:,1)
-        rbuffzC => this%prim_budget%igrid_sim%rbuffzC(:,:,:,2)
-        rbuffyC => this%prim_budget%igrid_sim%rbuffyC(:,:,:,1)
+        rbuffyE => this%prim_igrid_sim%rbuffyE(:,:,:,1)
+        rbuffzE => this%prim_igrid_sim%rbuffzE(:,:,:,1)
+        rbuffzC => this%prim_igrid_sim%rbuffzC(:,:,:,2)
+        rbuffyC => this%prim_igrid_sim%rbuffyC(:,:,:,1)
 
-        call transpose_x_to_y(fE, rbuffyE, this%prim_budget%igrid_sim%gpE)
-        call transpose_y_to_z(rbuffyE, rbuffzE, this%prim_budget%igrid_sim%gpE)
-        call this%prim_budget%igrid_sim%Pade6opZ%interpz_E2C(rbuffzE, rbuffzC, n1, n2)
-        call transpose_z_to_y(rbuffzC, rbuffyC, this%prim_budget%igrid_sim%gpC)
-        call transpose_y_to_x(rbuffyC, fC, this%prim_budget%igrid_sim%gpC)
+        call transpose_x_to_y(fE, rbuffyE, this%prim_igrid_sim%gpE)
+        call transpose_y_to_z(rbuffyE, rbuffzE, this%prim_igrid_sim%gpE)
+        call this%prim_igrid_sim%Pade6opZ%interpz_E2C(rbuffzE, rbuffzC, n1, n2)
+        call transpose_z_to_y(rbuffzC, rbuffyC, this%prim_igrid_sim%gpC)
+        call transpose_y_to_x(rbuffyC, fC, this%prim_igrid_sim%gpC)
 
         nullify(rbuffyE, rbuffzE, rbuffzC, rbuffyC)
     end subroutine 
- 
-    ! subroutine interp_Cell2Edge(this, fC, fE, n1, n2)
-    !     class(budgets_time_avg_deficit_compact), intent(inout) :: this
-    !     real(rkind), dimension(this%nx,this%ny,this%nz), intent(in) :: fC
-    !     real(rkind), dimension(this%prim_budget%igrid_sim%gpE%xsz(1),this%prim_budget%igrid_sim%gpE%xsz(2),this%prim_budget%igrid_sim%gpE%xsz(3)), intent(out) :: fE
-
-    !     call transpose_x_to_y(fC,this%prim_budget%igrid_sim%rbuffyC(:,:,:,1),this%prim_budget%igrid_sim%gpC)
-    !     call transpose_y_to_z(this%prim_budget%igrid_sim%rbuffyC(:,:,:,1),this%prim_budget%igrid_sim%rbuffzC(:,:,:,1),this%prim_budget%igrid_sim%gpC)
-    !     call this%prim_budget%igrid_sim%Pade6opZ%interpz_C2E(this%prim_budget%igrid_sim%rbuffzC(:,:,:,1),this%prim_budget%igrid_sim%rbuffzE(:,:,:,1),n1,n2)
-    !     call transpose_z_to_y(this%prim_budget%igrid_sim%rbuffzE(:,:,:,1),this%prim_budget%igrid_sim%rbuffyE(:,:,:,1),this%prim_budget%igrid_sim%gpE)
-    !     call transpose_y_to_x(this%prim_budget%igrid_sim%rbuffyE(:,:,:,1),fE,this%prim_budget%igrid_sim%gpE)
-    ! end subroutine 
-         
-    ! subroutine multiply_CellFieldsOnEdges(this, f1C, f2C, fmultC, n1, n2)
-    !     class(budgets_time_avg_deficit_compact), intent(inout) :: this
-    !     real(rkind), dimension(this%nx,this%ny,this%nz), intent(in) :: f1C,f2C
-    !     real(rkind), dimension(this%nx,this%ny,this%nz), intent(out) :: fmultC
-    !     integer, intent(in) :: n1, n2
-
-    !     ! interpolate 1st Cell field
-    !     call transpose_x_to_y(f1C,this%prim_budget%igrid_sim%rbuffyC(:,:,:,1),this%prim_budget%igrid_sim%gpC)
-    !     call transpose_y_to_z(this%prim_budget%igrid_sim%rbuffyC(:,:,:,1),this%prim_budget%igrid_sim%rbuffzC(:,:,:,1),this%prim_budget%igrid_sim%gpC)
-    !     call this%prim_budget%igrid_sim%Pade6opZ%interpz_C2E(this%prim_budget%igrid_sim%rbuffzC(:,:,:,1),this%prim_budget%igrid_sim%rbuffzE(:,:,:,1),n1,n2)
-
-    !     ! interpolate 2nd Cell field
-    !     call transpose_x_to_y(f2C,this%prim_budget%igrid_sim%rbuffyC(:,:,:,1),this%prim_budget%igrid_sim%gpC)
-    !     call transpose_y_to_z(this%prim_budget%igrid_sim%rbuffyC(:,:,:,1),this%prim_budget%igrid_sim%rbuffzC(:,:,:,1),this%prim_budget%igrid_sim%gpC)
-    !     call this%prim_budget%igrid_sim%Pade6opZ%interpz_C2E(this%prim_budget%igrid_sim%rbuffzC(:,:,:,1),this%prim_budget%igrid_sim%rbuffzE(:,:,:,2),n1,n2)
-
-    !     ! multiply on Edges and interpolate back to Cells
-    !     this%prim_budget%igrid_sim%rbuffzE(:,:,:,1) = this%prim_budget%igrid_sim%rbuffzE(:,:,:,1) * this%prim_budget%igrid_sim%rbuffzE(:,:,:,2)
-    !     call this%prim_budget%igrid_sim%Pade6opZ%interpz_E2C(this%prim_budget%igrid_sim%rbuffzE(:,:,:,1),this%prim_budget%igrid_sim%rbuffzC(:,:,:,1),n1,n2)
-    !     call transpose_z_to_y(this%prim_budget%igrid_sim%rbuffzC(:,:,:,1),this%prim_budget%igrid_sim%rbuffyC(:,:,:,1),this%prim_budget%igrid_sim%gpC)
-    !     call transpose_y_to_x(this%prim_budget%igrid_sim%rbuffyC(:,:,:,1),fmultC,this%prim_budget%igrid_sim%gpC)
-    ! end subroutine 
-
-    ! multiply on edge cells and interpolate to cell centers to reduce aliasing issues
-    ! function multiply_Edges_interp_cell(this, f1E, f2E, n1, n2) result(fmultC)
-    !     class(budgets_time_avg_deficit_compact), intent(inout) :: this
-    !     real(rkind), dimension(this%prim_budget%igrid_sim%gpE%xsz(1),this%prim_budget%igrid_sim%gpE%xsz(2),this%prim_budget%igrid_sim%gpE%xsz(3)), intent(in) :: f1E,f2E
-    !     real(rkind), dimension(this%prim_budget%igrid_sim%gpC%xsz(1),this%prim_budget%igrid_sim%gpC%xsz(2),this%prim_budget%igrid_sim%gpC%xsz(3)) :: fmultC
-    !     integer, intent(in) :: n1, n2
-
-    !     call this%interp_Edge2Cell(f1E * f2E, fmultC, n1, n2)
-    ! end function
 end module

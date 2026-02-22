@@ -19,7 +19,7 @@ program pre_conc_compactbudgets
     type(igrid), allocatable, target :: primary, precursor
     character(len=clen) :: inputfile, primary_inputfile, precursor_inputfile
     integer :: ierr, ioUnit
-    type(budgets_time_avg) :: budg_tavg, pre_budg_tavg
+    type(budgets_time_avg) :: pre_budg_tavg
     type(budgets_time_avg_deficit_compact) :: budg_tavg_deficit_compact
     real(rkind) :: dt1, dt2, dt
     logical :: synchronize_RK_fringe = .true., do_deficit_budgets = .false.
@@ -68,10 +68,9 @@ program pre_conc_compactbudgets
         end if
     end if
 
-    call budg_tavg%init(primary_inputfile, primary)             !<-- Budget class initialization
     call pre_budg_tavg%init(precursor_inputfile, precursor)     !<-- Budget class initialization
     if (do_deficit_budgets) then                                !<-- Budget class initialization for the deficit
-        call budg_tavg_deficit_compact%init(pre_budg_tavg, primary_inputfile, budg_tavg)
+        call budg_tavg_deficit_compact%init(pre_budg_tavg, primary_inputfile, primary)
     end if
 
     if (primary%useWindTurbines) then
@@ -112,7 +111,7 @@ program pre_conc_compactbudgets
             call precursor%timeAdvance(dt)
         end if
 
-        call budg_tavg%doBudgets()
+        call MPI_BARRIER(MPI_COMM_WORLD, ierr)
         call pre_budg_tavg%doBudgets()
         if (do_deficit_budgets) call budg_tavg_deficit_compact%doBudgets()        
 
@@ -124,7 +123,6 @@ program pre_conc_compactbudgets
     ! Here include an option to expand the last written frame of budgets
     ! //
 
-    call budg_tavg%destroy()                !<-- release memory taken by the budget classes
     call pre_budg_tavg%destroy()
     if (do_deficit_budgets) call budg_tavg_deficit_compact%destroy()
 
