@@ -11,6 +11,8 @@ module constructDeficitBudgets_mod
 
    implicit none
 
+   external :: mpi_allreduce
+
    character(len=clen) :: inputdir, outputdir, tag='notag' 
    real(rkind) :: Lx = one, Ly = one, Lz = one
    integer :: botWall=3, topWall=2, botBC_temp=0
