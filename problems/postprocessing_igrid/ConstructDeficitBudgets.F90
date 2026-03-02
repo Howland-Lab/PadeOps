@@ -138,11 +138,11 @@ module constructDeficitBudgets_mod
             call compute_X_budget_component(idx, buffer)
             additional = '5'
          case(2)
-            !call compute_Y_budget_component(idx, buffer)
-            continue
+            call compute_Y_budget_component(idx, buffer)
+            additional = '6'
          case(3)
-            !call compute_Z_budget_component(idx, buffer)
-            continue
+            call compute_Z_budget_component(idx, buffer)
+            additional = '7'
          case(4)
             call compute_TKE_budget_component(idx, buffer)
             additional = '4'
@@ -167,8 +167,8 @@ module constructDeficitBudgets_mod
       logical :: depedent_variable
 
       depedent_variable = .false.
-      if(budgettype == 1)then
-         ! X momentum equation
+      if((budgettype == 1) .or. (budgettype == 2) .or. (budgettype == 3))then
+         ! X, Y, or Z momentum equation
          if((idx < 10) .or. (idx > 15)) depedent_variable = .true.
       elseif(budgettype == 4)then
          ! TKE equation
@@ -262,6 +262,184 @@ module constructDeficitBudgets_mod
       case(24)
          ! Divergence of Reynolds stresses: partial_3 mean(base u_1' delta u_3')
          call ddz_R2R(budget1(:,:,:,11), buffer, -1, -1)
+      end select
+   end subroutine
+
+   subroutine compute_Y_budget_component(idx, buffer)
+      implicit none
+      integer, intent(in) :: idx
+      real(rkind), dimension(:,:,:), intent(out) :: buffer
+      real(rkind), dimension(:,:,:), pointer :: BF1, BF2
+
+      BF1 => rbuffxC(:,:,:,1)
+      BF2 => rbuffxC(:,:,:,2)
+
+      buffer = zero
+      select case(idx)
+      case(1)
+         ! Advection: delta u_1 * partial_1 (delta u_2)
+         buffer = budget0(:,:,:,1) * dvdx
+      case(2)
+         ! Advection: delta u_2 * partial_2 (delta u_2)
+         buffer = budget0(:,:,:,2) * dvdy
+      case(3)
+         ! Advection: delta u_3 * partial_3 (delta u_2)
+         buffer = budget0(:,:,:,3) * dvdz
+      case(4)
+         ! Advection: delta u_1 * partial_1 (base u_2)
+         buffer = budget0(:,:,:,1) * dvdx_base
+      case(5)
+         ! Advection: delta u_2 * partial_2 (base u_2)
+         buffer = budget0(:,:,:,2) * dvdy_base
+      case(6)
+         ! Advection: delta u_3 * partial_3 (base u_2)
+         buffer = budget0(:,:,:,3) * dvdz_base
+      case(7)
+         ! Advection: base u_1 * partial_1 (delta u_2)
+         buffer = baseBudget0(:,:,:,1) * dvdx
+      case(8)
+         ! Advection: base u_2 * partial_2 (delta u_2)
+         buffer = baseBudget0(:,:,:,2) * dvdy
+      case(9)
+         ! Advection: base u_3 * partial_3 (delta u_2)
+         buffer = baseBudget0(:,:,:,3) * dvdz
+      case(10)
+         ! pressure gradient: partial_2 (delta p)
+         buffer = budget0(:,:,:,19)
+      case(11)
+         ! Divergence of Reynolds stresses: partial_j mean(delta u_2' delta u_j')
+         ! partial_j mean(delta u_2' delta u_j') = mean(delta u_j' partial_j delta u_2')
+         buffer = budget2(:,:,:,2)
+      case(12)
+         ! Divergence of Reynolds stresses: partial_j mean(delta u_2' base u_j')
+         ! partial_j mean(delta u_2' base u_j') = mean(base u_j' partial_j delta u_2')
+         buffer = budget2(:,:,:,8)
+      case(13)
+         ! Divergence of Reynolds stresses: partial_j mean(base u_2' delta u_j')
+         ! partial_j mean(base u_2' delta u_j') = mean(delta u_j' partial_j base u_2')
+         buffer = budget2(:,:,:,5)
+      case(14)
+         ! v_sgs
+         buffer = budget0(:,:,:,13)
+      case(15)
+         ! v_cor
+         buffer = budget0(:,:,:,16)
+      case(16)
+         ! Divergence of Reynolds stresses: partial_1 mean(delta u_2' delta u_1')
+         call ddx_R2R(budget1(:,:,:,2), buffer)
+      case(17)
+         ! Divergence of Reynolds stresses: partial_2 mean(delta u_2' delta u_2')
+         call ddy_R2R(budget1(:,:,:,4), buffer)
+      case(18)
+         ! Divergence of Reynolds stresses: partial_3 mean(delta u_2' delta u_3')
+         call ddz_R2R(budget1(:,:,:,5), buffer, -1, -1) ! budget1(:,:,:,5) is odd
+      case(19)
+         ! Divergence of Reynolds stresses: partial_1 mean(delta u_2' base u_1')
+         call ddx_R2R(budget1(:,:,:,9), buffer)
+      case(20)
+         ! Divergence of Reynolds stresses: partial_2 mean(delta u_2' base u_2')
+         call ddy_R2R(budget1(:,:,:,12), buffer)
+      case(21)
+         ! Divergence of Reynolds stresses: partial_3 mean(delta u_2' base u_3')
+         call ddz_R2R(budget1(:,:,:,13), buffer, -1, -1)
+      case(22)
+         ! Divergence of Reynolds stresses: partial_1 mean(base u_2' delta u_1')
+         call ddx_R2R(budget1(:,:,:,8), buffer)
+      case(23)
+         ! Divergence of Reynolds stresses: partial_2 mean(base u_2' delta u_2')
+         call ddy_R2R(budget1(:,:,:,12), buffer)
+      case(24)
+         ! Divergence of Reynolds stresses: partial_3 mean(base u_2' delta u_3')
+         call ddz_R2R(budget1(:,:,:,14), buffer, -1, -1)
+      end select
+   end subroutine
+
+   subroutine compute_Z_budget_component(idx, buffer)
+      implicit none
+      integer, intent(in) :: idx
+      real(rkind), dimension(:,:,:), intent(out) :: buffer
+      real(rkind), dimension(:,:,:), pointer :: BF1, BF2
+
+      BF1 => rbuffxC(:,:,:,1)
+      BF2 => rbuffxC(:,:,:,2)
+
+      buffer = zero
+      select case(idx)
+      case(1)
+         ! Advection: delta u_1 * partial_1 (delta u_3)
+         buffer = budget0(:,:,:,1) * dwdx
+      case(2)
+         ! Advection: delta u_2 * partial_2 (delta u_3)
+         buffer = budget0(:,:,:,2) * dwdy
+      case(3)
+         ! Advection: delta u_3 * partial_3 (delta u_3)
+         buffer = budget0(:,:,:,3) * dwdz
+      case(4)
+         ! Advection: delta u_1 * partial_1 (base u_3)
+         buffer = budget0(:,:,:,1) * dwdx_base
+      case(5)
+         ! Advection: delta u_2 * partial_2 (base u_3)
+         buffer = budget0(:,:,:,2) * dwdy_base
+      case(6)
+         ! Advection: delta u_3 * partial_3 (base u_3)
+         buffer = budget0(:,:,:,3) * dwdz_base
+      case(7)
+         ! Advection: base u_1 * partial_1 (delta u_3)
+         buffer = baseBudget0(:,:,:,1) * dwdx
+      case(8)
+         ! Advection: base u_2 * partial_2 (delta u_3)
+         buffer = baseBudget0(:,:,:,2) * dwdy
+      case(9)
+         ! Advection: base u_3 * partial_3 (delta u_3)
+         buffer = baseBudget0(:,:,:,3) * dwdz
+      case(10)
+         ! pressure gradient: partial_3 (delta p)
+         buffer = budget0(:,:,:,20)
+      case(11)
+         ! Divergence of Reynolds stresses: partial_j mean(delta u_3' delta u_j')
+         ! partial_j mean(delta u_3' delta u_j') = mean(delta u_j' partial_j delta u_3')
+         buffer = budget2(:,:,:,3)
+      case(12)
+         ! Divergence of Reynolds stresses: partial_j mean(delta u_3' base u_j')
+         ! partial_j mean(delta u_3' base u_j') = mean(base u_j' partial_j delta u_3')
+         buffer = budget2(:,:,:,9)
+      case(13)
+         ! Divergence of Reynolds stresses: partial_j mean(base u_2' delta u_j')
+         ! partial_j mean(base u_2' delta u_j') = mean(delta u_j' partial_j base u_2')
+         buffer = budget2(:,:,:,6)
+      case(14)
+         ! w_sgs
+         buffer = budget0(:,:,:,14)
+      case(15)
+         ! wb
+         buffer = budget0(:,:,:,17)
+      case(16)
+         ! Divergence of Reynolds stresses: partial_1 mean(delta u_3' delta u_1')
+         call ddx_R2R(budget1(:,:,:,3), buffer)
+      case(17)
+         ! Divergence of Reynolds stresses: partial_2 mean(delta u_3' delta u_2')
+         call ddy_R2R(budget1(:,:,:,5), buffer)
+      case(18)
+         ! Divergence of Reynolds stresses: partial_3 mean(delta u_3' delta u_3')
+         call ddz_R2R(budget1(:,:,:,6), buffer, -1, -1) ! budget1(:,:,:,6) is odd
+      case(19)
+         ! Divergence of Reynolds stresses: partial_1 mean(delta u_3' base u_1')
+         call ddx_R2R(budget1(:,:,:,11), buffer)
+      case(20)
+         ! Divergence of Reynolds stresses: partial_2 mean(delta u_3' base u_2')
+         call ddy_R2R(budget1(:,:,:,14), buffer)
+      case(21)
+         ! Divergence of Reynolds stresses: partial_3 mean(delta u_3' base u_3')
+         call ddz_R2R(budget1(:,:,:,15), buffer, -1, -1)
+      case(22)
+         ! Divergence of Reynolds stresses: partial_1 mean(base u_3' delta u_1')
+         call ddx_R2R(budget1(:,:,:,10), buffer)
+      case(23)
+         ! Divergence of Reynolds stresses: partial_2 mean(base u_3' delta u_2')
+         call ddy_R2R(budget1(:,:,:,13), buffer)
+      case(24)
+         ! Divergence of Reynolds stresses: partial_3 mean(base u_3' delta u_3')
+         call ddz_R2R(budget1(:,:,:,15), buffer, -1, -1)
       end select
    end subroutine
 
