@@ -1442,6 +1442,22 @@ module budgets_time_avg_deficit_compact_mod
             if(allocated(this%delta_tauij)) deallocate(this%delta_tauij)
             if(allocated(this%MCG)) deallocate(this%MCG)
         end if
+        if(allocated(this%uc)) deallocate(this%uc)
+        if(allocated(this%vc)) deallocate(this%vc)
+        if(allocated(this%wc)) deallocate(this%wc)
+        if(allocated(this%usgs)) deallocate(this%usgs)
+        if(allocated(this%vsgs)) deallocate(this%vsgs)
+        if(allocated(this%wsgs)) deallocate(this%wsgs)
+        if(allocated(this%px)) deallocate(this%px)
+        if(allocated(this%py)) deallocate(this%py)
+        if(allocated(this%pz)) deallocate(this%pz)
+        if(allocated(this%uturb)) deallocate(this%uturb)
+        if(allocated(this%vturb)) deallocate(this%vturb)
+        if(allocated(this%wturb)) deallocate(this%wturb)
+        if(allocated(this%ucor)) deallocate(this%ucor)
+        if(allocated(this%vcor)) deallocate(this%vcor)
+        if(allocated(this%wcor)) deallocate(this%wcor)
+        if(allocated(this%wb)) deallocate(this%wb)
     end subroutine 
 
     ! ----------------------private derivative operators ------------------------
