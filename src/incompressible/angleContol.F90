@@ -9,7 +9,7 @@ module angleControl
 
 
    type :: angCont
-      private
+      !private
       !logical                                       :: TargetsAssociated = .false. 
       !real(rkind), dimension(:,:,:), pointer        :: u_target, v_target, w_target, T_target
       !real(rkind), dimension(:,:,:), allocatable    :: Fringe_kernel_cells, Fringe_kernel_edges
@@ -21,7 +21,7 @@ module angleControl
       !real(rkind)                                   :: LambdaFact
       integer :: z_ref, controlType !myFringeID = 1
       !logical :: useTwoFringex = .false. 
-      real(rkind)                          :: phi, phi_n, beta, phi_ref, sigma, wFilt, alpha, wFilt_n, angleTrigger
+      real(rkind)                          :: phi, phi_n, beta, phi_ref, sigma, wFilt, alpha, wFilt_n, angleTrigger, deltaGalpha
       contains
          procedure :: init
          procedure :: destroy
@@ -46,7 +46,7 @@ contains
       val = this%phi_n * 180.d0 / pi
     end function  
 
-    subroutine update_RHS_control(this, dt, urhs, vrhs, wrhs, uC, vC, newTimestep, phi_n, wFilt_n, deltaGalpha, z_hub, trigger)
+    subroutine update_RHS_control(this, dt, urhs, vrhs, wrhs, uC, vC, newTimestep, phi_n, wFilt_n, deltaGalpha, z_hub, trigger, dumcntl)
       class(angCont),                                                                        intent(inout)  :: this
       real(rkind),                                                                         intent(in)     :: dt
       real(rkind),    dimension(this%gpC%xsz(1),this%gpC%xsz(2),this%gpC%xsz(3)),          intent(in)     :: uC, vC 
@@ -54,6 +54,7 @@ contains
       complex(rkind), dimension(this%sp_gpC%ysz(1),this%sp_gpC%ysz(2),this%sp_gpC%ysz(3)), intent(inout)  :: urhs, vrhs
       complex(rkind), dimension(this%sp_gpE%ysz(1),this%sp_gpE%ysz(2),this%sp_gpE%ysz(3)), intent(inout)  :: wrhs
       logical, intent(in) :: newTimestep
+      logical, intent(in) :: dumcntl
       integer :: nx, ny, i, j
       ! PID tuning parameters
       real(rkind) :: wControl_n, vM, uM
@@ -64,6 +65,8 @@ contains
       nx = this%gpC%xsz(1)
       ny = this%gpC%ysz(2)
 
+      ! Only do the following if it is not a dummy controller
+      if (.NOT. dumcntl) then
       ! PID controller
       !this%rbuffxC(:,:,:,1) = atan2(vC, uC) !* 180.d0 / pi
       !call transpose_x_to_y(this%rbuffxC(:,:,:,1),this%rbuffyC(:,:,:,1),this%gpC)
@@ -111,10 +114,13 @@ contains
             this%wFilt = deltaGalpha 
             deltaGalpha = this%alpha * deltaGalpha + this%beta * (phi_n - this%phi_ref)
             deltaGalpha = deltaGalpha * pi / 180.d0
+            this%deltaGalpha = deltaGalpha
             wFilt_n = 0.d0    
 
          endif        
-     end if
+      end if
+      end if
+
          ! Update the RHS 
          this%rbuffxC(:,:,:,1) =  2.d0 * vC * this%wFilt_n 
          call this%spectC%fft(this%rbuffxC(:,:,:,1), this%cbuffyC(:,:,:,1))      
@@ -126,8 +132,7 @@ contains
          ! Here I added the factor of 2 to deltaGalpha
          !!!!!!!!!!!!!!!!!!!!!!!
          deltaGalpha = 2.d0 * this%wFilt_n * dt * 180.d0 / pi
-          
-
+         this%deltaGalpha = deltaGalpha
    end subroutine
 
 
@@ -139,10 +144,11 @@ contains
       !this%TargetsAssociated = .false.
    end subroutine
 
-   subroutine init(this, inputfile, spectC, spectE, gpC, gpE, rbuffxC, rbuffxE, cbuffyC, cbuffyE, rbuffyC, rbuffzC, phiRestart)
+   subroutine init(this, inputfile, spectC, spectE, gpC, gpE, rbuffxC, rbuffxE, cbuffyC, cbuffyE, rbuffyC, rbuffzC, phiRestart, isdumcntl)
       use reductions, only: p_maxval
       use mpi
       class(angCont), intent(inout) :: this
+      logical, intent(out) :: isdumcntl
       character(len=clen), intent(in) :: inputfile 
       type(decomp_info), intent(in), target :: gpC, gpE
       !real(rkind), dimension(gpC%xsz(1)), intent(in) :: x
@@ -155,6 +161,7 @@ contains
       real(rkind) :: phi_ref, beta, sigma, phi, alpha , angleTrigger
       integer :: controlType
       real(rkind), intent(in) :: phiRestart
+      logical :: dummy_controller= .FALSE.
       !real(rkind) :: Lx, Ly, LambdaFact = 2.45d0, LambdaFact2 = 2.45d0
       !real(rkind) :: Fringe_yst = 1.d0, Fringe_yen = 1.d0
       !real(rkind) :: Fringe_xst = 0.75d0, Fringe_xen = 1.d0
@@ -168,7 +175,7 @@ contains
       integer :: ioUnit = 10, i, j, k, nx, ierr, z_ref
       !real(rkind), dimension(:), allocatable :: x1, x2, Fringe_func, S1, S2, y1, y2
       !logical :: Apply_x_fringe = .true., Apply_y_fringe = .false.
-      !namelist /FRINGE/ Apply_x_fringe, Apply_y_fringe, Fringe_xst, Fringe_xen, Fringe_delta_st_x, Fringe_delta_en_x, &
+      !namelist /FRINGEINPUT/ Apply_x_fringe, Apply_y_fringe, Fringe_xst, Fringe_xen, Fringe_delta_st_x, Fringe_delta_en_x, &
       !                  Fringe_delta_st_y, Fringe_delta_en_y, LambdaFact, LambdaFact2, Fringe_yen, Fringe_yst, Fringe1_delta_st_x, &
       !                  Fringe2_delta_st_x, Fringe1_delta_en_x, Fringe2_delta_en_x, Fringe1_xst, Fringe2_xst, Fringe1_xen, Fringe2_xen
     
@@ -179,10 +186,11 @@ contains
       !nx = gpC%xsz(1)
       !real(rkind)  :: Lx = 1.d0, Ly = 1.d0, Lz = 1.d0, Tref = 0.d0, Tsurf0 = 1.d0, dTsurf_dt = -0.05d0, z0init = 1.d-4, frameAngle = 0.d0
       !namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, z0init, frameAngle, beta, sigma, phi_ref, z_ref
-      namelist /CONTROL/ beta, sigma, phi_ref, z_ref, alpha, controlType, angleTrigger
+      namelist /CONTROL/ beta, sigma, phi_ref, z_ref, alpha, controlType, angleTrigger, dummy_controller
       !open(unit=ioUnit, file=trim(inputfile), form='FORMATTED', iostat=ierr)
       !read(unit=ioUnit, NML=CONTROL)
       !close(ioUnit)
+
       ioUnit = 11
       open(unit=ioUnit, file=trim(inputfile), form='FORMATTED', iostat=ierr)
       read(unit=ioUnit, NML=CONTROL)
@@ -213,7 +221,7 @@ contains
       this%wFilt_n = 0.d0
       this%angleTrigger = angleTrigger
       call message(0, "Control initialized successfully.")
-
+      isdumcntl = dummy_controller ! Return the state of the current controller (dummy?)
    end subroutine
 
 end module 

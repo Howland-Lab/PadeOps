@@ -61,6 +61,80 @@ subroutine instrumentForBudgets(this, uc, vc, wc, usgs, vsgs, wsgs, uvisc, vvisc
 
 end subroutine
 
+subroutine instrumentForDeficitBudgets(this, uc, vc, wc, usgs, vsgs, wsgs, px, py, pz, ucor, vcor, wcor, wb, uturb, vturb, wturb)
+    class(igrid), intent(inout) :: this
+    complex(rkind), dimension(:,:,:), intent(in), target :: uc, vc, wc, usgs, vsgs, wsgs, px, py, pz
+    complex(rkind), dimension(:,:,:), intent(in), target :: ucor, vcor, wcor, wb
+    complex(rkind), dimension(:,:,:), intent(in), optional, target :: uturb, vturb, wturb
+
+    this%ucon => uc
+    this%vcon => vc
+    this%wcon => wc
+
+    this%usgs => usgs
+    this%vsgs => vsgs
+    this%wsgs => wsgs
+
+    this%px => px
+    this%py => py
+    this%pz => pz
+
+    this%uvisc => null()
+    this%vvisc => null()
+    this%wvisc => null()
+    
+    this%ucor => ucor
+    this%vcor => vcor
+    this%wcor => wcor
+    
+    this%wb => wb
+
+    this%pxdns => null()
+    this%pydns => null()
+    this%pzdns => null()
+
+    if(present(uturb))then
+        this%uturb => uturb 
+    else
+        this%uturb => null()
+    end if
+
+    if(present(vturb))then
+        this%vturb => vturb 
+    else
+        this%vturb => null()
+    end if
+
+    if(present(wturb))then
+        this%wturb => wturb 
+    else
+        this%wturb => null()
+    end if
+
+    this%HITforcing_x => null()
+    this%HITforcing_y => null()
+    this%HITforcing_z => null()
+
+    ! Safeguards
+    this%StoreForBudgets = .true. 
+    if (.not. this%fastCalcPressure) then
+        call GracefulExit("Cannot perform budget calculations if IGRID is initialized with FASTCALCPRESSURE=.false.", 324)
+    end if 
+  
+    if (.not. useSkewSymm) then
+        call message("WARNING: Advection term should be evaluated in the skew-symmetric form in order to perform budget calculations.")
+    end if 
+
+    if (this%useControl) then
+        call message("WARNING: Budget calculations ignore the frame angle controller effects.", 324)
+    end if 
+
+    call message(1,"Before set_budget_rhs in instrumentForBudgets_timeAvg")
+    call this%set_budget_rhs_to_zero()
+
+    call message(0, "Deficit budget calculations instrumented within igrid!")
+end subroutine 
+
 subroutine instrumentForBudgets_TimeAvg(this, uc, vc, wc, usgs, vsgs, wsgs,  px, py, pz, uturb, vturb, wturb, pxdns, pydns, pzdns, uvisc, vvisc, wvisc, ucor, vcor, wcor, wb)  
     class(igrid), intent(inout) :: this
     complex(rkind), dimension(:,:,:), intent(in), target :: uc, vc, wc, usgs, vsgs, wsgs, px, py, pz, uturb, vturb, wturb

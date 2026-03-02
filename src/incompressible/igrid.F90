@@ -29,10 +29,13 @@ module IncompressibleGrid
 
     implicit none
 
-    external :: MPI_BCAST, MPI_RECV, MPI_SEND, MPI_REDUCE
+    external :: MPI_BCAST, MPI_RECV, MPI_SEND, MPI_REDUCE, MPI_GATHER
 
     private
-    public :: igrid, wBC_bottom, wBC_top  
+    public :: igrid 
+    public :: uBC_bottom, uBC_top, vBC_bottom, vBC_top, wBC_bottom, wBC_top, &
+              TBC_bottom, TBC_top, UWBC_bottom, UWBC_top, VWBC_bottom, VWBC_top, &
+              WTBC_bottom, WTBC_top 
 
     complex(rkind), parameter :: zeroC = zero + imi*zero 
 
@@ -268,6 +271,8 @@ module IncompressibleGrid
         ! Control
         logical                            :: useControl = .false.
         type(angCont), allocatable, public :: angCont_yaw
+        type(angCont), pointer :: angCont_yaw_dummy => NULL()
+        logical :: dummy_controller = .false.
         real(rkind) :: angleHubHeight, totalAngle, wFilt, restartPhi, deltaGalpha, angleTrigger
         integer :: zHubIndex = 16
 
@@ -375,6 +380,7 @@ module IncompressibleGrid
             procedure          :: instrumentForBudgets
             procedure          :: instrumentForBudgets_timeAvg
             procedure          :: instrumentForBudgets_volAvg
+            procedure          :: instrumentForDeficitBudgets
             procedure          :: getMomentumTerms
             procedure          :: set_budget_rhs_to_zero
             procedure, private :: advance_SSP_RK45_all_stages
@@ -523,6 +529,7 @@ contains
         this%zHubIndex = zHubIndex; this%angleTrigger = angleTrigger
         this%computeTurbinePressure = computeTurbinePressure; this%turbPr = Pr
         this%restartPhi = 0.d0
+        this%dummy_controller = .false.
         this%Ra = Ra
         if (useWindturbines) this%WriteTurbineForce = WriteTurbineForce
 
@@ -542,6 +549,11 @@ contains
             call decomp_info_init(nx, ny, nz, this%gpC)    
         end if
 
+        if (any(this%gpC%xsz == 1) .or. any(this%gpC%ysz == 1) .or. any(this%gpC%zsz == 1))then
+            if(this%useWindTurbines)then
+                call gracefulExit("Pencil thickness = 1 detected in gpC. Wind turbine module may fail.", 901)
+            end if
+        end if
        call decomp_info_init(nx,ny,nz+1,this%gpE)
        
        if (this%useSystemInteractions) then
@@ -1280,10 +1292,7 @@ contains
            end if 
        end if 
        
-       ! STEP 24: Compute pressure  
-       if ((this%storePressure) .or. (this%fastCalcPressure)) then
-           call this%ComputePressure()
-       end if 
+        
 
        ! STEP 25: Schedule time dumps
        this%vizDump_Schedule = vizDump_Schedule
@@ -1313,12 +1322,18 @@ contains
               allocate(this%angCont_yaw)
               call this%angCont_yaw%init(inputfile, this%spectC, this%spectE, this%gpC, this%gpE, & 
                        this%rbuffxC, this%rbuffxE, this%cbuffyC, this%cbuffyE, & 
-                       this%rbuffyC, this%rbuffzC, this%restartPhi) 
+                       this%rbuffyC, this%rbuffzC, this%restartPhi, this%dummy_controller) 
+       call message(0, "Wind-angle controller successfully initialized.")
        end if
        this%angleHubHeight = 1.d0      
        this%totalAngle = 0.d0
        this%wFilt = 0.d0
        this%deltaGalpha = 0.d0
+
+       ! STEP 24: Compute pressure  
+       if ((this%storePressure) .or. (this%fastCalcPressure)) then
+           call this%ComputePressure()
+       end if
 
        ! STEP 28: Compute the timestep
        call this%compute_deltaT()

@@ -215,14 +215,14 @@ end subroutine
 subroutine get_R(this)
     class(actuatordisk_ct), intent(inout) :: this
     real(rkind) :: yrad, trad, xs, ys, zs, C1, xtmp, ytmp, ztmp  ! rotations, in radians
-    real(rkind), dimension(this%npts) :: xi, yi, zi
+    real(rkind), dimension(int(this%npts)) :: xi, yi, zi
     integer :: k
     
     ! First, rotate all the points with the yaw and tilt
     call message(1, "Building kernel for turbine yaw:", this%yaw)
     yrad = this%yaw*pi/180.d0
     trad = this%tilt*pi/180.d0
-    do k = 1, this%npts
+    do k = 1, int(this%npts)
         xs = this%xs(k); ys = this%ys(k); zs = this%zs(k)
         ! apply yaw rotation, +z = positive yaw (e.g., Howland, et al. 2022)
         xtmp = (xs-this%xLoc)*cos(yrad) - (ys-this%yLoc)*sin(yrad) + this%xLoc
@@ -240,7 +240,7 @@ subroutine get_R(this)
     ! TODO: can speed this up if only a subsection of the domain is used
     C1 = (6.d0/pi/this%delta**2)**(three/two)
     ! TODO: May need to zero scalarsource for dynamic yaw
-    do k = 1, this%npts
+    do k = 1, int(this%npts)
         this%rbuff = (this%xG-xi(k))**2 + (this%yG-yi(k))**2 + (this%zG-zi(k))**2
         this%scalarsource = this%scalarsource + C1*exp(-6.d0*this%rbuff/this%delta**2) 
     end do
@@ -344,13 +344,13 @@ subroutine get_RHS(this, u, v, w, rhsxvals, rhsyvals, rhszvals, yaw, theta)
     real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc), intent(in)    :: u, v, w
     real(rkind), intent(in) :: yaw, theta
     real(rkind) :: usp_sq, force, vface!, gamma
-    real(rkind), dimension(3,1) :: n=[1,0,0], tau=[0,1,0] !xn, Ft
+    real(rkind), dimension(3,1) :: n, tau !xn, Ft
     real(rkind), dimension(3,3) :: R, T
 
     ! update yaw and tilt of the turbine
-    if (.not. this%useDynamicYaw .and. (this%yaw - yaw*180.d0/pi)>1.d-8) then
-        call GracefulExit("Turbine prescribed yaw changed, but useDynamicYaw is OFF", 423)
-    end if
+    ! if (.not. this%useDynamicYaw .and. (this%yaw - yaw*180.d0/pi)>1.d-8) then
+    !     call GracefulExit("Turbine prescribed yaw changed, but useDynamicYaw is OFF", 423)
+    ! end if
    
     this%yaw = yaw*180.d0/pi
     this%tilt = theta*180.d0/pi  ! For now, these are stored in degrees but input in radians ...?

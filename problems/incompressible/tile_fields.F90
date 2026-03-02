@@ -160,11 +160,11 @@ program tileFields
     real(rkind) :: tsim, frameangle=zero, pfact=1e-2  ! small potential temp perturbations
     character(len=clen) :: tempname, fname
     character(len=clen), dimension(3) :: keys
-    keys = [character(len=clen) :: "_u.", "_v.", "_T."]  !<-- cell-centered field names
-
     namelist /INPUT/ nx, ny, nz, ntile_x, ntile_y, ntile_z, &
         inputdir, outputdir, inputFile_TID, inputFile_RID, &
-        outputFile_TID, outputFile_RID, isStratified, PeriodicInZ, pfact
+        outputFile_TID, outputFile_RID, isStratified, PeriodicInZ, pfact\
+
+    keys = [character(len=clen) :: "_u.", "_v.", "_T."]  !<-- cell-centered field names
 
     call MPI_Init(ierr)               !<-- Begin MPI
     call GETARG(1,inputfile)          !<-- Get the location of the input file

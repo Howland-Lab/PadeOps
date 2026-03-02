@@ -671,107 +671,202 @@
        end if
    end subroutine 
    
-   subroutine start_io(this, dumpInitField)
-       class(igrid), target, intent(inout) :: this 
-       character(len=clen) :: fname
-       character(len=clen) :: tempname
-       !character(len=clen) :: command
-       character(len=clen) :: OutputDir
-       !integer :: system 
-       integer :: runIDX 
-       logical :: isThere
-       integer :: tag, idx, status(MPI_STATUS_SIZE), ierr
-       integer, dimension(:,:), allocatable        :: xst,xen,xsz
-       logical, optional, intent(in) :: dumpInitField
+!    subroutine start_io(this, dumpInitField)
+!        class(igrid), target, intent(inout) :: this 
+!        character(len=clen) :: fname
+!        character(len=clen) :: tempname
+!        !character(len=clen) :: command
+!        character(len=clen) :: OutputDir
+!        !integer :: system 
+!        integer :: runIDX 
+!        logical :: isThere
+!        integer :: tag, idx, status(MPI_STATUS_SIZE), ierr
+!        integer, dimension(:,:), allocatable        :: xst,xen,xsz
+!        logical, optional, intent(in) :: dumpInitField
 
-       ! Create data sharing info
-       !if (nrank == 0) then
-           allocate(xst(0:nproc-1,3),xen(0:nproc-1,3),xsz(0:nproc-1,3))
-           xst = 0; xen = 0; xsz = 0;
-       !end if
+!        ! Create data sharing info
+!        !if (nrank == 0) then
+!            allocate(xst(0:nproc-1,3),xen(0:nproc-1,3),xsz(0:nproc-1,3))
+!            xst = 0; xen = 0; xsz = 0;
+!        !end if
 
 
-       ! communicate local processor grid info (Assume x-decomposition)
-       if (nrank == 0) then
-           xst(0,:) = this%gpC%xst
-           xen(0,:) = this%gpC%xen
+!        ! communicate local processor grid info (Assume x-decomposition)
+!        if (nrank == 0) then
+!            xst(0,:) = this%gpC%xst
+!            xen(0,:) = this%gpC%xen
            
-           tag = 0
-           do idx = 1,nproc-1
-               call MPI_RECV(xst(idx,:), 3, MPI_INTEGER, idx, tag,&
-                   MPI_COMM_WORLD, status, ierr)
-           end do 
-           tag = 1
-           do idx = 1,nproc-1
-               call MPI_RECV(xen(idx,:), 3, MPI_INTEGER, idx, tag,&
-                   MPI_COMM_WORLD, status, ierr)
-           end do
-          tag = 2
-           do idx = 1,nproc-1
-               call MPI_RECV(xsz(idx,:), 3, MPI_INTEGER, idx, tag,&
-                   MPI_COMM_WORLD, status, ierr)
-           end do
+!            tag = 0
+!            do idx = 1,nproc-1
+!                call MPI_RECV(xst(idx,:), 3, MPI_INTEGER, idx, tag,&
+!                    MPI_COMM_WORLD, status, ierr)
+!            end do 
+!            tag = 1
+!            do idx = 1,nproc-1
+!                call MPI_RECV(xen(idx,:), 3, MPI_INTEGER, idx, tag,&
+!                    MPI_COMM_WORLD, status, ierr)
+!            end do
+!           tag = 2
+!            do idx = 1,nproc-1
+!                call MPI_RECV(xsz(idx,:), 3, MPI_INTEGER, idx, tag,&
+!                    MPI_COMM_WORLD, status, ierr)
+!            end do
 
-       else
-           tag = 0
-           call MPI_SEND(this%gpC%xst, 3, MPI_INTEGER, 0, tag, &
-                &      MPI_COMM_WORLD, ierr)
-           tag = 1
-           call MPI_SEND(this%gpC%xen, 3, MPI_INTEGER, 0, tag, &
-                &      MPI_COMM_WORLD, ierr)
-           tag = 2
-           call MPI_SEND(this%gpC%xsz, 3, MPI_INTEGER, 0, tag, &
-                &      MPI_COMM_WORLD, ierr)
+!        else
+!            tag = 0
+!            call MPI_SEND(this%gpC%xst, 3, MPI_INTEGER, 0, tag, &
+!                 &      MPI_COMM_WORLD, ierr)
+!            tag = 1
+!            call MPI_SEND(this%gpC%xen, 3, MPI_INTEGER, 0, tag, &
+!                 &      MPI_COMM_WORLD, ierr)
+!            tag = 2
+!            call MPI_SEND(this%gpC%xsz, 3, MPI_INTEGER, 0, tag, &
+!                 &      MPI_COMM_WORLD, ierr)
 
-       end if 
+!        end if 
 
-       OutputDir = this%outputdir
-       runIDX = this%runID
+!        OutputDir = this%outputdir
+!        runIDX = this%runID
        
-       inquire(FILE=trim(OutputDir), exist=isThere)
-       if (nrank == 0) then
-           write(tempname,"(A3,I2.2,A6,A4)") "Run", runIDX, "HEADER",".txt"
-           fname = OutputDir(:len_trim(OutputDir))//"/"//trim(tempname)
+!        inquire(FILE=trim(OutputDir), exist=isThere)
+!        if (nrank == 0) then
+!            write(tempname,"(A3,I2.2,A6,A4)") "Run", runIDX, "HEADER",".txt"
+!            fname = OutputDir(:len_trim(OutputDir))//"/"//trim(tempname)
 
-           open (this%headerfid, file=trim(fname), FORM='formatted', STATUS='replace',ACTION='write')
-           write(this%headerfid,*)"========================================================================="
-           write(this%headerfid,*)"---------------------  Header file for MATLAB ---------------------------"
-           write(this%headerfid,"(A9,A10,A10,A10,A10,A10,A10)") "PROC", "xst", "xen", "yst", "yen","zst","zen"
-           write(this%headerfid,*)"-------------------------------------------------------------------------"
-           do idx = 0,nproc-1
-               write(this%headerfid,"(I8,6I10)") idx, xst(idx,1), xen(idx,1), xst(idx,2), xen(idx,2), xst(idx,3), xen(idx,3)
-           end do 
-           write(this%headerfid,*)"-------------------------------------------------------------------------"
-           write(this%headerfid,*)"Dumps made at:"
-       end if
-       call mpi_barrier(mpi_comm_world,ierr)
+!            open (this%headerfid, file=trim(fname), FORM='formatted', STATUS='replace',ACTION='write')
+!            write(this%headerfid,*)"========================================================================="
+!            write(this%headerfid,*)"---------------------  Header file for MATLAB ---------------------------"
+!            write(this%headerfid,"(A9,A10,A10,A10,A10,A10,A10)") "PROC", "xst", "xen", "yst", "yen","zst","zen"
+!            write(this%headerfid,*)"-------------------------------------------------------------------------"
+!            do idx = 0,nproc-1
+!                write(this%headerfid,"(I8,6I10)") idx, xst(idx,1), xen(idx,1), xst(idx,2), xen(idx,2), xst(idx,3), xen(idx,3)
+!            end do 
+!            write(this%headerfid,*)"-------------------------------------------------------------------------"
+!            write(this%headerfid,*)"Dumps made at:"
+!        end if
+!        call mpi_barrier(mpi_comm_world,ierr)
        
-       !if (nrank == 0) then
-           deallocate(xst, xen, xsz)
-       !end if 
+!        !if (nrank == 0) then
+!            deallocate(xst, xen, xsz)
+!        !end if 
 
-       if (present(dumpInitField)) then
-           if (dumpInitField) then
-               call message(0,"Performing initialization data dump.")
-               !call this%dumpFullField(this%u,'uVel')
-               !call this%dumpFullField(this%v,'vVel')
-               !call this%dumpFullField(this%wC,'wVel')
-               !call this%dump_scalar_fields()
-               !call this%dumpVisualizationInfo()
-               !if (this%isStratified .or. this%initspinup) call this%dumpFullField(this%T,'potT')
-               !if (this%fastCalcPressure) call this%dumpFullField(this%pressure,'prss')
-               !if (this%computeDNSpressure) call this%dumpFullField(this%pressure_dns,'pdns')
-               !if (this%computeturbinepressure) call this%dumpFullField(this%pressure_turbine,'ptrn')
-               !if (this%computefringepressure) call this%dumpFullField(this%pressure_fringe,'pfrn')
-               !if (this%useWindTurbines) then
-               !    this%WindTurbineArr%dumpTurbField = .true.
-               !    this%WindTurbineArr%step = this%step-1
-               !endif
-               call this%dump_visualization_files()
-               call message(0,"Done with the initialization data dump.")
-           end if
-       end if
-   end subroutine
+!        if (present(dumpInitField)) then
+!            if (dumpInitField) then
+!                call message(0,"Performing initialization data dump.")
+!                !call this%dumpFullField(this%u,'uVel')
+!                !call this%dumpFullField(this%v,'vVel')
+!                !call this%dumpFullField(this%wC,'wVel')
+!                !call this%dump_scalar_fields()
+!                !call this%dumpVisualizationInfo()
+!                !if (this%isStratified .or. this%initspinup) call this%dumpFullField(this%T,'potT')
+!                !if (this%fastCalcPressure) call this%dumpFullField(this%pressure,'prss')
+!                !if (this%computeDNSpressure) call this%dumpFullField(this%pressure_dns,'pdns')
+!                !if (this%computeturbinepressure) call this%dumpFullField(this%pressure_turbine,'ptrn')
+!                !if (this%computefringepressure) call this%dumpFullField(this%pressure_fringe,'pfrn')
+!                !if (this%useWindTurbines) then
+!                !    this%WindTurbineArr%dumpTurbField = .true.
+!                !    this%WindTurbineArr%step = this%step-1
+!                !endif
+!                call this%dump_visualization_files()
+!                call message(0,"Done with the initialization data dump.")
+!            end if
+!        end if
+!    end subroutine
+
+   subroutine start_io(this, dumpInitField)
+        class(igrid), target, intent(inout) :: this
+        character(len=clen) :: fname
+        character(len=clen) :: tempname
+        character(len=clen) :: OutputDir
+        integer :: runIDX
+        logical :: isThere
+        integer :: idx, ierr
+        logical, optional, intent(in) :: dumpInitField
+
+        ! Local 3-int vectors (send buffers)
+        integer :: xst_loc(3), xen_loc(3), xsz_loc(3)
+
+        ! Root receive buffers (packed, contiguous)
+        integer, allocatable :: xst_all(:), xen_all(:), xsz_all(:)
+
+        ! Optional: convenience 2D views on root
+        integer, allocatable :: xst(:,:), xen(:,:), xsz(:,:)
+
+        xst_loc = this%gpC%xst
+        xen_loc = this%gpC%xen
+        xsz_loc = this%gpC%xsz
+
+        !-----------------------------------------
+        ! Allocate receive buffers on root only
+        !-----------------------------------------
+        if (nrank == 0) then
+            allocate(xst_all(3*nproc), xen_all(3*nproc), xsz_all(3*nproc))
+            xst_all = 0; xen_all = 0; xsz_all = 0
+
+            allocate(xst(0:nproc-1,3), xen(0:nproc-1,3), xsz(0:nproc-1,3))
+            xst = 0; xen = 0; xsz = 0
+        end if
+
+        !-----------------------------------------
+        ! Gather to rank 0
+        ! Each rank sends 3 ints; root receives 3*nproc ints
+        !-----------------------------------------
+        call MPI_GATHER(xst_loc, 3, MPI_INTEGER, xst_all, 3, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+        call MPI_GATHER(xen_loc, 3, MPI_INTEGER, xen_all, 3, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+        call MPI_GATHER(xsz_loc, 3, MPI_INTEGER, xsz_all, 3, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+
+        !-----------------------------------------
+        ! Unpack into (0:nproc-1,3) for existing code
+        !-----------------------------------------
+        if (nrank == 0) then
+            do idx = 0, nproc-1
+                xst(idx,1:3) = xst_all(3*idx+1 : 3*idx+3)
+                xen(idx,1:3) = xen_all(3*idx+1 : 3*idx+3)
+                xsz(idx,1:3) = xsz_all(3*idx+1 : 3*idx+3)
+            end do
+        end if
+
+        OutputDir = this%outputdir
+        runIDX    = this%runID
+
+        inquire(FILE=trim(OutputDir), exist=isThere) ! This seems useless
+        if (nrank == 0) then
+            write(tempname,"(A3,I2.2,A6,A4)") "Run", runIDX, "HEADER", ".txt"
+            fname = OutputDir(:len_trim(OutputDir))//"/"//trim(tempname)
+
+            open (this%headerfid, file=trim(fname), FORM='formatted', STATUS='replace', ACTION='write')
+            write(this%headerfid,*)"========================================================================="
+            write(this%headerfid,*)"---------------------  Header file for MATLAB ---------------------------"
+            write(this%headerfid,"(A9,A10,A10,A10,A10,A10,A10)") "PROC", "xst", "xen", "yst", "yen","zst","zen"
+            write(this%headerfid,*)"-------------------------------------------------------------------------"
+            do idx = 0,nproc-1
+                write(this%headerfid,"(I8,6I10)") idx, xst(idx,1), xen(idx,1), xst(idx,2), xen(idx,2), xst(idx,3), xen(idx,3)
+            end do
+            write(this%headerfid,*)"-------------------------------------------------------------------------"
+            write(this%headerfid,*)"Dumps made at:"
+        end if
+
+        call MPI_BARRIER(MPI_COMM_WORLD, ierr)
+
+        !-----------------------------------------
+        ! Deallocate (root only for root allocs)
+        !-----------------------------------------
+        if (nrank == 0) then
+            deallocate(xst_all, xen_all, xsz_all)
+            deallocate(xst, xen, xsz)
+        end if
+
+        !-----------------------------------------
+        ! Remainder of your routine unchanged
+        !-----------------------------------------
+        if (present(dumpInitField)) then
+            if (dumpInitField) then
+                call message(0,"Performing initialization data dump.")
+                call this%dump_visualization_files()
+                call message(0,"Done with the initialization data dump.")
+            end if
+        end if
+    end subroutine
    
    subroutine readField3D(RunID, TIDX, inputDir, label, field, gpC)
        use exits, only: GracefulExit

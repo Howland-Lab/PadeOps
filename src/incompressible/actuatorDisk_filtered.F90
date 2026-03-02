@@ -251,7 +251,7 @@ subroutine get_R(this)
     ! call message(1, "Building kernel for turbine yaw:", this%yaw)
     yrad = this%yaw*pi/180.d0
     trad = this%tilt*pi/180.d0
-    do k = 1, this%npts
+    do k = 1, int(this%npts)
         xs = this%xs(k); ys = this%ys(k); zs = this%zs(k)
         ! apply yaw rotation, +z = positive yaw (e.g., Howland, et al. 2022)
         xtmp = (xs-this%xLoc)*cos(yrad) - (ys-this%yLoc)*sin(yrad) + this%xLoc
@@ -408,14 +408,14 @@ subroutine get_RHS(this, u, v, w, rhsxvals, rhsyvals, rhszvals, budgetCall)
 
     real(rkind) :: yaw, tilt
     real(rkind) :: usp_sq, force, vface
-    real(rkind), dimension(3,1) :: n=[1,0,0], tau=[0,1,0] !xn, Ft
+    real(rkind), dimension(3,1) :: n, tau !xn, Ft
     real(rkind), dimension(3,3) :: R, T
     logical :: writeTurbineVals
 
     ! update yaw and tilt of the turbine
-    if (.not. this%useDynamicYaw .and. (this%yaw - yaw*180.d0/pi)>1.d-8) then
-        call GracefulExit("Turbine prescribed yaw changed, but useDynamicYaw is OFF", 423)
-    end if
+    ! if (.not. this%useDynamicYaw .and. (this%yaw - yaw*180.d0/pi)>1.d-8) then
+    !     call GracefulExit("Turbine prescribed yaw changed, but useDynamicYaw is OFF", 423)
+    ! end if
 
     yaw = this%yaw * pi/180.d0
     tilt = this%tilt * pi/180.d0
