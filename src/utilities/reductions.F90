@@ -12,7 +12,7 @@ module reductions
     external :: MPI_ALLREDUCE
 
     interface P_MAXVAL
-        module procedure P_MAXVAL_arr4, P_MAXVAL_arr3, P_MAXVAL_arr2, P_MAXVAL_sca, P_MAXVAL_int, P_MAXVAL_int_locComm
+        module procedure P_MAXVAL_arr4, P_MAXVAL_arr3, P_MAXVAL_arr3_locComm, P_MAXVAL_arr2, P_MAXVAL_sca, P_MAXVAL_int, P_MAXVAL_int_locComm
     end interface
 
     interface P_MINVAL
@@ -60,6 +60,18 @@ contains
 
         mymax = MAXVAL(x)
         call MPI_Allreduce(mymax, maximum, 1, mpirkind, MPI_MAX, MPI_COMM_WORLD, ierr)
+
+    end function
+
+    function P_MAXVAL_arr3_locComm(x, locCommWorld) result(maximum)
+        real(rkind), dimension(:,:,:), intent(in) :: x
+        integer, intent(in) :: locCommWorld
+        real(rkind) :: maximum
+        real(rkind) :: mymax
+        integer :: ierr
+
+        mymax = MAXVAL(x)
+        call MPI_Allreduce(mymax, maximum, 1, mpirkind, MPI_MAX, locCommWorld, ierr)
 
     end function
 
