@@ -602,7 +602,7 @@ module refine_fields_mod
     ! PadeOps
     call Pade6opz%init(gpC_XY, sp_gpC_XY, gpE_XY, sp_gpE_XY, dz, NumericalSchemeVert,.false., spectC_XY)
 
-    allocate(cbuffyC(sp_gpC_XY%ysz(1),gpCsp_gpC_XY_XY%ysz(2),sp_gpC_XY%ysz(3)))
+    allocate(cbuffyC(sp_gpC_XY%ysz(1),sp_gpC_XY%ysz(2),sp_gpC_XY%ysz(3)))
     allocate(cbuffyE(sp_gpE_XY%ysz(1),sp_gpE_XY%ysz(2),sp_gpE_XY%ysz(3)))
     allocate(cbuffzC1(sp_gpC_XY%zsz(1),sp_gpC_XY%zsz(2),sp_gpC_XY%zsz(3)))
     allocate(cbuffzC2(sp_gpC_XY%zsz(1),sp_gpC_XY%zsz(2),sp_gpC_XY%zsz(3)))
