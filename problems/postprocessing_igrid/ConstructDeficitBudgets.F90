@@ -1454,10 +1454,10 @@ program constructDeficitBudgets
    ! Do file IO - input file
    ioUnit = 11
    open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
-   read(unit=ioUnit, NML=INPUT)
-   read(unit=ioUnit, NML=NUMERICS)
-   read(unit=ioUnit, NML=BCs)
-   read(unit=ioUnit, NML=BOX)
+   read(unit=ioUnit, NML=INPUT, IOSTAT=ierr); if (ierr/=0)call gracefulExit("Reading failed for INPUT",101)
+   read(unit=ioUnit, NML=NUMERICS, IOSTAT=ierr); if (ierr/=0)call gracefulExit("Reading failed for NUMERICS",102)
+   read(unit=ioUnit, NML=BCs, IOSTAT=ierr); if (ierr/=0)call gracefulExit("Reading failed for BCs",103)
+   read(unit=ioUnit, NML=BOX, IOSTAT=ierr); if (ierr/=0)call gracefulExit("Reading failed for BOX",104)
    close(ioUnit)    
 
    periodicbcs(1) = .true.; periodicbcs(2) = .true.; periodicbcs(3) = .false.
