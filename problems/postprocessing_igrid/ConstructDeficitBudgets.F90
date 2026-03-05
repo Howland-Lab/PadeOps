@@ -1438,7 +1438,7 @@ program constructDeficitBudgets
    implicit none
    integer :: ioUnit, ierr, k
    logical :: periodicbcs(3)
-   character(len=clen) :: inputfile
+   character(len=clen) :: inputfile, ers
       
    namelist /INPUT/ inputdir, outputdir, nx, ny, nz, Lx, Ly, Lz, prow, pcol, RID, &
                     BRID, budgettype, writeDependentVariables, startIDX, endIDX, tag, &
@@ -1453,11 +1453,27 @@ program constructDeficitBudgets
 
    ! Do file IO - input file
    ioUnit = 11
-   open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
-   read(unit=ioUnit, NML=INPUT, IOSTAT=ierr); if (ierr/=0)call gracefulExit("Reading failed for INPUT",101)
-   read(unit=ioUnit, NML=NUMERICS, IOSTAT=ierr); if (ierr/=0)call gracefulExit("Reading failed for NUMERICS",102)
-   read(unit=ioUnit, NML=BCs, IOSTAT=ierr); if (ierr/=0)call gracefulExit("Reading failed for BCs",103)
-   read(unit=ioUnit, NML=BOX, IOSTAT=ierr); if (ierr/=0)call gracefulExit("Reading failed for BOX",104)
+   open(unit=ioUnit, file=trim(inputfile), form='FORMATTED', status='old', action='read')
+   read(unit=ioUnit, NML=INPUT, IOSTAT=ierr)
+   if (ierr/=0)then
+      write(ers,'(I)')ierr
+      call gracefulExit("Reading failed for INPUT with error "//trim(ers), 101)
+   end if
+   read(unit=ioUnit, NML=NUMERICS, IOSTAT=ierr)
+   if (ierr/=0)then
+      write(ers,'(I)')ierr
+      call gracefulExit("Reading failed for NUMERICS with error "//trim(ers), 102)
+   end if
+   read(unit=ioUnit, NML=BCs, IOSTAT=ierr)
+   if (ierr/=0)then
+      write(ers,'(I)')ierr
+      call gracefulExit("Reading failed for BCs with error "//trim(ers), 103)
+   end if
+   read(unit=ioUnit, NML=BOX, IOSTAT=ierr)
+   if (ierr/=0)then
+      write(ers,'(I)')ierr
+      call gracefulExit("Reading failed for BOX with error "//trim(ers), 104)
+   end if
    close(ioUnit)    
 
    periodicbcs(1) = .true.; periodicbcs(2) = .true.; periodicbcs(3) = .false.
