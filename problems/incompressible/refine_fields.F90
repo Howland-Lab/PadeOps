@@ -20,7 +20,7 @@ module refine_fields_mod
     use spectralMod, only: spectral
     use decomp_2d 
     use decomp_2d_io
-    use constants, only: zero
+    use constants, only: zero, half
     implicit none
 
     type(Pade6stagg) :: Pade6opZ
@@ -36,6 +36,9 @@ module refine_fields_mod
     type(decomp_info) :: gpE        ! Original coarse grid (edges, nz+1)
     type(decomp_info) :: gpE_XY     ! Refined in X and Y (edges, nz+1)
     type(decomp_info) :: gpE_XYZ    ! Refined in X, Y, and Z (edges, nz_f+1)
+
+    type(decomp_info) :: decomp_inter_C, decomp_inter_E  ! Persistent intermediate decomp
+    logical :: is_inter_init = .false.
 
     type(decomp_info), pointer :: Sp_gpC_c, Sp_gpC_XY, Sp_gpE_c, Sp_gpE_XY
     type(spectral), target  :: spectE_c, spectC_c, spectE_f, spectC_f, spectC_XY, spectE_XY
@@ -187,7 +190,7 @@ module refine_fields_mod
     integer, intent(in) :: n1, n2
 
     ! Step 1: Horizontal refinement (X-Y) using spectral interpolation
-    call refine_horizontally(field_c, fxy_inX, spectC_c, spectC_f)
+    call refine_horizontally(field_c, fxy_inX, spectC_c, spectC_f, decomp_inter_C)
 
     ! Step 2: Handle Z-refinement if needed
     if (refine_z > 1) then
@@ -213,7 +216,7 @@ module refine_fields_mod
     integer, intent(in) :: n1, n2, n3, n4
 
     ! Step 1: Horizontal refinement (X-Y) using spectral interpolation
-    call refine_horizontally(field_c, fxyE_inX, spectE_c, spectE_f)
+    call refine_horizontally(field_c, fxyE_inX, spectE_c, spectE_f, decomp_inter_E)
 
     ! Step 2: Handle Z-refinement if needed
     if (refine_z > 1) then      
@@ -228,7 +231,7 @@ module refine_fields_mod
     
   end subroutine refine_single_fieldE
 
-    subroutine refine_horizontally(field_c, field_f, spect_c, spect_f)
+  subroutine refine_horizontally(field_c, field_f, spect_c, spect_f, decomp_inter)
     implicit none
 
     ! Arguments
@@ -236,6 +239,7 @@ module refine_fields_mod
     real(rkind), intent(out) :: field_f(:,:,:)  ! Fine Physical (X-pencil)
     type(spectral), intent(inout) :: spect_c    
     type(spectral), intent(inout) :: spect_f    
+    type(decomp_info), intent(inout) :: decomp_inter
 
     ! Internal Complex Buffers
     complex(rkind), allocatable :: hat_c_yp(:,:,:) ! Coarse Y-pencil
@@ -244,17 +248,14 @@ module refine_fields_mod
     complex(rkind), allocatable :: hat_f_xp(:,:,:) ! Fine X-pencil (Fine Y, Fine X)
     complex(rkind), allocatable :: hat_f_yp(:,:,:) ! Fine Y-pencil (Fine Y, Fine X)
 
-    type(decomp_info) :: decomp_inter  
     integer :: nxc_g, nyc_g, nxf_g, nyf_g, nzc_g
     integer :: nxc_hat
-    !real(rkind) :: scale
-
+    real(rkind) :: scale
+    integer :: ky_nyq_c, kx_nyq_c, ky_neg_start_f
+    
     nxc_g = spect_c%nx_g ; nyc_g = spect_c%ny_g ; nzc_g = spect_c%nz_g
     nxf_g = spect_f%nx_g ; nyf_g = spect_f%ny_g
     nxc_hat = nxc_g/2 + 1
-
-    ! Initialize Intermediate Decomposition (Coarse X_hat, Fine Y, Coarse Z)
-    call decomp_info_init(nxc_hat, nyf_g, nzc_g, decomp_inter)
 
     !===============================================================
     ! SAFEGUARDS (single place, integer-only checks)
@@ -327,24 +328,36 @@ module refine_fields_mod
     if (size(hat_i_yp,2) /= nyf_g) call GracefulExit("hat_i_yp does not contain full y locally", 012)
     hat_i_yp = (zero, zero)
 
-    ! Non-negative block includes Nyquist
-    hat_i_yp(:, 1:nyc_g/2+1, :) = hat_c_yp(:, 1:nyc_g/2+1, :)
+    ky_nyq_c = nyc_g/2 + 1          ! coarse Nyquist index (+Ny/2)
+    ky_neg_start_f = nyf_g - (nyc_g/2 - 1) + 1   ! = nyf_g - nyc_g/2 + 2
 
-    ! Strictly negative modes only (length = nyc/2 - 1)
-    hat_i_yp(:, nyf_g-(nyc_g/2-1)+1:nyf_g, :) = hat_c_yp(:, nyc_g/2+2:nyc_g, :)
+    ! ky = 0 .. +Ny/2 (includes Nyquist)
+    hat_i_yp(:, 1:ky_nyq_c, :) = hat_c_yp(:, 1:ky_nyq_c, :)
+
+    ! ky = -Ny/2+1 .. -1
+    hat_i_yp(:, ky_neg_start_f:nyf_g, :) = hat_c_yp(:, ky_nyq_c+1:nyc_g, :)
 
     ! 3. Transpose to X-pencil to handle X-padding locally
     allocate(hat_i_xp(decomp_inter%xsz(1), decomp_inter%xsz(2), decomp_inter%xsz(3)))
     call transpose_y_to_x(hat_i_yp, hat_i_xp, decomp_inter)
 
     ! 4. Pad X-direction locally (Fine X-pencil)
+    ! No halving here! R2C IFFT handles the symmetry automatically.
     allocate(hat_f_xp(spect_f%spectdecomp%xsz(1), spect_f%spectdecomp%xsz(2), spect_f%spectdecomp%xsz(3)))
+    if(size(hat_i_xp,2) /= size(hat_f_xp,2)) call gracefulExit("xp y-size mismatch", 701)
+    if(size(hat_i_xp,3) /= size(hat_f_xp,3)) call gracefulExit("xp z-size mismatch", 702)
+    
     hat_f_xp = (zero, zero)
-    hat_f_xp(1:nxc_hat, :, :) = hat_i_xp(1:nxc_hat, :, :)
+    kx_nyq_c = nxc_g/2 + 1   ! = nxc_hat
+    
+    ! 1) Copy all modes including the coarse Nyquist plane at index kx_nyq_c
+    !    We enforce real on the Nyquist plane for consistency.
+    hat_f_xp(1:kx_nyq_c-1, :, :) = hat_i_xp(1:kx_nyq_c-1, :, :)
+    hat_f_xp(kx_nyq_c, :, :) = cmplx(real(hat_i_xp(kx_nyq_c, :, :), rkind), zero, kind=rkind)
 
     ! 5. Scaling
-    ! scale = (real(nxf_g, rkind)/real(nxc_g, rkind)) * (real(nyf_g, rkind)/real(nyc_g, rkind))
-    ! hat_f_xp = hat_f_xp * scale
+    scale = (real(nxf_g, rkind)/real(nxc_g, rkind)) * (real(nyf_g, rkind)/real(nyc_g, rkind))
+    hat_f_xp = hat_f_xp * scale
 
     ! 6. Transpose Fine X-pencil back to Fine Y-pencil for the IFFT
     allocate(hat_f_yp(spect_f%spectdecomp%ysz(1), spect_f%spectdecomp%ysz(2), spect_f%spectdecomp%ysz(3)))
@@ -355,8 +368,7 @@ module refine_fields_mod
 
     ! Cleanup
     deallocate(hat_c_yp, hat_i_yp, hat_i_xp, hat_f_xp, hat_f_yp)
-    call decomp_info_finalize(decomp_inter)
-
+    
   end subroutine refine_horizontally
 
   subroutine refine_z_physical(field_c, field_f, dz_c, staggered, bottom_flag, top_flag, n3, n4)
@@ -579,6 +591,10 @@ module refine_fields_mod
     call decomp_info_init(nx_f, ny_f, nz+1, gpE_XY)
     call decomp_info_init(nx_f, ny_f, nz_f+1, gpE_XYZ)
 
+    call decomp_info_init(nx/2 + 1, ny_f, nz,   decomp_inter_C)
+    call decomp_info_init(nx/2 + 1, ny_f, nz+1, decomp_inter_E)
+    is_inter_init = .true.
+
     ! Initialize spectral
     dx = Lx/real(nx,rkind); dy = Ly/real(ny,rkind); dz = Lz/real(nz,rkind)
     call spectC_c%init("x",nx,ny,nz, dx, dy,dz,"FOUR",'2/3rd', dimTransform=2, fixOddball=.false., init_periodicInZ=.false.)
@@ -675,6 +691,11 @@ module refine_fields_mod
     call decomp_info_finalize(gpE)
     call decomp_info_finalize(gpE_XY)
     call decomp_info_finalize(gpE_XYZ)
+
+    if (is_inter_init)then 
+      call decomp_info_finalize(decomp_inter_C)
+      call decomp_info_finalize(decomp_inter_E)
+    end if
 
     call decomp_2d_finalize()
   end subroutine
