@@ -542,6 +542,11 @@ contains
             call decomp_info_init(nx, ny, nz, this%gpC)    
         end if
 
+        if (any(this%gpC%xsz == 1) .or. any(this%gpC%ysz == 1) .or. any(this%gpC%zsz == 1))then
+            if(this%useWindTurbines)then
+                call gracefulExit("Pencil thickness = 1 detected in gpC. Wind turbine module may fail.", 901)
+            end if
+        end if
        call decomp_info_init(nx,ny,nz+1,this%gpE)
        
        if (this%useSystemInteractions) then
