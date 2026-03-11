@@ -10,7 +10,12 @@ export FC=mpiifort
 export CC=mpiicc
 export CXX=mpiicpc
 export FFTW_PATH=$TACC_FFTW3_DIR
-export DECOMP_PATH=${CWD}/dependencies/2decomp_fft
+
+# export DECOMP_PATH=${CWD}/dependencies/2decomp_fft
+# export DECOMP_LIB_NAME=2decomp_fft
+export DECOMP_PATH=${CWD}/dependencies/2decomp-fft-2.0.4/build
+export DECOMP_LIB_NAME=decomp2d
+
 export VTK_IO_PATH=${CWD}/dependencies/Lib_VTK_IO/build
 export HDF5_PATH=${CWD}/dependencies/hdf5-1.14.3/build
 export FFTPACK_PATH=${CWD}/dependencies/fftpack

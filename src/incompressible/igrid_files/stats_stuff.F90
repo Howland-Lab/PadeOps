@@ -574,6 +574,7 @@
    end subroutine
 
    subroutine DeletePrevStats3DFiles(this)
+       use decomp_2d_mpi, only : nrank
        class(igrid), intent(inout) :: this
        character(len=clen) :: tempname
 
@@ -638,6 +639,7 @@
        use basic_io, only: write_2d_ascii
        use decomp_2d_io
        use kind_parameters, only: mpirkind
+       use decomp_2d_mpi, only : nrank
        class(igrid), intent(inout), target :: this
      ! compute horizontal averages and dump .stt files
      ! overwrite previously written out 3D stats dump
@@ -1344,35 +1346,35 @@
            jindx = 1 ! u
            write(tempname,"(A3,I2.2,A8,I6.6,A4)") "Run", this%RunID,"_specu_t",tid,".out"
            fname = this%OutputDir(:len_trim(this%OutputDir))//"/"//trim(tempname)
-           call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx, fname, this%sp_gpC)
+           call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx, trim(this%OutputDir), trim(tempname), 'ku', this%sp_gpC)
 
            jindx = 2 ! v
            write(tempname,"(A3,I2.2,A8,I6.6,A4)") "Run", this%RunID,"_specv_t",tid,".out"
            fname = this%OutputDir(:len_trim(this%OutputDir))//"/"//trim(tempname)
-           call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx, fname, this%sp_gpC)
+           call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx,trim(this%OutputDir), trim(tempname), 'kv', this%sp_gpC)
 
            jindx = 3 ! w
            write(tempname,"(A3,I2.2,A8,I6.6,A4)") "Run", this%RunID,"_specw_t",tid,".out"
            fname = this%OutputDir(:len_trim(this%OutputDir))//"/"//trim(tempname)
-           call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx, fname, this%sp_gpC)
+           call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx,trim(this%OutputDir), trim(tempname), 'kw', this%sp_gpC)
 
            jindx = 4 ! KE
            write(tempname,"(A3,I2.2,A8,I6.6,A4)") "Run", this%RunID,"_speck_t",tid,".out"
            fname = this%OutputDir(:len_trim(this%OutputDir))//"/"//trim(tempname)
-           call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx, fname, this%sp_gpC)
+           call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx,trim(this%OutputDir), trim(tempname), 'kkw',this%sp_gpC)
 
            if(this%isStratified) then
                jindx = jindx + 1 ! T
                write(tempname,"(A3,I2.2,A8,I6.6,A4)") "Run", this%RunID,"_specT_t",tid,".out"
                fname = this%OutputDir(:len_trim(this%OutputDir))//"/"//trim(tempname)
-               call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx, fname, this%sp_gpC)
+               call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx, trim(this%OutputDir), trim(tempname), 'kt', this%sp_gpC)
            endif
 
            if(this%fastCalcPressure .or. this%storePressure) then
                jindx = jindx + 1 ! p
                write(tempname,"(A3,I2.2,A8,I6.6,A4)") "Run", this%RunID,"_specp_t",tid,".out"
                fname = this%OutputDir(:len_trim(this%OutputDir))//"/"//trim(tempname)
-               call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx, fname, this%sp_gpC)
+               call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx, trim(this%OutputDir), trim(tempname), 'kp', this%sp_gpC)
            endif
        end if 
 

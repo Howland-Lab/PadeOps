@@ -67,6 +67,7 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     use gridtools,          only: alloc_buffs
     use random,             only: gaussian_random
     use decomp_2d
+    use decomp_2d_mpi, only : nrank
     use reductions,         only: p_maxval
     use pre_conc_compact_budgets_parameters
     implicit none

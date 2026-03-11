@@ -1284,7 +1284,7 @@ module budgets_time_avg_deficit_compact_mod
 
         write(tempname,"(A3,I2.2,A20,I1.1,A5,I2.2,A2,I6.6,A2,I6.6,A4)") "Run",runID,"_comp_deficit_budget",budgetID,"_term",fieldID,"_t",timeID,"_n",counterID,".s3D"
         fname = dir(:len_trim(dir))//"/"//trim(tempname)
-        call decomp_2d_read_one(1,field,fname, this%prim_igrid_sim%gpC)           
+        call decomp_2d_read_one(1,field,trim(dir),trim(tempname),'dbc', this%prim_igrid_sim%gpC)           
      end subroutine 
 
      subroutine RestartBudget(this, dir, rid, tid, cid)

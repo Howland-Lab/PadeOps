@@ -1,7 +1,8 @@
 module reductions
     use mpi
     use kind_parameters, only: rkind,mpirkind
-    use decomp_2d, only: decomp_info, nrank, nproc
+    use decomp_2d_mpi, only: nrank, nproc
+    use decomp_2d, only: decomp_info
     use exits, only: GracefulExit
     
     implicit none

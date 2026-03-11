@@ -2,6 +2,7 @@ module igrid_Operators
    use kind_parameters, only: rkind, clen
    use spectralMod, only: spectral  
    use decomp_2d
+   use decomp_2d_mpi, only : nrank
    use cd06staggstuff, only: cd06stagg
    use reductions, only: p_sum
    use PadeDerOps, only: Pade6stagg 
@@ -434,9 +435,10 @@ subroutine init(this, nx, ny, nz, dx, dy, dz, InputDir, OutputDir, RunID, isPeri
    logical, intent(in) :: isPeriodicinZ
    integer, intent(in) :: RunID, NumericalSchemeZ
    logical, dimension(3) :: periodicbcs
+   integer :: prow=0, pcol=0
 
    periodicbcs(1) = .true.; periodicbcs(2) = .true.; periodicbcs(3) = isPeriodicinZ
-   call decomp_2d_init(nx, ny, nz, 0, 0, periodicbcs)
+   call decomp_2d_init(nx, ny, nz, prow, pcol, periodicbcs)
    call get_decomp_info(this%gp)
    
    call decomp_info_init(nx,ny,nz+1,this%gpE)
@@ -631,7 +633,7 @@ subroutine ReadField3D(this, field, label, tidx)
     call gracefulExit("File I/O issue.",44)
    end if 
    close(777)
-   call decomp_2d_read_one(1,field,fname,this%gp)
+   call decomp_2d_read_one(1,field,trim(this%InputDir),trim(tempname),'io',this%gp)
 end subroutine  
 
 
@@ -703,7 +705,7 @@ subroutine ReadSummingRestart(this, field, label, tidx)
    end if 
    close(777)
    
-   call decomp_2d_read_one(1,field,fname,this%gp)
+   call decomp_2d_read_one(1,field,trim(this%RestartDir),trim(tempname),'iq',this%gp)
 end subroutine  
 
 subroutine WriteSummingRestartInfo(this,tidx,nsum)
@@ -800,7 +802,7 @@ subroutine dump_plane(this, field, dir_id, plane_id, tid, label)
        write(tempname,"(A3,I2.2,A2,I6.6,A2,I5.5,A1,A4,A4)") "Run", this%RunID,"_t",tid,"_z",plane_id,"_",label,".pln"
    end select 
    fname = this%OutputDir(:len_trim(this%OutputDir))//"/"//trim(tempname)
-   call decomp_2d_write_plane(1,field,dir_id, plane_id, fname, this%gp)
+   call decomp_2d_write_plane(1,field,dir_id,plane_id,trim(this%OutputDir),trim(tempname),'iy',this%gp)
 
 end subroutine 
 

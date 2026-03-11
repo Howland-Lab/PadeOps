@@ -2,6 +2,7 @@ module actuatorLineMod
     use kind_parameters, only: rkind, clen
     use constants, only: imi, zero,one,two,three,half,fourth, pi, kappa
     use decomp_2d
+    use decomp_2d_mpi, only : nrank
     use StaggOpsMod, only: staggOps  
     use exits, only: GracefulExit, message
     use spectralMod, only: spectral  

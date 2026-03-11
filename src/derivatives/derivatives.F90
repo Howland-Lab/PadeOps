@@ -5,7 +5,8 @@ module DerivativesMod
     use fftstuff, only: ffts
     use dctstuff, only: dcts
     use exits,    only: gracefulExit, message
-    use decomp_2d, only: decomp_info, nrank
+    use decomp_2d, only: decomp_info
+    use decomp_2d_mpi, only: nrank
 
     implicit none
     private 

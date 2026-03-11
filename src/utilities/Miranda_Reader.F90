@@ -1,9 +1,11 @@
 module miranda_tools
 
     use kind_parameters, only: rkind,clen
-    use decomp_2d,       only: decomp_info, get_decomp_info, decomp_2d_init, decomp_2d_finalize,       &
-                               transpose_x_to_y, transpose_y_to_x, transpose_y_to_z, transpose_z_to_y, &
-                               nrank, nproc
+    ! use decomp_2d,       only: decomp_info, get_decomp_info, decomp_2d_init, decomp_2d_finalize,       &
+    !                           transpose_x_to_y, transpose_y_to_x, transpose_y_to_z, transpose_z_to_y, &
+    !                            nrank, nproc
+    use decomp_2d
+    use decomp_2d_mpi
     use exits,           only: GracefulExit, message
     use gridtools,       only: alloc_buffs
     implicit none

@@ -351,6 +351,7 @@
    end subroutine
    
    subroutine wrapup_timestep(this)
+       use decomp_2d_mpi, only : nrank
        class(igrid), intent(inout) :: this
 
        logical :: forceWrite, exitStat, forceDumpPressure, restartWrite, forceDumpProbes 

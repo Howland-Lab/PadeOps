@@ -62,7 +62,7 @@ subroutine dumpYPlanes(this, f, label, pid, step)
    do j = 1,size(pid)
       write(tempname,"(A3,I2.2,A7,I2.2,A2,I4.4,A1,A4,A2,I6.6,A4)") "Run",this%runID,"_FILTER",this%fof_id,"_y",pid(j),"_",label,"_t",step,".pln"
       fname = this%OutputDir(:len_trim(this%OutputDir))//"/"//trim(tempname)
-      call decomp_2d_write_plane(1,f,2, pid(j), fname, this%gpC)
+      call decomp_2d_write_plane(1,f,2, pid(j), fname, 'null', 'null', this%gpC)
    end do 
 end subroutine
 

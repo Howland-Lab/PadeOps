@@ -4,6 +4,7 @@ module PadePoissonMod
     use constants, only: pi, zero, one, three, five, two, imi
     use exits, only: message, GracefulExit, nancheck
     use decomp_2d
+    use decomp_2d_mpi, only : nrank
     use cd06staggstuff, only: cd06stagg
     use mpi
     use reductions, only: p_maxval   

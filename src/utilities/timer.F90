@@ -1,5 +1,5 @@
 module timer
-        use decomp_2d,       only: nrank 
+        use decomp_2d_mpi,       only: nrank 
         use mpi,             only: MPI_WTIME  
         use kind_parameters, only: rkind
         use reductions,      only: P_MAXVAL 

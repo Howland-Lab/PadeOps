@@ -123,6 +123,7 @@ end subroutine
 
 
 subroutine computeWall_PotTFlux(this)
+   use decomp_2d_mpi, only : nrank
    class(sgs_igrid), intent(inout) :: this
  
    if (nrank == 0) then
@@ -133,6 +134,7 @@ end subroutine
 
 subroutine compute_and_bcast_surface_Mn(this, u, v, uhat, vhat, That )
     use mpi
+    use decomp_2d_mpi, only : nrank
     !use constants, only: four
     use kind_parameters, only: mpirkind
     class(sgs_igrid), intent(inout), target :: this

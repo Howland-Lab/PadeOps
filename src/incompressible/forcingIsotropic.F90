@@ -1,6 +1,7 @@
 module forcingmod
    use kind_parameters, only: rkind
    use decomp_2d
+   use decomp_2d_mpi, only : nrank
    use constants, only: im0, one, zero, two, pi
    use spectralMod, only: spectral 
    use exits, only: GracefulExit, message

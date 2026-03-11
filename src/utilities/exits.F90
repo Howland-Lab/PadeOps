@@ -2,7 +2,7 @@ module exits
 
     use kind_parameters, only: rkind,clen,stdout,stderr
     use constants, only: one
-    use decomp_2d, only: nrank, decomp_2d_abort
+    use decomp_2d_mpi, only: nrank, decomp_2d_abort
     
     implicit none
     private

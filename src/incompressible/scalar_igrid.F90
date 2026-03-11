@@ -363,7 +363,7 @@ subroutine readRestart(this, tid)
 
    write(tempname,"(A7,A4,I2.2,A7,I2.2,A1,I6.6)") "RESTART", "_Run", this%RunID, "_SCALAR",this%scalar_number,".",tid
    fname = this%InputDataDir(:len_trim(this%InputDataDir))//"/"//trim(tempname)
-   call decomp_2d_read_one(1,this%F,fname, this%gpC)
+   call decomp_2d_read_one(1,this%F,trim(this%InputDataDir),trim(tempname), 'ik', this%gpC)
    
    call message(1,"Restart data successfully read for scalar number", this%scalar_number)
    call message_min_max(2,"Bounds for F:", p_minval(minval(this%F)), p_maxval(maxval(this%F)))
@@ -395,7 +395,7 @@ subroutine dump_planes(this, tid, pid, dirid, dirlabel)
 
    write(tempname,"(A3,I2.2,A2,I6.6,A2,I5.5,A2,I2.2)") "Run", this%RunID,"_t",tid,dirlabel,pid,".p", this%scalar_number
    fname = this%OutputDataDir(:len_trim(this%OutputDataDir))//"/"//trim(tempname)
-   call decomp_2d_write_plane(1,this%F,dirid, pid, fname, this%gpC)
+   call decomp_2d_write_plane(1,this%F,dirid,pid,trim(this%OutputDataDir),trim(tempname),'ia', this%gpC)
 
 end subroutine
 

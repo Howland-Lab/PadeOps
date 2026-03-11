@@ -14,7 +14,7 @@ foreach ( postprocessingfile ${postprocessing_source_files} )
     add_executable( ${postprocessingexec} ${postprocessingfile} )
     
     target_link_libraries( ${postprocessingexec} PadeOps)
-    # target_link_libraries( ${testexec} IncompressibleOps CompressibleOps 2decomp_fft fftw3 ${VTK_IO_LIBRARY_PATH}/libVTK_IO.a )
+    # target_link_libraries( ${testexec} IncompressibleOps CompressibleOps ${DECOMP_LIB_NAME} fftw3 ${VTK_IO_LIBRARY_PATH}/libVTK_IO.a )
 
     if (MPI_Fortran_COMPILER_FLAGS)
         set_target_properties(${postprocessingexec} PROPERTIES COMPILE_FLAGS "${CMAKE_Fortran_FLAGS}")

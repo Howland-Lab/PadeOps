@@ -1,6 +1,7 @@
 module budgets_xy_avg_mod
    use kind_parameters, only: rkind, clen, mpirkind
    use decomp_2d
+   use decomp_2d_mpi, only : nrank
    use reductions, only: p_sum
                    use incompressibleGrid, only: igrid  
    use exits, only: message, GracefulExit
@@ -978,30 +979,30 @@ contains
         jindx = 1 ! u
         write(tempname,"(A3,I2.2,A17,I6.6,A4)") "Run", this%run_id,"_autocorrel_u_x_t",this%igrid_sim%step,".out"
         fname = this%budgets_dir(:len_trim(this%budgets_dir))//"/"//trim(tempname)
-        call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx, fname, this%igrid_sim%gpC)
+        call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx,trim(this%budgets_dir),trim(tempname),'xyu', this%igrid_sim%gpC)
 
         jindx = 2 ! v
         write(tempname,"(A3,I2.2,A17,I6.6,A4)") "Run", this%run_id,"_autocorrel_v_x_t",this%igrid_sim%step,".out"
         fname = this%budgets_dir(:len_trim(this%budgets_dir))//"/"//trim(tempname)
-        call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx, fname, this%igrid_sim%gpC)
+        call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx,trim(this%budgets_dir),trim(tempname),'xyv', this%igrid_sim%gpC)
 
         jindx = 3 ! w
         write(tempname,"(A3,I2.2,A17,I6.6,A4)") "Run", this%run_id,"_autocorrel_w_x_t",this%igrid_sim%step,".out"
         fname = this%budgets_dir(:len_trim(this%budgets_dir))//"/"//trim(tempname)
-        call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx, fname, this%igrid_sim%gpC)
+        call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx,trim(this%budgets_dir),trim(tempname),'xyw', this%igrid_sim%gpC)
 
         if(this%igrid_sim%fastCalcPressure .or. this%igrid_sim%storePressure) then
             jindx = 4 ! pressure
             write(tempname,"(A3,I2.2,A17,I6.6,A4)") "Run", this%run_id,"_autocorrel_p_x_t",this%igrid_sim%step,".out"
             fname = this%budgets_dir(:len_trim(this%budgets_dir))//"/"//trim(tempname)
-            call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx, fname, this%igrid_sim%gpC)
+            call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx,trim(this%budgets_dir),trim(tempname),'xyp', this%igrid_sim%gpC)
         endif
 
         if(this%igrid_sim%isStratified) then
             jindx = jindx + 1    ! T
             write(tempname,"(A3,I2.2,A17,I6.6,A4)") "Run", this%run_id,"_autocorrel_T_x_t",this%igrid_sim%step,".out"
             fname = this%budgets_dir(:len_trim(this%budgets_dir))//"/"//trim(tempname)
-            call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx, fname, this%igrid_sim%gpC)
+            call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx,trim(this%budgets_dir),trim(tempname),'xyt', this%igrid_sim%gpC)
         endif
 
     end subroutine 
@@ -1054,30 +1055,30 @@ contains
         iindx = 1 ! u
         write(tempname,"(A3,I2.2,A17,I6.6,A4)") "Run", this%run_id,"_autocorrel_u_y_t",this%igrid_sim%step,".out"
         fname = this%budgets_dir(:len_trim(this%budgets_dir))//"/"//trim(tempname)
-        call decomp_2d_write_plane(decompdir, tmpvar, dirid, iindx, fname, this%igrid_sim%gpC)
+        call decomp_2d_write_plane(decompdir, tmpvar, dirid, iindx, trim(this%budgets_dir),trim(tempname),'xyuu', this%igrid_sim%gpC)
 
         iindx = 2 ! v
         write(tempname,"(A3,I2.2,A17,I6.6,A4)") "Run", this%run_id,"_autocorrel_v_y_t",this%igrid_sim%step,".out"
         fname = this%budgets_dir(:len_trim(this%budgets_dir))//"/"//trim(tempname)
-        call decomp_2d_write_plane(decompdir, tmpvar, dirid, iindx, fname, this%igrid_sim%gpC)
+        call decomp_2d_write_plane(decompdir, tmpvar, dirid, iindx,trim(this%budgets_dir),trim(tempname),'xyvv', this%igrid_sim%gpC)
 
         iindx = 3 ! w
         write(tempname,"(A3,I2.2,A17,I6.6,A4)") "Run", this%run_id,"_autocorrel_w_y_t",this%igrid_sim%step,".out"
         fname = this%budgets_dir(:len_trim(this%budgets_dir))//"/"//trim(tempname)
-        call decomp_2d_write_plane(decompdir, tmpvar, dirid, iindx, fname, this%igrid_sim%gpC)
+        call decomp_2d_write_plane(decompdir, tmpvar, dirid, iindx,trim(this%budgets_dir),trim(tempname),'xyww',  this%igrid_sim%gpC)
 
         if(this%igrid_sim%fastCalcPressure .or. this%igrid_sim%storePressure) then
             iindx = 4 ! pressure
             write(tempname,"(A3,I2.2,A17,I6.6,A4)") "Run", this%run_id,"_autocorrel_p_y_t",this%igrid_sim%step,".out"
             fname = this%budgets_dir(:len_trim(this%budgets_dir))//"/"//trim(tempname)
-            call decomp_2d_write_plane(decompdir, tmpvar, dirid, iindx, fname, this%igrid_sim%gpC)
+            call decomp_2d_write_plane(decompdir, tmpvar, dirid, iindx,trim(this%budgets_dir),trim(tempname),'xypp', this%igrid_sim%gpC)
         endif
 
         if(this%igrid_sim%isStratified) then
             iindx = iindx + 1    ! T
             write(tempname,"(A3,I2.2,A17,I6.6,A4)") "Run", this%run_id,"_autocorrel_T_y_t",this%igrid_sim%step,".out"
             fname = this%budgets_dir(:len_trim(this%budgets_dir))//"/"//trim(tempname)
-            call decomp_2d_write_plane(decompdir, tmpvar, dirid, iindx, fname, this%igrid_sim%gpC)
+            call decomp_2d_write_plane(decompdir, tmpvar, dirid, iindx,trim(this%budgets_dir),trim(tempname),'xytt', this%igrid_sim%gpC)
         endif
 
     end subroutine 
@@ -1233,36 +1234,36 @@ contains
         jindx = 1 
         write(tempname,"(A3,I2.2,A8,I6.6,A4)") "Run", this%run_id,"_specu_t",this%igrid_sim%step,".out"
         fname = this%budgets_dir(:len_trim(this%budgets_dir))//"/"//trim(tempname)
-        !call decomp_2d_write_plane(decompdir, this%igrid_sim%cbuffyC(:,:,:,2), dirid, jindx, fname, this%igrid_sim%sp_gpC)
-        call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx, fname, this%igrid_sim%sp_gpC)
+        !call decomp_2d_write_plane(decompdir, this%igrid_sim%cbuffyC(:,:,:,2), dirid, jindx,trim(this%budgets_dir),trim(tempname),'xyuuu', this%igrid_sim%sp_gpC)
+        call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx, trim(this%budgets_dir),trim(tempname),'xyavgu',this%igrid_sim%sp_gpC)
 
         ! v Velocity
         jindx = 2 
         write(tempname,"(A3,I2.2,A8,I6.6,A4)") "Run", this%run_id,"_specv_t",this%igrid_sim%step,".out"
         fname = this%budgets_dir(:len_trim(this%budgets_dir))//"/"//trim(tempname)
-        !call decomp_2d_write_plane(decompdir, this%igrid_sim%cbuffyC(:,:,:,2), dirid, jindx, fname, this%igrid_sim%sp_gpC)
-        call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx, fname, this%igrid_sim%sp_gpC)
+        !call decomp_2d_write_plane(decompdir, this%igrid_sim%cbuffyC(:,:,:,2), dirid, jindx,trim(this%budgets_dir),trim(tempname),'xyvvv',  this%igrid_sim%sp_gpC)
+        call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx, trim(this%budgets_dir),trim(tempname),'xyavgv', this%igrid_sim%sp_gpC)
 
         ! w Velocity
         jindx = 3 
         write(tempname,"(A3,I2.2,A8,I6.6,A4)") "Run", this%run_id,"_specw_t",this%igrid_sim%step,".out"
         fname = this%budgets_dir(:len_trim(this%budgets_dir))//"/"//trim(tempname)
-        !call decomp_2d_write_plane(decompdir, this%igrid_sim%cbuffyC(:,:,:,2), dirid, jindx, fname, this%igrid_sim%sp_gpC)
-        call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx, fname, this%igrid_sim%sp_gpC)
+        !call decomp_2d_write_plane(decompdir, this%igrid_sim%cbuffyC(:,:,:,2), dirid, jindx,trim(this%budgets_dir),trim(tempname),'xywww', this%igrid_sim%sp_gpC)
+        call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx, trim(this%budgets_dir),trim(tempname),'xyavgw', this%igrid_sim%sp_gpC)
 
         ! TKE
         jindx = 4 
         write(tempname,"(A3,I2.2,A8,I6.6,A4)") "Run", this%run_id,"_speck_t",this%igrid_sim%step,".out"
         fname = this%budgets_dir(:len_trim(this%budgets_dir))//"/"//trim(tempname)
         !call decomp_2d_write_plane(decompdir, this%igrid_sim%cbuffyC(:,:,:,2), dirid, jindx, fname, this%igrid_sim%sp_gpC)
-        call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx, fname, this%igrid_sim%sp_gpC)
+        call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx,trim(this%budgets_dir),trim(tempname),'xytke',  this%igrid_sim%sp_gpC)
 
         if(this%igrid_sim%fastCalcPressure .or. this%igrid_sim%storePressure) then
             jindx = jindx + 1 ! p
             write(tempname,"(A3,I2.2,A8,I6.6,A4)") "Run", this%run_id,"_specp_t",this%igrid_sim%step,".out"
             fname = this%budgets_dir(:len_trim(this%budgets_dir))//"/"//trim(tempname)
             !call decomp_2d_write_plane(decompdir, this%igrid_sim%cbuffyC(:,:,:,2), dirid, jindx, fname, this%igrid_sim%sp_gpC)
-            call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx, fname, this%igrid_sim%sp_gpC)
+            call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx, trim(this%budgets_dir),trim(tempname),'xyppp', this%igrid_sim%sp_gpC)
         endif
 
         if(this%igrid_sim%isStratified) then
@@ -1270,7 +1271,7 @@ contains
             write(tempname,"(A3,I2.2,A8,I6.6,A4)") "Run", this%run_id,"_specT_t",this%igrid_sim%step,".out"
             fname = this%budgets_dir(:len_trim(this%budgets_dir))//"/"//trim(tempname)
             !call decomp_2d_write_plane(decompdir, this%igrid_sim%cbuffyC(:,:,:,2), dirid, jindx, fname, this%igrid_sim%sp_gpC)
-            call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx, fname, this%igrid_sim%sp_gpC)
+            call decomp_2d_write_plane(decompdir, tmpvar, dirid, jindx, trim(this%budgets_dir),trim(tempname),'xyttt', this%igrid_sim%sp_gpC)
         endif
 
     end subroutine 

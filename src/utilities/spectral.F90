@@ -2,7 +2,8 @@ module spectralMod
     use kind_parameters, only: rkind
     use decomp_2d, only: decomp_info, decomp_info_init, &
                     transpose_x_to_y, transpose_y_to_x, &
-                    transpose_y_to_z, transpose_z_to_y, nrank 
+                    transpose_y_to_z, transpose_z_to_y
+    use decomp_2d_mpi, only: nrank
     use decomp_2d_fft, only: decomp_2d_fft_init, decomp_2d_fft_finalize, decomp_2d_fft_get_size
     use exits, only: GracefulExit, message 
     use constants, only: pi, one, zero, two, three, four, eight 

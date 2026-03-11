@@ -376,7 +376,7 @@ contains
             pid = this%planes2dumpC(idx)
             write(tempname,"(A3,I2.2,A2,I6.6,A2,I5.5,A4)") "Run", this%RunID,"_t",tid,"_C",pid,flabel
             fname = this%OutputDir(:len_trim(this%OutputDir))//"/"//trim(tempname)
-            call decomp_2d_write_plane(3,this%fdump8,dirid, pid,fname,this%gp_Dump0)
+            call decomp_2d_write_plane(3,this%fdump8,dirid, pid,fname,'null','null',this%gp_Dump0)
         end do 
         call transpose_z_to_y(this%fdumpFinal,this%fdump8y,this%gp_Dump0)
         call transpose_y_to_x(this%fdump8y,this%fdump8x1,this%gp_Dump0)
@@ -388,7 +388,7 @@ contains
             pid = this%planes2dumpC(idx)
             write(tempname,"(A3,I2.2,A2,I6.6,A2,I5.5,A4)") "Run", this%RunID,"_t",tid,"_C",pid,flabel
             fname = this%OutputDir(:len_trim(this%OutputDir))//"/"//trim(tempname)
-            call decomp_2d_write_plane(1,this%fdump8x1,dirid, pid,fname,this%gp_Dump0)
+            call decomp_2d_write_plane(1,this%fdump8x1,dirid, pid,fname,'null','null',this%gp_Dump0)
         end do 
         call this%spectSmall%mtimes_ik2_ip(this%fCtmp1)
         call this%spectSmall%ifft(this%fCtmp1,this%fdump8x1)
@@ -397,7 +397,7 @@ contains
             pid = this%planes2dumpC(idx)
             write(tempname,"(A3,I2.2,A2,I6.6,A2,I5.5,A4)") "Run", this%RunID,"_t",tid,"_C",pid,flabel
             fname = this%OutputDir(:len_trim(this%OutputDir))//"/"//trim(tempname)
-            call decomp_2d_write_plane(1,this%fdump8x1,dirid, pid,fname,this%gp_Dump0)
+            call decomp_2d_write_plane(1,this%fdump8x1,dirid, pid,fname,'null','null',this%gp_Dump0)
         end do 
         call this%OpsSmall%ddz_C2C(this%fdumpFinal,this%fdump8,.true.,.false.)
         flabel = ".udz"
@@ -405,7 +405,7 @@ contains
             pid = this%planes2dumpC(idx)
             write(tempname,"(A3,I2.2,A2,I6.6,A2,I5.5,A4)") "Run", this%RunID,"_t",tid,"_C",pid,flabel
             fname = this%OutputDir(:len_trim(this%OutputDir))//"/"//trim(tempname)
-            call decomp_2d_write_plane(3,this%fdump8,dirid, pid,fname,this%gp_Dump0)
+            call decomp_2d_write_plane(3,this%fdump8,dirid, pid,fname,'null','null',this%gp_Dump0)
         end do 
 
 
@@ -425,7 +425,7 @@ contains
             pid = this%planes2dumpC(idx)
             write(tempname,"(A3,I2.2,A2,I6.6,A2,I5.5,A4)") "Run", this%RunID,"_t",tid,"_C",pid,flabel
             fname = this%OutputDir(:len_trim(this%OutputDir))//"/"//trim(tempname)
-            call decomp_2d_write_plane(3,this%fdump8,dirid, pid,fname,this%gp_Dump0)
+            call decomp_2d_write_plane(3,this%fdump8,dirid, pid,fname,'null','null',this%gp_Dump0)
         end do 
         call transpose_z_to_y(this%fdumpFinal,this%fdump8y,this%gp_Dump0)
         call transpose_y_to_x(this%fdump8y,this%fdump8x1,this%gp_Dump0)
@@ -437,7 +437,7 @@ contains
             pid = this%planes2dumpC(idx)
             write(tempname,"(A3,I2.2,A2,I6.6,A2,I5.5,A4)") "Run", this%RunID,"_t",tid,"_C",pid,flabel
             fname = this%OutputDir(:len_trim(this%OutputDir))//"/"//trim(tempname)
-            call decomp_2d_write_plane(1,this%fdump8x1,dirid, pid,fname,this%gp_Dump0)
+            call decomp_2d_write_plane(1,this%fdump8x1,dirid, pid,fname,'null','null',this%gp_Dump0)
         end do 
         call this%spectSmall%mtimes_ik2_ip(this%fCtmp1)
         call this%spectSmall%ifft(this%fCtmp1,this%fdump8x1)
@@ -446,7 +446,7 @@ contains
             pid = this%planes2dumpC(idx)
             write(tempname,"(A3,I2.2,A2,I6.6,A2,I5.5,A4)") "Run", this%RunID,"_t",tid,"_C",pid,flabel
             fname = this%OutputDir(:len_trim(this%OutputDir))//"/"//trim(tempname)
-            call decomp_2d_write_plane(1,this%fdump8x1,dirid, pid,fname,this%gp_Dump0)
+            call decomp_2d_write_plane(1,this%fdump8x1,dirid, pid,fname,'null','null',this%gp_Dump0)
         end do 
         call this%OpsSmall%ddz_C2C(this%fdumpFinal,this%fdump8,.true.,.false.)
         flabel = ".vdz"
@@ -454,7 +454,7 @@ contains
             pid = this%planes2dumpC(idx)
             write(tempname,"(A3,I2.2,A2,I6.6,A2,I5.5,A4)") "Run", this%RunID,"_t",tid,"_C",pid,flabel
             fname = this%OutputDir(:len_trim(this%OutputDir))//"/"//trim(tempname)
-            call decomp_2d_write_plane(3,this%fdump8,dirid, pid,fname,this%gp_Dump0)
+            call decomp_2d_write_plane(3,this%fdump8,dirid, pid,fname,'null','null',this%gp_Dump0)
         end do 
 
         
@@ -474,7 +474,7 @@ contains
             pid = this%planes2dumpC(idx)
             write(tempname,"(A3,I2.2,A2,I6.6,A2,I5.5,A4)") "Run", this%RunID,"_t",tid,"_C",pid,flabel
             fname = this%OutputDir(:len_trim(this%OutputDir))//"/"//trim(tempname)
-            call decomp_2d_write_plane(3,this%fdump8,dirid, pid,fname,this%gp_Dump0)
+            call decomp_2d_write_plane(3,this%fdump8,dirid, pid,fname,'null','null',this%gp_Dump0)
         end do 
         call transpose_z_to_y(this%fdumpFinal,this%fdump8y,this%gp_Dump0)
         call transpose_y_to_x(this%fdump8y,this%fdump8x1,this%gp_Dump0)
@@ -486,7 +486,7 @@ contains
             pid = this%planes2dumpC(idx)
             write(tempname,"(A3,I2.2,A2,I6.6,A2,I5.5,A4)") "Run", this%RunID,"_t",tid,"_C",pid,flabel
             fname = this%OutputDir(:len_trim(this%OutputDir))//"/"//trim(tempname)
-            call decomp_2d_write_plane(1,this%fdump8x1,dirid, pid,fname,this%gp_Dump0)
+            call decomp_2d_write_plane(1,this%fdump8x1,dirid, pid,fname,'null','null',this%gp_Dump0)
         end do 
         call this%spectSmall%mtimes_ik2_ip(this%fCtmp1)
         call this%spectSmall%ifft(this%fCtmp1,this%fdump8x1)
@@ -495,7 +495,7 @@ contains
             pid = this%planes2dumpC(idx)
             write(tempname,"(A3,I2.2,A2,I6.6,A2,I5.5,A4)") "Run", this%RunID,"_t",tid,"_C",pid,flabel
             fname = this%OutputDir(:len_trim(this%OutputDir))//"/"//trim(tempname)
-            call decomp_2d_write_plane(1,this%fdump8x1,dirid, pid,fname,this%gp_Dump0)
+            call decomp_2d_write_plane(1,this%fdump8x1,dirid, pid,fname,'null','null',this%gp_Dump0)
         end do 
         call this%OpsSmall%ddz_C2C(this%fdumpFinal,this%fdump8,.true.,.false.)
         flabel = ".wdz"
@@ -503,7 +503,7 @@ contains
             pid = this%planes2dumpC(idx)
             write(tempname,"(A3,I2.2,A2,I6.6,A2,I5.5,A4)") "Run", this%RunID,"_t",tid,"_C",pid,flabel
             fname = this%OutputDir(:len_trim(this%OutputDir))//"/"//trim(tempname)
-            call decomp_2d_write_plane(3,this%fdump8,dirid, pid,fname,this%gp_Dump0)
+            call decomp_2d_write_plane(3,this%fdump8,dirid, pid,fname,'null','null',this%gp_Dump0)
         end do 
 
 
@@ -535,13 +535,13 @@ contains
             pid = this%planes2dumpC(idx)
             write(tempname,"(A3,I2.2,A2,I6.6,A2,I5.5,A4)") "Run", this%RunID,"_t",tid,"_C",pid,flabel
             fname = this%OutputDir(:len_trim(this%OutputDir))//"/"//trim(tempname)
-            call decomp_2d_write_plane(3,this%fdump,dirid, pid,fname,this%gp_allDn)
+            call decomp_2d_write_plane(3,this%fdump,dirid, pid,fname,'null','null',this%gp_allDn)
         end do  
         do idx = 1,size(this%planes2dumpF)
             pid = this%planes2dumpF(idx)
             write(tempname,"(A3,I2.2,A2,I6.6,A2,I5.5,A4)") "Run", this%RunID,"_t",tid,"_F",pid,flabel
             fname = this%OutputDir(:len_trim(this%OutputDir))//"/"//trim(tempname)
-            call decomp_2d_write_plane(1,uE,dirid, pid, fname, this%gpE)
+            call decomp_2d_write_plane(1,uE,dirid, pid, fname,'null','null', this%gpE)
         end do  
        
         ! v field
@@ -560,13 +560,13 @@ contains
             pid = this%planes2dumpC(idx)
             write(tempname,"(A3,I2.2,A2,I6.6,A2,I5.5,A4)") "Run", this%RunID,"_t",tid,"_C",pid,flabel
             fname = this%OutputDir(:len_trim(this%OutputDir))//"/"//trim(tempname)
-            call decomp_2d_write_plane(3,this%fdump,dirid, pid,fname,this%gp_allDn)
+            call decomp_2d_write_plane(3,this%fdump,dirid, pid,fname,'null','null',this%gp_allDn)
         end do  
         do idx = 1,size(this%planes2dumpF)
             pid = this%planes2dumpF(idx)
             write(tempname,"(A3,I2.2,A2,I6.6,A2,I5.5,A4)") "Run", this%RunID,"_t",tid,"_F",pid,flabel
             fname = this%OutputDir(:len_trim(this%OutputDir))//"/"//trim(tempname)
-            call decomp_2d_write_plane(1,vE,dirid, pid, fname, this%gpE)
+            call decomp_2d_write_plane(1,vE,dirid, pid, fname,'null','null', this%gpE)
         end do  
 
 
@@ -586,13 +586,13 @@ contains
             pid = this%planes2dumpC(idx)
             write(tempname,"(A3,I2.2,A2,I6.6,A2,I5.5,A4)") "Run", this%RunID,"_t",tid,"_C",pid,flabel
             fname = this%OutputDir(:len_trim(this%OutputDir))//"/"//trim(tempname)
-            call decomp_2d_write_plane(3,this%fdump,dirid, pid,fname,this%gp_allDn)
+            call decomp_2d_write_plane(3,this%fdump,dirid, pid,fname,'null','null',this%gp_allDn)
         end do  
         do idx = 1,size(this%planes2dumpF)
             pid = this%planes2dumpF(idx)
             write(tempname,"(A3,I2.2,A2,I6.6,A2,I5.5,A4)") "Run", this%RunID,"_t",tid,"_F",pid,flabel
             fname = this%OutputDir(:len_trim(this%OutputDir))//"/"//trim(tempname)
-            call decomp_2d_write_plane(1,wE,dirid, pid, fname, this%gpE)
+            call decomp_2d_write_plane(1,wE,dirid, pid, fname,'null','null', this%gpE)
         end do  
      
 

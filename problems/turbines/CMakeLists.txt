@@ -12,7 +12,7 @@ foreach ( turbproblemfile ${turbproblems_source_files} )
   
     add_executable( ${turbproblemexec} ${turbproblemfile} )
     
-    target_link_libraries( ${turbproblemexec} IncompressibleOps 2decomp_fft fftw3)
+    target_link_libraries( ${turbproblemexec} IncompressibleOps ${DECOMP_LIB_NAME} fftw3)
 
     if (MPI_Fortran_COMPILER_FLAGS)
         set_target_properties(${turbproblemexec} PROPERTIES COMPILE_FLAGS "${CMAKE_Fortran_FLAGS}")

@@ -5,6 +5,7 @@ module IncompressibleGrid
     use gridtools, only: alloc_buffs, destroy_buffs
     use igrid_hooks!, only: setDirichletBC_Temp, set_Reference_Temperature, meshgen_WallM, initfields_wallM, set_planes_io, set_KS_planes_io 
     use decomp_2d
+    use decomp_2d_mpi, only : nrank
     use StaggOpsMod, only: staggOps  
     use exits, only: GracefulExit, message, check_exit
     use spectralMod, only: spectral  
@@ -1664,7 +1665,7 @@ contains
        if (useRestartFile) then
            write(tempname,"(A7,A4,I2.2,A3,I6.6)") "RESTART", "_Run",rid, "_T.",tid
            fname = this%InputDir(:len_trim(this%InputDir))//"/"//trim(tempname)
-           call decomp_2d_read_one(1,this%T,fname, this%gpC)
+           call decomp_2d_read_one(1,this%T,trim(this%InputDir),trim(tempname),'qq',this%gpC)
            call message(0,"Read the spinup scalar field from the restart file")
        else
            allocate(randArr(size(this%T,1),size(this%T,2),size(this%T,3)))

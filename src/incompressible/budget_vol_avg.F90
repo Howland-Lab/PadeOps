@@ -1,6 +1,7 @@
 module budgets_vol_avg_mod
    use kind_parameters, only: rkind, clen, mpirkind
    use decomp_2d
+   use decomp_2d_mpi, only : nrank
    use reductions, only: p_sum
    use incompressibleGrid, only: igrid  
    use exits, only: message, GracefulExit

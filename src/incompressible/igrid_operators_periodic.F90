@@ -2,6 +2,7 @@ module igrid_Operators_Periodic
    use kind_parameters, only: rkind, clen
    use spectralMod, only: spectral  
    use decomp_2d
+   use decomp_2d_mpi, only : nrank
    use cd06staggstuff, only: cd06stagg
    use reductions, only: p_sum
    use PoissonPeriodicMod, only: PoissonPeriodic 
@@ -167,7 +168,7 @@ subroutine ReadField3D(this, field, label, tidx, runID, newinputdir)
    use exits, only: GracefulExit
    class(Ops_Periodic), intent(inout) :: this
    real(rkind), dimension(this%gp%xsz(1),this%gp%xsz(2),this%gp%xsz(3)), intent(out)  :: field
-   character(len=clen) :: tempname, fname
+   character(len=clen) :: tempname, fname, dirname
    character(len=4), intent(in) :: label
    integer, intent(in) :: tidx, runID
    character(len=clen), intent(in), optional :: newinputdir
@@ -175,9 +176,9 @@ subroutine ReadField3D(this, field, label, tidx, runID, newinputdir)
 
    write(tempname,"(A3,I2.2,A1,A4,A2,I6.6,A4)") "Run",runID, "_",label,"_t",tidx,".out"
    if (present(newinputdir)) then
-      fname = newinputdir(:len_trim(newinputdir))//"/"//trim(tempname)
+      dirname = newinputdir(:len_trim(newinputdir))
    else
-      fname = this%InputDir(:len_trim(this%InputDir))//"/"//trim(tempname)
+      dirname = this%InputDir(:len_trim(this%InputDir))
    end if
    open(777,file=fname,status='old',iostat=ierr)
    if (ierr .ne. 0) then
@@ -186,7 +187,7 @@ subroutine ReadField3D(this, field, label, tidx, runID, newinputdir)
       call gracefulExit("File not found", 321)
    end if
    close(777)
-   call decomp_2d_read_one(1,field,fname,this%gp)
+   call decomp_2d_read_one(1,field,trim(dirname),trim(tempname),'iu',this%gp)
 end subroutine  
 
 subroutine WriteField3D(this, field, label, tidx, runID, newOutputDir)

@@ -4,7 +4,8 @@ module FiltersMod
     use gaussianstuff,   only: gaussian
     use lstsqstuff,      only: lstsq
     use exits,           only: gracefulExit, message
-    use decomp_2d,       only: decomp_info, nrank
+    use decomp_2d,       only: decomp_info
+    use decomp_2d_mpi,   only: nrank
 
     implicit none
     private

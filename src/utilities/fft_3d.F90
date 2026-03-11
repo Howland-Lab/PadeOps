@@ -2,6 +2,7 @@ module fft_3d_stuff
 
     use kind_parameters, only : rkind
     use decomp_2d
+    use decomp_2d_mpi
     use constants, only: zero  
     implicit none 
     private

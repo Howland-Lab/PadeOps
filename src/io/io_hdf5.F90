@@ -2,7 +2,8 @@ module io_hdf5_stuff
     use hdf5
     use mpi
     use kind_parameters, only: rkind, single_kind, clen
-    use decomp_2d,       only: decomp_info, nrank, nproc
+    use decomp_2d,       only: decomp_info
+    use decomp_2d_mpi,   only: nrank, nproc
     use exits,           only: GracefulExit
     implicit none
 

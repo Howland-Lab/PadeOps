@@ -2,6 +2,7 @@ module actuatorDisk_Rotmod
     use kind_parameters, only: rkind, clen
     use constants, only: imi, zero,one,two,three,half,fourth, pi, kappa, twopi, rpm_to_radpersec, four, third, deg_to_radians
     use decomp_2d
+    use decomp_2d_mpi, only: nrank
     use exits, only: GracefulExit, message
     use mpi 
     use reductions, only: p_maxval, p_sum, p_minval
