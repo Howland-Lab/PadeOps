@@ -180,6 +180,7 @@ contains
         this%mk1dsq = -this%k1d*this%k1d
         this%initialized = .true. 
         ierr = 0
+        if(allocated(k_tmp))deallocate(k_tmp)
     end function 
 
     subroutine dd1(this,f, df)
