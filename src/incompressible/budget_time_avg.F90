@@ -372,7 +372,7 @@ contains
         if((this%tidx_budget_start > 0) .and. (this%time_budget_start > 0.0d0)) then
             call GracefulExit("Both tidx_budget_start and time_budget_start in budget_time_avg are positive. Turn one negative", 100)
         endif
-        call message(0, "At the start of do_budgets branch:")
+
         if(this%do_budgets) then
             ! allocate budget 0 -> minimum needed!
             if (this%HaveScalars) then
@@ -413,7 +413,7 @@ contains
                 allocate(this%dVdt(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
                 allocate(this%dWdt(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
             end if 
-            call message(0, "Finished do_budgets branch")   
+                
             
             if ((trim(local_cfg%budgets_dir) .eq. "null") .or. (trim(local_cfg%budgets_dir) .eq. "NULL")) then
                 this%budgets_dir = igrid_sim%outputDir
@@ -433,7 +433,7 @@ contains
             else
                 call this%resetBudget()
             end if
-            call message(0, "Allocating memory")
+
             ! STEP 2: Allocate memory (large amount of memory needed)
             call igrid_sim%spectC%alloc_r2c_out(this%uc)
             call igrid_sim%spectC%alloc_r2c_out(this%usgs)
@@ -463,13 +463,12 @@ contains
             call igrid_sim%spectE%alloc_r2c_out(this%wcor)
             call igrid_sim%spectE%alloc_r2c_out(this%wb)
 
-            call message(0, "Instramenting grid")
             ! STEP 3: Now instrument igrid -> links pointers in the grid object to arrays created for budget
             call igrid_sim%instrumentForBudgets_TimeAvg(this%uc, this%vc, this%wc, this%usgs, this%vsgs, this%wsgs, &
                      & this%px, this%py, this%pz, this%uturb, this%vturb, this%wturb, this%pxdns, this%pydns, this%pzdns, & 
                      & this%uvisc, this%vvisc, this%wvisc, this%ucor, this%vcor, this%wcor, this%wb)  
             
-            call message(0, "Wind turbines!!")    
+                 
             ! STEP 4: For horizontally-averaged surface quantities (called Scalar here), and turbine statistics
             allocate(this%runningSum_sc(5))
             this%runningSum_sc = zero
