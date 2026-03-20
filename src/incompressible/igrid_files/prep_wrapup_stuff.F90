@@ -67,6 +67,7 @@ subroutine computePressure(this, ComputeRHSForBudget)
     logical, optional, intent(in) :: ComputeRHSForBudget
     logical :: splitRHS
 
+    ! call message(1, 'computepressure starts')
     if (present(ComputeRHSForBudget)) then
         splitRHS = ComputeRHSForBudget
     else
@@ -90,13 +91,16 @@ subroutine computePressure(this, ComputeRHSForBudget)
      else
         copyTurbineRHS = .false. 
     end if
-
+    
+    ! call message(1, 'Before Step 1')
     ! STEP 1: Populate RHS
     if (splitRHS) then
         call this%populate_rhs_for_budgets(CopyForDNSpress=copyDNSRHS, CopyForFringePress=copyFringeRHS, copyForTurbinePress=copyTurbineRHS)
     else
+        ! call message(1, 'Run populate_rhs')
         call this%populate_rhs(CopyForDNSpress=copyDNSRHS, CopyForFringePress=copyFringeRHS, copyForTurbinePress=copyTurbineRHS)
     end if
+    ! call message(1, "Populate RHS finished")
 
     ! STEP 2: Compute pressure
     if (this%fastCalcPressure) then
@@ -136,8 +140,11 @@ subroutine computePressure(this, ComputeRHSForBudget)
         call this%compute_RapidSlowPressure_Split()
     end if 
     
+    ! call message(1, 'Compute pressure finished')
+    
     ! STEP 3: Inform the other subroutines that you already have RHS
     this%AlreadyHaveRHS = .true. 
+    ! call message(1, 'Step 3 finished')
 
 end subroutine
 

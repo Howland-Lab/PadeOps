@@ -2,11 +2,6 @@ subroutine destroyWallModel(this)
    class(sgs_igrid), intent(inout) :: this
    deallocate(this%tauijWM, this%tauijWMhat_inZ, this%tauijWMhat_inY)
    if (allocated(this%filteredSpeedSq)) deallocate(this%filteredSpeedSq)
-
-   ! WXL 01202026
-   if (allocated(this%z0_xy_C)) deallocate(this%z0_xy_C)
-   !if (allocated(this%z0_xy_Z)) deallocate(this%z0_xy_Z)
-   
 end subroutine
 
 subroutine initWallModel(this, SurfaceFilterFact)
@@ -32,8 +27,7 @@ subroutine initWallModel(this, SurfaceFilterFact)
       allocate(this%WallMUmatching(this%gpC%xsz(1),this%gpC%xsz(2)))    
       allocate(this%WallMVmatching(this%gpC%xsz(1),this%gpC%xsz(2)))    
       this%WallMUmatching = 0.1d0    
-      this%WallMVmatching = 0.1d0  
-
+      this%WallMVmatching = 0.1d0    
       call this%spectC%ResetSurfaceFilter(SurfaceFilterFact)  
       call message(2,"Bou-Zeid wall model set up with a filter factor:", SurfaceFilterFact)  
       ! (EYS 07142024) END
@@ -50,9 +44,7 @@ subroutine initWallModel(this, SurfaceFilterFact)
       allocate(this%PsiM_surf(this%gpC%zsz(1),this%gpC%zsz(2)))
       allocate(this%Linv_surf(this%gpC%zsz(1),this%gpC%zsz(2)))
       allocate(this%T_surf(this%gpC%zsz(1),this%gpC%zsz(2)))
-      allocate(this%filteredSpeedSq(this%gpC%xsz(1),this%gpC%xsz(2),this%gpC%xsz(3)))
-      
-! Howland: Added 1/25/21
+      allocate(this%filteredSpeedSq(this%gpC%xsz(1),this%gpC%xsz(2),this%gpC%xsz(3))) ! Howland: Added 1/25/21
       call this%spectC%ResetSurfaceFilter(SurfaceFilterFact)
       call message(2,"Fully local wall model set up with a filter factor:", SurfaceFilterFact)
    end if 
@@ -74,7 +66,7 @@ subroutine computeWallStress(this, u, v, T, uhat, vhat, That, xline, dt)
    complex(rkind), dimension(:,:,:), pointer :: cbuffz, cbuffy
   
    ! (EYS 07032024) START: Added for for loop and nondimensional x values
-   integer :: locator_min(1), locator_max(1), k, j  
+   integer :: locator_min(1), locator_max(1), k  
    real(rkind), dimension(this%gpC%xsz(1)), intent(in) :: xline   
    real(rkind) :: matchingloc, dt  
    ! (EYS 07032024) END
@@ -83,7 +75,7 @@ subroutine computeWallStress(this, u, v, T, uhat, vhat, That, xline, dt)
    cbuffy => this%cbuffyC(:,:,:,1)
    
    call this%compute_and_bcast_surface_Mn(u, v, uhat, vhat, That)
-
+   
    if (this%useFullyLocalWM) then
         ! No temperature filter
         !call this%getfilteredMatchingVelocity(uhat, vhat, T)
@@ -120,60 +112,16 @@ subroutine computeWallStress(this, u, v, T, uhat, vhat, That, xline, dt)
             end if
 
             if (this%z0_field) then
-                ! Assign 2d array of z0
-                ! WRITE CODE HERE.
-                if (this%use_z0_field) then
+                ! Set default to z0 
+                this%WallMFactors = -(kappa / (log(this%dz / (two * this%z0)) - this%PsiM))**2
 
-                     !call message(1, "use z0 field")
-                     !call message(1, 'xsz1 = ', this%gpC%xsz(1))
-                     !call message(1, 'xsz2 = ', this%gpC%xsz(2))
-                     !do j = 1, this%gpC%xsz(1)
-                     !    do k = 1, this%gpC%xsz(2) 
-                     !        call message(2, 'z0_xy_C = ', this%z0_xy_C(j,k))
-                     !    end do
-                     !end do
+                ! Matching location for computing wall factor
+                locator_min = minloc(abs(xline - this%z02_startx))
+                locator_max = minloc(abs(xline - this%z02_endx))
+                matchingloc = real(this%WM_matchingIndex)-real(one)/real(two)
 
-                    matchingloc = real(this%WM_matchingIndex)-real(one)/real(two)
-                    this%WallMFactors = -(kappa / (log((this%dz*matchingloc - this%zd) / this%z0_xy_C) - this%PsiM))**2
-                    ! call message(1,'matchingloc = ', matchingloc)
-                    ! call message(1,'zd = ', this%zd)
-
-                    !call message(2, 'use z0_field')
-                    !do j = 1, this%gpC%xsz(1)
-                    !    do k = 1, this%gpC%xsz(2) 
-                    !        call message(2, 'WallMFactors = ', this%WallMFactors(j,k))
-                    !    end do
-                    !end do
-                    !call message(2, 'use z0_field')
-
-                else
-                    ! Set default to z0 
-                    this%WallMFactors = -(kappa / (log(this%dz / (two * this%z0)) - this%PsiM))**2
-
-                    ! Matching location for computing wall factor
-                    locator_min = minloc(abs(xline - this%z02_startx))
-                    locator_max = minloc(abs(xline - this%z02_endx))
-                    matchingloc = real(this%WM_matchingIndex)-real(one)/real(two)
-
-                    ! if (nrank == 0) then
-                    !   open(unit=99, file='wm_debug.out', status='unknown', position='append')
-                    !   write(*,*) 'locator_min = ', locator_min
-                    !   write(*,*) 'locator_max = ', locator_max
-                    !   close(99)
-                    ! end if
-                    ! call message(2, 'locator_min = ', locator_min(1))
-                    ! call message(2, 'locator_max = ', locator_max(1))
-
-                    ! EYS CTR implementation of roughness parameterization (used currently)
-                    this%WallMFactors(locator_min(1):locator_max(1),:) = -(kappa / (log((this%dz*matchingloc - this%zd) / this%z02) - this%PsiM))**2
-                     !call message(2, 'not use z0_field')
-                     !do j = 1, this%gpC%xsz(1)
-                     !    do k = 1, this%gpC%xsz(2) 
-                     !        call message(2, 'WallMFactors = ', this%WallMFactors(j,k))
-                     !    end do
-                     !end do
-                     !call message(2, 'not use z0_field')
-                end if 
+                ! EYS CTR implementation of roughness parameterization (used currently)
+                this%WallMFactors(locator_min(1):locator_max(1),:) = -(kappa / (log((this%dz*matchingloc - this%zd) / this%z02) - this%PsiM))**2
 
                 call this%getfilteredSpeedSqAtWall(uhat, vhat)
 
@@ -187,55 +135,25 @@ subroutine computeWallStress(this, u, v, T, uhat, vhat, That, xline, dt)
                 
                 ! tau_13
                 this%tauijWMhat_inZ(:,:,1,1) = (this%umn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex)
-                !this%tauijWMhat_inZ(:,:,1,1) = this%tauijWMhat_inZ(:,:,1,1) * this%WallMFactors(:,:)
-                 !do j = 1, this%sp_gpE%zsz(1)
-                 !    do k = 1, this%sp_gpE%zsz(2) 
-                 !        call message(2, 'tau13 = ', real(this%tauijWMhat_inZ(j,k,1,1),kind=8))
-                 !    end do
-                 !end do
-                 !call message(2, "use_z0_field")
-                ! call message(2, 'tau13 = ', real(this%tauijWMhat_inZ(5,5,1,1),kind=8))
                 call transpose_z_to_y(this%tauijWMhat_inZ(:,:,:,1), this%tauijWMhat_inY(:,:,:,1), this%sp_gpE)
                 call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,1), this%tauijWM(:,:,:,1))
                 ! tau_23
                 this%tauijWMhat_inZ(:,:,1,2) = (this%vmn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex)
-                !this%tauijWMhat_inZ(:,:,1,2) = this%tauijWMhat_inZ(:,:,1,2) * this%WallMFactors(:,:)
-                 !do j = 1, this%sp_gpE%zsz(1)
-                 !    do k = 1, this%sp_gpE%zsz(2) 
-                 !        call message(2, 'tau23 = ', real(this%tauijWMhat_inZ(j,k,1,2),kind=8))
-                 !    end do
-                 !end do
-                 !call message(2, "use_z0_field")
                 call transpose_z_to_y(this%tauijWMhat_inZ(:,:,:,2), this%tauijWMhat_inY(:,:,:,2), this%sp_gpE)
                 call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,2), this%tauijWM(:,:,:,2))
             
             else
                 call this%getfilteredSpeedSqAtWall(uhat, vhat)
-                do k = 1, this%gpC%xsz(3)
-                    this%filteredSpeedSq(:,:,k) = this%WallMFactor * this%filteredSpeedSq(:,:,k)
-                end do                    
                 call this%spectC%fft(this%filteredSpeedSq, cbuffy)
                 call transpose_y_to_z(cbuffy, cbuffz, this%sp_gpC)
 
                 ! tau_13
-                this%tauijWMhat_inZ(:,:,1,1) = (this%umn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex)
-                 !do j = 1, this%sp_gpE%zsz(1)
-                 !    do k = 1, this%sp_gpE%zsz(2) 
-                 !        call message(2, 'tau13 = ', real(this%tauijWMhat_inZ(j,k,1,1),kind=8))
-                 !    end do
-                 !end do
-                 !call message(2, "not use_z0_field")
+                this%tauijWMhat_inZ(:,:,1,1) = (this%WallMFactor*this%umn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex)
                 call transpose_z_to_y(this%tauijWMhat_inZ(:,:,:,1), this%tauijWMhat_inY(:,:,:,1), this%sp_gpE)
                 call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,1), this%tauijWM(:,:,:,1))
 
                 ! tau_23
-                this%tauijWMhat_inZ(:,:,1,2) = (this%vmn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex)
-                 !do j = 1, this%sp_gpE%zsz(1)
-                 !    do k = 1, this%sp_gpE%zsz(2) 
-                 !        call message(2, 'tau23 = ', real(this%tauijWMhat_inZ(j,k,1,2),kind=8))
-                 !    end do
-                 !end do
-                 !call message(2, "not use_z0_field")
+                this%tauijWMhat_inZ(:,:,1,2) = (this%WallMFactor*this%vmn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex)
                 call transpose_z_to_y(this%tauijWMhat_inZ(:,:,:,2), this%tauijWMhat_inY(:,:,:,2), this%sp_gpE)
                 call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,2), this%tauijWM(:,:,:,2))
             end if

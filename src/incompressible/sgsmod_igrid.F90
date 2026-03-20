@@ -81,6 +81,11 @@ module sgsmod_igrid
         real(rkind), dimension(:,:), allocatable :: WallMFactors, WallMEpsilon, WallMUmatching, WallMVmatching
         ! (EYS 07142024) END
 
+        ! (WXL 01202026) START
+        logical :: use_z0_field = .FALSE.
+        real(rkind), dimension(:,:), allocatable :: z0_xy_C
+        ! (WXL 01202026) END
+
         ! for dynamic procedures - all are at edges
         type(gaussian) :: gaussianTestFilterZ
         real(rkind), dimension(:,:,:,:), allocatable :: Lij, Sij_Filt

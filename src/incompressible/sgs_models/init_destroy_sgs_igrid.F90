@@ -43,13 +43,16 @@ subroutine link_pointers(this, nuSGS, tauSGS_ij, tau13, tau23, q1, q2, q3, kappa
    end if
 end subroutine 
 
-subroutine init(this, gpC, gpE, spectC, spectE, dx, dy, dz, inputfile, zMeshE, zMeshC, fBody_x, fBody_y, fBody_z, computeFbody, PadeDer, cbuffyC, cbuffzC, cbuffyE, cbuffzE, rbuffxC, rbuffyC, rbuffzC, rbuffyE, rbuffzE, Tsurf, ThetaRef, wTh_surf, Fr, Re, isInviscid, isStratified, botBC_temp, initSpinUp)
+subroutine init(this, gpC, gpE, spectC, spectE, dx, dy, dz, inputfile, zMeshE, zMeshC, fBody_x, fBody_y, fBody_z, computeFbody, &
+                PadeDer, cbuffyC, cbuffzC, cbuffyE, cbuffzE, rbuffxC, rbuffyC, rbuffzC, rbuffyE, rbuffzE, Tsurf, ThetaRef, wTh_surf, Fr, Re, &
+                isInviscid, isStratified, botBC_temp, initSpinUp, use_z0_field, z0_xy_C)
   class(sgs_igrid), intent(inout), target :: this
   class(decomp_info), intent(in), target :: gpC, gpE
   class(spectral), intent(in), target :: spectC, spectE
   real(rkind), intent(in) :: dx, dy, dz, ThetaRef, Fr, Re
   real(rkind), intent(in), target :: Tsurf, wTh_surf
   character(len=*), intent(in) :: inputfile
+  !character(len=*), intent(in) :: input_z0_field
   real(rkind), dimension(:), intent(in) :: zMeshE, zMeshC
   real(rkind), dimension(:,:,:), intent(in), target :: fBody_x, fBody_y, fBody_z
   logical, intent(out) :: computeFbody
@@ -60,9 +63,14 @@ subroutine init(this, gpC, gpE, spectC, spectE, dx, dy, dz, inputfile, zMeshE, z
   integer, intent(in) :: botBC_temp
   logical, intent(in), optional :: initSpinUp
 
+  ! Added by Weixuan (01302026)
+  logical, intent(in) :: use_z0_field
+  real(rkind), dimension(:,:), intent(in), optional :: z0_xy_C 
+
   ! Input file variables
   logical :: DomainAveraged_DynProc = .false., useWallDamping = .false., useSGSDynamicRestart = .false., useVerticalTfilter = .false.
   integer :: DynamicProcedureType = 0, SGSmodelID = 0, WallModelType = 0, DynProcFreq = 1
+  !integer :: j, k
   real(rkind) :: ncWall = 1.d0, Csgs = 0.17d0, deltaRatio = 2.d0, turbPrandtl = 0.4d0, Cy = 100.d0 
   real(rkind) :: z0t = 0.001d0
   character(len=clen) :: SGSDynamicRestartFile
@@ -75,6 +83,14 @@ subroutine init(this, gpC, gpE, spectC, spectE, dx, dy, dz, inputfile, zMeshE, z
   logical :: z0_field = .false.
   real(rkind) :: z0 = 0.00025d0, z02 = 0.00025d0, z02_startx = 0.d0, z02_endx = 0.d0, zd = 0.d0, idxPlanArea = 0.d0, z0roof = 0.d0
   ! (EYS 07142024) END
+  
+  !! (WXL 01202026) START
+  !logical :: use_z0_field = .false.
+  !! integer :: nrow, ncol
+  !! character(len=512) :: z0_file
+  !real(rkind), dimension(:,:), allocatable :: z0_xy_C
+  !real(rkind), dimension(:,:), allocatable :: z0_xy_Z
+  !! (WXL 01202026) END
 
   namelist /SGS_MODEL/ DynamicProcedureType, SGSmodelID, z0, z0t, &
                  useWallDamping, ncWall, Csgs, WallModelType, usePrSGS, &
@@ -89,7 +105,7 @@ subroutine init(this, gpC, gpE, spectC, spectE, dx, dy, dz, inputfile, zMeshE, z
   open(unit=123, file=trim(inputfile), form='FORMATTED', iostat=ierr)
   read(unit=123, NML=SGS_MODEL)
   close(123)
-  
+
   this%gpC => gpC
   this%gpE => gpE
   this%spectC => spectC
@@ -114,6 +130,37 @@ subroutine init(this, gpC, gpE, spectC, spectE, dx, dy, dz, inputfile, zMeshE, z
   this%botBC_Temp = botBC_Temp
   this%useFullyLocalWM = useFullyLocalWM
   this%WallFunctionType = WallFunctionType 
+
+  ! (WXL 01202026) START
+  this%use_z0_field = use_z0_field
+  if (this%use_z0_field) then
+      this%z0_xy_C = z0_xy_C
+  end if
+
+  !if (this%use_z0_field) then
+
+   ! allocate(z0_xy_C(gpC%xsz(1), gpC%xsz(2)))
+    !namelist /z0_field_2d/ nrow, ncol, z0_file
+    !open(unit=124, file=trim(input_z0_field), form='FORMATTED', iostat=ierr)
+    !read(unit=124, NML=z0_field_2d)
+    !close(124)
+
+    !open(unit=125, file=trim(input_z0_field), form='formatted', status='old', action='read', iostat=ierr)
+    !read(125, *, iostat=ierr) z0_xy_C
+    !close(125)
+
+    !if (.not. allocated(this%z0_xy_C)) then
+    !  allocate(this%z0_xy_C(gpC%xsz(1), gpC%xsz(2)))
+    !end if
+    !this%z0_xy_C = z0_xy_C
+    !deallocate(z0_xy_C)
+  !do j = 1, this%gpC%xsz(1)
+  !    do k = 1, this%gpC%xsz(2) 
+  !        call message(2, 'init_z0_xy_C', this%z0_xy_C(j,k))
+  !    end do
+  !end do
+  ! (WXL 01202026) END
+  !end if 
 
   this%dx = dx
   this%dy = dy
