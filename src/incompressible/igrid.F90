@@ -21,6 +21,7 @@ module IncompressibleGrid
     use kspreprocessing, only: ksprep  
     use PadeDerOps, only: Pade6Stagg
     use Fringemethod, only: fringe
+    use fringeADMethod, only: fringeAD
     use angleControl, only: angCont
     use forcingmod,   only: HIT_shell_forcing
     use scalar_igridMod, only: scalar_igrid 
@@ -268,6 +269,10 @@ module IncompressibleGrid
         logical                           :: useFringe = .false., usedoublefringex = .false. 
         type(fringe), allocatable, public :: fringe_x, fringe_x1, fringe_x2
 
+        ! Advection damping fringe
+        logical                           :: useFringeAD = .false.
+        type(fringeAD), allocatable, public :: fringe_ad
+
         ! Control
         logical                            :: useControl = .false.
         type(angCont), allocatable, public :: angCont_yaw
@@ -425,6 +430,7 @@ contains
         logical :: normStatsByUstar=.false., ComputeStokesPressure = .true., UseDealiasFilterVert = .false., ComputeRapidSlowPressure = .false.
         real(rkind) :: tmpmn, Lz = 1.d0, latitude = 90._rkind, KSFilFact = 4.d0, dealiasFact = 2.d0/3.d0, frameAngle = 0.d0, BulkRichardson = 0.d0, HITForceTimeScale = 10.d0
         logical :: ADM = .false., storePressure = .false., useSystemInteractions = .true., useFringe = .false., useHITForcing = .false., useControl = .false., useHITRealSpaceLinearForcing = .false.
+        logical :: useFringeAD = .false.
         integer :: tSystemInteractions = 100, ierr, KSinitType = 0, nKSvertFilt = 1, ADM_Type = 1
         logical :: computeSpectra = .false., timeAvgFullFields = .false., fastCalcPressure = .true., usedoublefringex = .false.  
         logical :: assume_fplane = .true., periodicbcs(3), useProbes = .false., KSdoZfilter = .true., computeVorticity = .false.  
@@ -442,6 +448,8 @@ contains
         character(len=clen) :: MeanFilesDir, powerDumpDir 
         logical :: WriteTurbineForce = .false., useforcedStratification = .false., useDynamicYaw = .FALSE., useDynamicTurbine = .FALSE. 
         integer :: buoyancyDirection = 3, yawUpdateInterval = 100000, dealiasType = 0
+        real(rkind), allocatable :: ztmp(:)
+        real(rkind) :: Lx
 
         real(rkind), dimension(:,:,:), allocatable, target :: tmpzE, tmpzC, tmpyE, tmpyC
         namelist /INPUT/ nx, ny, nz, tstop, dt, CFL, nsteps, inputdir, outputdir, prow, pcol, &
@@ -452,7 +460,7 @@ contains
         namelist /STATS/tid_StatsDump,tid_compStats,tSimStartStats,normStatsByUstar,computeSpectra,timeAvgFullFields, computeVorticity
         namelist /PHYSICS/isInviscid,useCoriolis,useExtraForcing,isStratified,useMoisture,Re,Ro,Pr,Fr, Ra, useSGS, PrandtlFluid, BulkRichardson, BuoyancyTermType,useforcedStratification,&
                           useGeostrophicForcing, G_geostrophic, G_alpha, dpFdx,dpFdy,dpFdz,assume_fplane,latitude,useHITForcing, useScalars, frameAngle, buoyancyDirection, useHITRealSpaceLinearForcing, HITForceTimeScale, useConstantG
-        namelist /BCs/ PeriodicInZ, topWall, botWall, useSpongeLayer, zstSponge, SpongeTScale, sponge_type, botBC_Temp, topBC_Temp, useTopAndBottomSymmetricSponge, useFringe, usedoublefringex, useControl
+        namelist /BCs/ PeriodicInZ, topWall, botWall, useSpongeLayer, zstSponge, SpongeTScale, sponge_type, botBC_Temp, topBC_Temp, useTopAndBottomSymmetricSponge, useFringe, usedoublefringex, useControl, useFringeAD
         namelist /WINDTURBINES/ useWindTurbines, num_turbines, ADM, turbInfoDir, ADM_Type, powerDumpDir, useDynamicYaw, &
                                 yawUpdateInterval, inputDirDyaw, useDynamicTurbine
         namelist /NUMERICS/ AdvectionTerm, ComputeStokesPressure, NumericalSchemeVert, &
@@ -498,7 +506,7 @@ contains
         this%P_dumpFreq = P_dumpFreq; this%P_compFreq = P_compFreq; this%timeAvgFullFields = timeAvgFullFields
         this%computeSpectra = computeSpectra; this%botBC_Temp = botBC_Temp; this%isInviscid = isInviscid
         this%assume_fplane = assume_fplane; this%useProbes = useProbes; this%PrandtlFluid = PrandtlFLuid
-        this%KSinitType = KSinitType; this%KSFilFact = KSFilFact;this%useFringe = useFringe; this%useControl = useControl
+        this%KSinitType = KSinitType; this%KSFilFact = KSFilFact;this%useFringe = useFringe; this%useControl = useControl; this%useFringeAD = useFringeAD
         this%nsteps = nsteps; this%PeriodicinZ = periodicInZ; this%usedoublefringex = usedoublefringex 
         this%useHITForcing = useHITForcing; this%BuoyancyTermType = BuoyancyTermType; this%CviscDT = CviscDT 
         this%frameAngle = frameAngle; this%computeVorticity = computeVorticity 
@@ -687,7 +695,11 @@ contains
 
        !allocate(this%cbuffxC(this%sp_gpC%xsz(1),this%sp_gpC%xsz(2),this%sp_gpC%xsz(3),2))
        allocate(this%cbuffyC(this%sp_gpC%ysz(1),this%sp_gpC%ysz(2),this%sp_gpC%ysz(3),2))
-       allocate(this%cbuffyE(this%sp_gpE%ysz(1),this%sp_gpE%ysz(2),this%sp_gpE%ysz(3),2))
+       if(this%useFringeAD)then
+         allocate(this%cbuffyE(this%sp_gpE%ysz(1),this%sp_gpE%ysz(2),this%sp_gpE%ysz(3),3))
+       else
+         allocate(this%cbuffyE(this%sp_gpE%ysz(1),this%sp_gpE%ysz(2),this%sp_gpE%ysz(3),2))
+       end if
        
        allocate(this%cbuffzC(this%sp_gpC%zsz(1),this%sp_gpC%zsz(2),this%sp_gpC%zsz(3),3))
        allocate(this%cbuffzE(this%sp_gpE%zsz(1),this%sp_gpE%zsz(2),this%sp_gpE%zsz(3),2))
@@ -1182,6 +1194,22 @@ contains
                ! END DO_SHIFTS
            end if
        end if 
+
+       ! STEP 17.1: Set advection damping fringe
+       if(this%useFringeAD)then
+         allocate(this%fringe_ad)
+         
+         ! Collect z coordinates of edges
+         allocate(ztmp(this%gpE%xsz(3)))
+         ztmp(:) = this%mesh(1,1,:,3) - half * this%dz
+         ztmp(this%gpE%xsz(3)) = ztmp(this%gpE%xsz(3) - 1) + this%dz
+
+         ! domain length (x-pencil decomposition is implicit)
+         Lx = this%gpC%xsz(1) * abs(this%mesh(2,1,1,1) - this%mesh(1,1,1,1))
+
+         call this%fringe_ad%init(trim(inputfile), this%gpE%xsz(1), this%gpE%xsz(2), this%gpE%xsz(3), this%mesh(:,1,1,1), ztmp, Lx, this%dz)
+         deallocate(ztmp)
+       end if
        
        ! STEP 18: Set HIT Forcing
        if (this%useHITForcing) then

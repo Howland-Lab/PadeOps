@@ -208,6 +208,9 @@ subroutine addNonLinearTerm_Rot(this, u_rhs, v_rhs, w_rhs)
     T2E = T2E*this%vE
     T1E = T1E + T2E
     !call this%spectE%fft(T1E,this%w_rhs)
+    if(this%useFringeAD)then
+        T1E = T1E * this%fringe_ad%Fringe_kernel
+    end if
     call this%spectE%fft(T1E,w_rhs)
 
     if (this%isStratified .or. this%initspinup) then
@@ -233,7 +236,7 @@ subroutine addNonLinearTerm_skewSymm(this, urhs, vrhs, wrhs)
     real(rkind),    dimension(:,:,:), pointer :: dvdzC, dudzC
     real(rkind),    dimension(:,:,:), pointer :: dwdxC, dwdyC
     real(rkind),    dimension(:,:,:), pointer :: T1C, T2C, T1E, T2E
-    complex(rkind), dimension(:,:,:), pointer :: fT1C, fT2C, fT1E, fT2E
+    complex(rkind), dimension(:,:,:), pointer :: fT1C, fT2C, fT1E, fT2E, fT3E
     complex(rkind), dimension(:,:,:), pointer :: tzC, tzE
     complex(rkind), dimension(this%sp_gpC%ysz(1),this%sp_gpC%ysz(2),this%sp_gpC%ysz(3)), intent(inout) :: urhs, vrhs
     complex(rkind), dimension(this%sp_gpE%ysz(1),this%sp_gpE%ysz(2),this%sp_gpE%ysz(3)), intent(inout) :: wrhs
@@ -250,6 +253,11 @@ subroutine addNonLinearTerm_skewSymm(this, urhs, vrhs, wrhs)
 
     fT1C => this%cbuffyC(:,:,:,1); fT2C => this%cbuffyC(:,:,:,2)
     fT1E => this%cbuffyE(:,:,:,1); fT2E => this%cbuffyE(:,:,:,2)
+    if(this%useFringeAD) then
+        ! An extra buffer to collect the w convection term in spectral domain
+        ! ifft the w convection term, mutliply it by the fringe_kernel, then fft back to add to wrhs.
+        fT3E => this%cbuffyE(:,:,:,3)
+    end if
 
     tzC => this%cbuffzC(:,:,:,1); tzE => this%cbuffzE(:,:,:,1)
 
@@ -289,9 +297,14 @@ subroutine addNonLinearTerm_skewSymm(this, urhs, vrhs, wrhs)
     call transpose_y_to_z(fT1C,tzC, this%sp_gpC)
     call this%Pade6opZ%interpz_C2E(tzC,tzE,WdWdzBC_bottom,WdWdzBC_top)
     !call transpose_z_to_y(tzE,this%w_rhs, this%sp_gpE)
-    call transpose_z_to_y(tzE,wrhs, this%sp_gpE)
     !this%w_rhs = this%w_rhs + fT2E
-    wrhs = wrhs + fT2E
+    if(this%useFringeAD)then
+        call transpose_z_to_y(tzE,fT3E, this%sp_gpE)
+        fT3E = fT3E + fT2E
+    else
+        call transpose_z_to_y(tzE,wrhs, this%sp_gpE)
+        wrhs = wrhs + fT2E
+    end if
 
     T1C = this%u*this%u
     call this%spectC%fft(T1C,fT1C)
@@ -311,7 +324,11 @@ subroutine addNonLinearTerm_skewSymm(this, urhs, vrhs, wrhs)
     call this%Pade6opZ%ddz_C2E(tzC,tzE,WWBC_bottom,WWBC_top)
     call transpose_z_to_y(tzE,fT1E,this%sp_gpE)
     !this%w_rhs = this%w_rhs + fT1E
-    wrhs = wrhs + fT1E
+    if(this%useFringeAD)then
+        fT3E = fT3E + fT1E
+    else
+        wrhs = wrhs + fT1E
+    end if 
 
     T1C = this%u*this%v
     call this%spectC%fft(T1C,fT1C)
@@ -332,8 +349,11 @@ subroutine addNonLinearTerm_skewSymm(this, urhs, vrhs, wrhs)
 
     call this%spectE%mtimes_ik1_ip(fT1E)
     !this%w_rhs = this%w_rhs + fT1E
-    wrhs = wrhs + fT1E
-
+    if(this%useFringeAD)then
+        fT3E = fT3E + fT1E
+    else
+        wrhs = wrhs + fT1E
+    end if
 
     T1E = this%vE*this%w
     call this%spectE%fft(T1E,fT1E)
@@ -345,7 +365,22 @@ subroutine addNonLinearTerm_skewSymm(this, urhs, vrhs, wrhs)
 
     call this%spectE%mtimes_ik2_ip(fT1E)
     !this%w_rhs = this%w_rhs + fT1E
-    wrhs = wrhs + fT1E
+    if(this%useFringeAD)then
+        fT3E = fT3E + fT1E
+    else
+        wrhs = wrhs + fT1E
+    end if 
+
+    if(this%useFringeAD)then
+        ! ifft
+        call this%spectE%ifft(fT3E,T1E)
+
+        ! Multiply by the damping kernel
+        T1E = T1E * this%fringe_ad%Fringe_kernel
+        
+        ! fft back
+        call this%spectE%fft(T1E, wrhs)
+    end if
 
     !this%u_rhs = -half*this%u_rhs
     !this%v_rhs = -half*this%v_rhs
