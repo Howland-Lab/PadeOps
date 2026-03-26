@@ -80,11 +80,11 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     real(rkind), dimension(:,:,:), pointer :: u, v, w, wC, T, x, y, z
     real(rkind), dimension(:,:,:), allocatable :: ybuffC, ybuffE, zbuffC, zbuffE
     integer :: nz, nzE, k
-    real(rkind) :: sig
+    real(rkind) :: sig, hpert=zero, hpert_
     real(rkind) :: Lx = one, Ly = one, Lz = one, Tref = one, Tsurf0 = one, dTsurf_dt = zero, inv_height = zero, lapse_rate = zero, inv_thickness = one, inv_strength = zero
     real(rkind), dimension(:,:,:), allocatable :: randArr, Tpurt, eta
     
-    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, inv_height, inv_thickness, inv_strength, lapse_rate
+    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, inv_height, inv_thickness, inv_strength, lapse_rate, hpert
     
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -123,7 +123,14 @@ subroutine initfields_wallM(decompC, decompE, inputfile, mesh, fieldsC, fieldsE)
     end do
     if(allocated(randArr)) deallocate(randArr)
 
-    where (z > 50.d0/xdim)
+    if(hpert>zero)then
+        hpert_ = hpert
+    else
+        hpert_ = 50.d0/xdim
+    end if
+    call message(1,"Perturbing temperature up to ", hpert_)
+
+    where (z > hpert_)
         Tpurt = zero
     end where
     T = T + Tpurt
@@ -161,8 +168,8 @@ subroutine setInhomogeneousNeumannBC_Temp(inputfile, wTh_surf)
     character(len=*),                intent(in)    :: inputfile
     real(rkind), intent(out) :: wTh_surf
     integer :: ioUnit 
-    real(rkind) :: Lx = one, Ly = one, Lz = one, Tref = one, Tsurf0 = one, dTsurf_dt = zero, inv_height = zero, lapse_rate = zero, inv_thickness = one, inv_strength = zero
-    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, inv_height, inv_thickness, inv_strength, lapse_rate
+    real(rkind) :: Lx = one, Ly = one, Lz = one, Tref = one, Tsurf0 = one, dTsurf_dt = zero, inv_height = zero, lapse_rate = zero, inv_thickness = one, inv_strength = zero, hpert=zero
+    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, inv_height, inv_thickness, inv_strength, lapse_rate, hpert
      
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -180,8 +187,8 @@ subroutine setDirichletBC_Temp(inputfile, Tsurf, dTsurf_dt)
     real(rkind), intent(out) :: Tsurf, dTsurf_dt
     character(len=*),                intent(in)    :: inputfile
     integer :: ioUnit 
-    real(rkind) :: Lx = one, Ly = one, Lz = one, Tref = one, Tsurf0 = one, inv_height = zero, lapse_rate = zero, inv_thickness = one, inv_strength = zero
-    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, inv_height, inv_thickness, inv_strength, lapse_rate
+    real(rkind) :: Lx = one, Ly = one, Lz = one, Tref = one, Tsurf0 = one, inv_height = zero, lapse_rate = zero, inv_thickness = one, inv_strength = zero, hpert=zero
+    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, inv_height, inv_thickness, inv_strength, lapse_rate, hpert
     
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -251,8 +258,8 @@ subroutine meshgen_wallM(decomp, dx, dy, dz, mesh, inputfile)
     integer :: i,j,k, ioUnit
     character(len=*),                intent(in)    :: inputfile
     integer :: ix1, ixn, iy1, iyn, iz1, izn
-    real(rkind) :: Lx = one, Ly = one, Lz = one, Tref = one, Tsurf0 = one, dTsurf_dt = zero, inv_height = zero, lapse_rate = zero, inv_thickness = one, inv_strength = zero   
-    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, inv_height, inv_thickness, inv_strength, lapse_rate
+    real(rkind) :: Lx = one, Ly = one, Lz = one, Tref = one, Tsurf0 = one, dTsurf_dt = zero, inv_height = zero, lapse_rate = zero, inv_thickness = one, inv_strength = zero, hpert=zero  
+    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, inv_height, inv_thickness, inv_strength, lapse_rate, hpert
     
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
@@ -299,8 +306,8 @@ subroutine set_Reference_Temperature(inputfile, Thetaref)
     character(len=*),                intent(in)    :: inputfile
     real(rkind), intent(out) :: Thetaref
     integer :: ioUnit 
-    real(rkind) :: Lx = one, Ly = one, Lz = one, Tref = one, Tsurf0 = one, dTsurf_dt = zero, inv_height = zero, lapse_rate = zero, inv_thickness = one, inv_strength = zero
-    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, inv_height, inv_thickness, inv_strength, lapse_rate
+    real(rkind) :: Lx = one, Ly = one, Lz = one, Tref = one, Tsurf0 = one, dTsurf_dt = zero, inv_height = zero, lapse_rate = zero, inv_thickness = one, inv_strength = zero, hpert=zero
+    namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, inv_height, inv_thickness, inv_strength, lapse_rate, hpert
     
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
