@@ -24,7 +24,7 @@ module fringeADMethod
 
     subroutine init(this, inputfile, nx, ny, nz, x, z, Lx, dz)
       class(fringeAD), intent(inout) :: this
-      character(len=clen), intent(in) :: inputfile 
+      character(*), intent(in) :: inputfile 
       integer, intent(in) :: nx, ny, nz
       real(rkind), intent(in) :: x(nx), z(nz), dz, Lx
       integer :: k, ioUnit, ierr
