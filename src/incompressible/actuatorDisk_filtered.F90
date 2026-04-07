@@ -32,7 +32,7 @@ module actuatorDisk_FilteredMod
         ! Grid Info
         integer :: nxLoc, nyLoc, nzLoc
         real(rkind) :: delta, M  ! Shapiro smearing size, corr. factor M<1
-        real(rkind), dimension(:), allocatable :: xline, yline, zline
+        real(rkind), dimension(:), allocatable :: xline
         real(rkind), dimension(:,:,:), pointer :: xG, yG, zG
         
         ! Pointers to memory buffers 
@@ -119,20 +119,14 @@ subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG, dx, dy, dz)
     this%uturb = zero; this%vturb = zero; this%wturb = zero
     
     this%nxLoc = size(xG,1); this%nyLoc = size(xG,2); this%nzLoc = size(xG,3)
-    
-    ! Allocate stuff
-    allocate(this%xLine(size(xG,1)))
-    allocate(this%yLine(size(xG,2)))
-    allocate(this%zLine(size(xG,3)))
-    
     this%xG => xG; this%yG => yG; this%zG => zG
-    this%xLine = xG(:,1,1); this%yLine = yG(1,:,1); this%zLine = zG(1,1,:)
+    
 
     ! Set thickness
     this%thick = thickness*this%dx
     if (use_h) then
         ! use h to dimensionalize the filterwidth
-        h = sqrt((this%xLine(2) - this%xLine(1))**2 + (this%yLine(2) - this%yLine(1))**2 + (this%zLine(2) - this%zLine(1))**2)
+        h = sqrt(this%dx**2 + this%dy**2 + this%dz**2)
         this%delta = filterWidth * h
     else
         ! use the turbine diameter to dimensionalize the filterwidth
@@ -214,9 +208,12 @@ subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG, dx, dy, dz)
 
     ! allocate memory buffers
     if(this%Am_I_Active)then
+        if (this%quickDecomp) then
+            allocate(this%xLine(this%nxLoc))
+            this%xLine = this%xG(:,1,1)
+        end if
+
         allocate(this%rbuff(this%nxLoc, this%nyLoc, this%nzLoc))
-        !allocate(this%blanks(this%nxLoc, this%nyLoc, this%nzLoc))
-        !allocate(this%speed(this%nxLoc, this%nyLoc, this%nzLoc))
         allocate(this%scalarsource(this%nxLoc, this%nyLoc, this%nzLoc))    
         this%scalarsource = zero
         
@@ -262,8 +259,6 @@ subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG, dx, dy, dz)
         if(allocated(this%ys)) deallocate(this%ys)
         if(allocated(this%zs)) deallocate(this%zs)
         if(allocated(this%xline)) deallocate(this%xline)
-        if(allocated(this%yline)) deallocate(this%yline)
-        if(allocated(this%zline)) deallocate(this%zline)
         nullify(this%xG, this%yG, this%zG)
     end if
     call toc(MPI_COMM_WORLD, time2initialize)
@@ -321,8 +316,6 @@ subroutine destroy(this)
     if(allocated(this%ys)) deallocate(this%ys)
     if(allocated(this%zs)) deallocate(this%zs)
     if(allocated(this%xLine)) deallocate(this%xLine)
-    if(allocated(this%yLine)) deallocate(this%yLine)
-    if(allocated(this%zLine)) deallocate(this%zLine)
 
     ! Free communicator
     if (this%myComm /= MPI_COMM_NULL .and. &
@@ -616,10 +609,14 @@ subroutine get_RHS(this, u, v, w, rhsxvals, rhsyvals, rhszvals, budgetCall)
         if (present(budgetCall)) writeTurbineVals = (.not. budgetCall)
 
         if ((writeTurbineVals) .and. (usp_sq /= 0.d0)) then
-            this%powerTime(this%tInd) = this%get_power()
-            this%uTime(this%tInd) = this%ut
-            this%vTime(this%tInd) = vface
-            this%tInd = this%tInd + 1
+            if (this%tInd <= size(this%powerTime)) then
+                this%powerTime(this%tInd) = this%get_power()
+                this%uTime(this%tInd)     = this%ut
+                this%vTime(this%tInd)     = vface
+                this%tInd = this%tInd + 1
+            else
+                call message(1, "ADM history arrays full; skipping write")
+            end if
         end if
     end if
 
@@ -707,9 +704,15 @@ end function
 subroutine redraw(this)
     class(actuatordisk_filtered), intent(inout) :: this
 
+    if (.not. this%Am_I_Active) return
+    
     ! (re)sample points, this is quick
+    if(allocated(this%xs)) deallocate(this%xs)
+    if(allocated(this%ys)) deallocate(this%ys)
+    if(allocated(this%zs)) deallocate(this%zs)
     call sample_on_circle(this%diam, this%yloc, this%zloc, this%ys, this%zs, this%dy, this%dz, this%upsample_fact)
     this%npts = size(this%ys, 1)  
+    allocate(this%xs(size(this%ys)))
     this%xs = this%xloc
     
     ! (re)compute weights
