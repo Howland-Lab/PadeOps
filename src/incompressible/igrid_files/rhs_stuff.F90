@@ -432,7 +432,7 @@ subroutine addBuoyancyTerm(this, urhs, vrhs, wrhs)
         mind = this%moistureIndex
         call transpose_y_to_z(this%scalars(mind)%fhat, this%cbuffzC(:,:,:,1), this%sp_gpC)
         call this%Pade6opZ%interpz_C2E(this%cbuffzC(:,:,:,1), this%cbuffzE(:,:,:,1), this%scalars(mind)%BC_bottom, this%scalars(mind)%BC_top)
-        call transpose_z_to_y(this%cbuffzE(:,:,:,1), this%cbuffyE(:,:,:,1), this%sp_gpC)
+        call transpose_z_to_y(this%cbuffzE(:,:,:,1), this%cbuffyE(:,:,:,1), this%sp_gpE)
         fT1E = (this%TEhat + this%moistureFactor*this%cbuffyE(:,:,:,1))*this%BuoyancyFact ! See definition of buoyancy factor in init
         !else
         !fT1E = (this%TEhat)*this%BuoyancyFact ! See definition of buoyancy factor in init
