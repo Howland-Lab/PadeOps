@@ -1,9 +1,9 @@
 #!/bin/bash
 module purge 
-module load intel
-module load cmake
-module load impi
-module load intel-mkl
+module load intel/2024.1
+module load cmake/3.20.0
+module load impi/2021.12
+module load intel-mkl/2020.4.304
 module list 
 
 export COMPILER_ID=Intel
