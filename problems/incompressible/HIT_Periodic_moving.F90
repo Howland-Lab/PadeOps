@@ -6,19 +6,20 @@
 program HIT_Periodic
     use mpi
     use kind_parameters,  only: clen
+    use HIT_periodic_parameters, only: useBandpassFilter 
     use IncompressibleGrid, only: igrid
-    use HIT_Periodic_parameters, only: k_bp_left, k_bp_right, useBandpassFilter
+    use HIT_Periodic_parameters, only: k_bp_left, k_bp_right
     use temporalhook, only: doTemporalStuff
     use timer, only: tic, toc
     use exits, only: message
-    use budgets_vol_avg_mod,   only: budgets_vol_avg  
+    use budgets_time_avg_mod,  only: budgets_time_avg  ! CHANGED from budgets_vol_avg_mod
 
     implicit none
 
     type(igrid), allocatable, target :: igp
     character(len=clen) :: inputfile
     integer :: ierr
-    type(budgets_vol_avg)   :: budg_volavg
+    type(budgets_time_avg)   :: budg_volavg  ! CHANGED from budgets_vol_avg
 
     call MPI_Init(ierr)               !<-- Begin MPI
 
