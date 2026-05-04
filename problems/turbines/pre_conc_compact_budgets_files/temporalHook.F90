@@ -69,15 +69,15 @@ contains
             if (simid == 1) then
                 if (allocated(gp%scalars)) then
                     global_min = p_minval(minval(gp%scalars(1)%F))
-                    global_max = p_maxval(maxval(gp%scalars(1)%F)))
+                    global_max = p_maxval(maxval(gp%scalars(1)%F))
                     call message_min_max(1,"Bounds for SCALAR 1:", global_min, global_max)
 
                     global_min = p_minval(minval(gp%scalars(2)%F))
-                    global_max = p_maxval(maxval(gp%scalars(2)%F)))
+                    global_max = p_maxval(maxval(gp%scalars(2)%F))
                     call message_min_max(1,"Bounds for SCALAR 2:", global_min, global_max)
 
                     global_min = p_minval(minval(gp%scalars(3)%F))
-                    global_max = p_maxval(maxval(gp%scalars(3)%F)))
+                    global_max = p_maxval(maxval(gp%scalars(3)%F))
                     call message_min_max(1,"Bounds for SCALAR 3:", global_min, global_max)
                 end if
                 
