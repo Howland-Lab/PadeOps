@@ -20,6 +20,7 @@ contains
     subroutine doTemporalStuff(gp, simid)
         class(igrid), intent(inout) :: gp 
         integer, intent(in) :: simid
+        real(rkind) :: global_min, global_max, maxu
 
         if (mod(gp%step,nt_print2screen) == 0) then
             maxDiv = maxval(gp%divergence)
@@ -36,9 +37,19 @@ contains
             call message(1,"u_star:",gp%sgsmodel%get_ustar())
             call message(1,"Inv. Ob. Len:",gp%sgsmodel%get_InvObLength())
             call message(1,"Surface Flux (K*nd velocity):",gp%wTh_surf)
-            call message_min_max(1,"Bounds for u:", p_minval(minval(gp%u)), p_maxval(maxval(gp%u)))
-            call message_min_max(1,"Bounds for v:", p_minval(minval(gp%v)), p_maxval(maxval(gp%v)))
-            call message_min_max(1,"Bounds for w:", p_minval(minval(gp%w)), p_maxval(maxval(gp%w)))
+
+            global_min = p_minval(minval(gp%u))
+            global_max = p_maxval(maxval(gp%u))
+            maxu = global_max
+            call message_min_max(1,"Bounds for u:", global_min, global_max)
+
+            global_min = p_minval(minval(gp%v))
+            global_max = p_maxval(maxval(gp%v))
+            call message_min_max(1,"Bounds for v:", global_min, global_max)
+
+            global_min = p_minval(minval(gp%w))
+            global_max = p_maxval(maxval(gp%w))
+            call message_min_max(1,"Bounds for w:", global_min, global_max)
 
             if ((simid == 1) .and. (gp%useWindTurbines)) then
                 call message(0,"Wind direction hub height", gp%WindTurbineArr%windAngle)
@@ -57,12 +68,20 @@ contains
             call message(0,"------------------------------------------")
             if (simid == 1) then
                 if (allocated(gp%scalars)) then
-                    call message_min_max(1,"Bounds for SCALAR 1:", p_minval(minval(gp%scalars(1)%F)), p_maxval(maxval(gp%scalars(1)%F)))
-                    call message_min_max(1,"Bounds for SCALAR 2:", p_minval(minval(gp%scalars(2)%F)), p_maxval(maxval(gp%scalars(2)%F)))
-                    call message_min_max(1,"Bounds for SCALAR 3:", p_minval(minval(gp%scalars(3)%F)), p_maxval(maxval(gp%scalars(3)%F)))
+                    global_min = p_minval(minval(gp%scalars(1)%F))
+                    global_max = p_maxval(maxval(gp%scalars(1)%F)))
+                    call message_min_max(1,"Bounds for SCALAR 1:", global_min, global_max)
+
+                    global_min = p_minval(minval(gp%scalars(2)%F))
+                    global_max = p_maxval(maxval(gp%scalars(2)%F)))
+                    call message_min_max(1,"Bounds for SCALAR 2:", global_min, global_max)
+
+                    global_min = p_minval(minval(gp%scalars(3)%F))
+                    global_max = p_maxval(maxval(gp%scalars(3)%F)))
+                    call message_min_max(1,"Bounds for SCALAR 3:", global_min, global_max)
                 end if
                 
-                if (p_maxval(maxval(gp%u))>4.) then
+                if (maxu>4.) then
                     call message(1, "this step has blown up", gp%tsim)
                     call gp%dumpFullField(gp%u,"uVel")
                     call gp%dumpFullField(gp%v,"vVel")
