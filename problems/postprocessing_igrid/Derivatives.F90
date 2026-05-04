@@ -10,7 +10,7 @@ module derivatives_mod
     implicit none
 
     integer :: myrank, nprocs
-    character(len=clen) :: inputdir, outputdir, filename
+    character(len=clen) :: inputdir, outputdir, filename, mapfile=''
     character(len=1) :: derivative_type
     integer :: nx, ny, nz, prow=0, pcol=0
     real(rkind) :: Lx, Ly, Lz
@@ -125,6 +125,84 @@ contains
         call spectE%ifft(cbuffyE, dfdz)
     end subroutine ddz_Edge
 
+    subroutine read_derivative_file_list(filepath, filenames, deriv_axes, nitems)
+        implicit none
+
+        character(len=*), intent(in) :: filepath
+        character(len=1024), allocatable, intent(out) :: filenames(:)
+        character(len=1),    allocatable, intent(out) :: deriv_axes(:)
+        integer, intent(out) :: nitems
+
+        integer :: unit, ios, nlines, i, comma_pos
+        character(len=1024) :: line
+        character(len=1024) :: name_part
+        character(len=1024) :: axis_part
+
+        nitems = 0
+        nlines = 0
+
+        ! ------------------------------------------------------------
+        ! First pass: count valid nonempty lines
+        ! ------------------------------------------------------------
+        open(newunit=unit, file=trim(filepath), status='old', action='read', iostat=ios)
+        if (ios /= 0) call gracefulExit("read_derivative_file_list: could not open input file.", 1001)
+
+        do
+            read(unit, '(A)', iostat=ios) line
+            if (ios /= 0) exit
+
+            if (len_trim(line) == 0) cycle
+
+            comma_pos = index(line, ',')
+            if (comma_pos <= 1) call gracefulExit("read_derivative_file_list: malformed line; missing comma.", 1002)
+
+            nlines = nlines + 1
+        end do
+
+        close(unit)
+
+        nitems = nlines
+
+        allocate(filenames(nitems))
+        allocate(deriv_axes(nitems))
+
+        if (nitems == 0) return
+
+        ! ------------------------------------------------------------
+        ! Second pass: read and parse lines
+        ! ------------------------------------------------------------
+        open(newunit=unit, file=trim(filepath), status='old', action='read', iostat=ios)
+        if (ios /= 0) call gracefulExit("read_derivative_file_list: could not open input file.", 1003)
+
+        i = 0
+
+        do
+            read(unit, '(A)', iostat=ios) line
+            if (ios /= 0) exit
+
+            if (len_trim(line) == 0) cycle
+
+            comma_pos = index(line, ',')
+            if (comma_pos <= 1) call gracefulExit("read_derivative_file_list: malformed line; missing comma.", 1004)
+
+            name_part = adjustl(line(:comma_pos-1))
+            axis_part = adjustl(line(comma_pos+1:))
+
+            if (len_trim(axis_part) < 1) call gracefulExit("read_derivative_file_list: missing derivative axis.", 1005)
+
+            if (.not. any(axis_part(1:1) == ['x', 'y', 'z'])) then
+                call gracefulExit("read_derivative_file_list: derivative axis must be x, y, or z.", 1006)
+            end if
+
+            i = i + 1
+            filenames(i) = trim(name_part)
+            deriv_axes(i) = axis_part(1:1)
+        end do
+
+        close(unit)
+
+    end subroutine read_derivative_file_list
+
 end module derivatives_mod
 
 
@@ -139,9 +217,15 @@ program derivatives
     logical :: exists
     real(rkind), pointer :: buffer(:,:,:), deriv(:,:,:)
     type(decomp_info), pointer :: gp => null()
+    logical :: mapmode = .false.
+    character(len=1024), allocatable :: files(:)
+    character(len=1),    allocatable :: deriv_axes(:)
+    integer :: nitems, i
+    character(len=1024) :: current_file
+    logical :: need_new_read
 
     namelist /INPUT/ inputdir, outputdir, nx, ny, nz, Lx, Ly, Lz, prow, pcol, filename, derivative_type, &
-                     is_staggered, bottom_BC, top_BC, NumericalSchemeVert
+                     mapfile, is_staggered, bottom_BC, top_BC, NumericalSchemeVert
 
     call MPI_Init(ierr)
     call MPI_Comm_rank(MPI_COMM_WORLD, myrank, ierr)
@@ -195,39 +279,69 @@ program derivatives
         ddy_ptr => ddy_Cell
     end if
 
-    ! Read input
-    tmpname = trim(inputdir)//"/"//trim(filename)
-    inquire(file=trim(tmpname), exist=exists)
-    if (.not. exists) then
-        call message(1, 'Not found: '//trim(tmpname)//' ... exiting')
-        call gracefulExit("Input file not found.", 2001)
+    ! Mode of reading inputs
+    mapmode = len_trim(mapfile) > 0
+    if (mapmode) then
+        call message(1, 'Using map file: '//trim(mapfile))
+        call read_derivative_file_list(trim(mapfile), files, deriv_axes, nitems)
+    else
+        call message(1, 'Using standard input file: '//trim(filename))
+        nitems = 1
+        allocate(files(1))
+        allocate(deriv_axes(1))
+        files(1) = trim(filename)
+        deriv_axes(1) = derivative_type
     end if
-    call message(1, 'Reading '//trim(tmpname))
-    call decomp_2d_read_one(1, buffer, trim(tmpname), gp)
 
-    ! Derivative selection
-    select case (derivative_type)
-    case ("x")
-        call ddx_ptr(buffer, deriv)
-        tag = "ddx"
-    case ("y")
-        call ddy_ptr(buffer, deriv)
-        tag = "ddy"
-    case ("z")
-        if (is_staggered) then
-            call ddz_Edge(buffer, deriv, bottom_BC, top_BC, 0, 0)
-        else
-            call ddz_Cell(buffer, deriv, bottom_BC, top_BC)
+    ! Read input
+    ! The map file should be grouped by filename to avoid rereading fields.
+    ! Consecutive entries with the same filename reuse the already loaded buffer.
+    
+    current_file = ''
+    do i = 1, nitems
+
+        need_new_read = trim(files(i)) /= trim(current_file)
+
+        if (need_new_read) then
+            current_file = trim(files(i))
+            tmpname = trim(inputdir)//"/"//trim(current_file)
+
+            inquire(file=trim(tmpname), exist=exists)
+            if (.not. exists) then
+                call message(1, 'Not found: '//trim(tmpname)//' ... exiting')
+                call gracefulExit("Input file not found.", 2001)
+            end if
+
+            call message(1, 'Reading '//trim(tmpname))
+            call decomp_2d_read_one(1, buffer, trim(tmpname), gp)
         end if
-        tag = "ddz"
-    case default
-        call gracefulExit("Invalid derivative_type. Must be 'x', 'y', or 'z'.", 103)
-    end select
 
-    ! Write output
-    outfile = trim(outputdir)//"/"//trim(tag)//"_"//trim(filename)
-    call message(1, 'Writing '//trim(outfile))
-    call decomp_2d_write_one(1, deriv, trim(outfile), gp)
+        select case (deriv_axes(i))
+        case ("x")
+            call ddx_ptr(buffer, deriv)
+            tag = "ddx"
+
+        case ("y")
+            call ddy_ptr(buffer, deriv)
+            tag = "ddy"
+
+        case ("z")
+            if (is_staggered) then
+                call ddz_Edge(buffer, deriv, bottom_BC, top_BC, 0, 0)
+            else
+                call ddz_Cell(buffer, deriv, bottom_BC, top_BC)
+            end if
+            tag = "ddz"
+
+        case default
+            call gracefulExit("Invalid derivative axis. Must be 'x', 'y', or 'z'.", 103)
+        end select
+
+        outfile = trim(outputdir)//"/"//trim(tag)//"_"//trim(files(i))
+        call message(1, 'Writing '//trim(outfile))
+        call decomp_2d_write_one(1, deriv, trim(outfile), gp)
+
+    end do
 
     ! Cleanup
     deallocate(rbuffxC, rbuffxE, cbuffyC, cbuffyE, cbuffzC, cbuffzE)
