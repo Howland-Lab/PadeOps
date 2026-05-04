@@ -232,6 +232,8 @@ contains
       real(rkind) :: Fringe2_xst = 0.75d0, Fringe2_xen = 1.d0
       real(rkind) :: xshift = zero, yshift = zero
 
+      real(rkind) :: small, big
+
       integer :: ioUnit = 10, i, j, k, nx, ierr
       real(rkind), dimension(:), allocatable :: x1, x2, Fringe_func, S1, S2, y1, y2
       logical :: Apply_x_fringe = .true., Apply_y_fringe = .false., do_shifts = .false.
@@ -335,8 +337,13 @@ contains
          deallocate(x1, x2, S1, S2, Fringe_func)
       end if 
        
-      call message_min_max(1,"Bounds for Fringe_funcC:", p_minval(minval(this%Fringe_kernel_cells)), p_maxval(maxval(this%Fringe_kernel_cells)))
-      call message_min_max(1,"Bounds for Fringe_funcE:", p_minval(minval(this%Fringe_kernel_edges)), p_maxval(maxval(this%Fringe_kernel_edges)))
+      small = p_minval(minval(this%Fringe_kernel_cells))
+      big = p_maxval(maxval(this%Fringe_kernel_cells))
+      call message_min_max(1,"Bounds for Fringe_funcC:", small, big)
+
+      small = p_minval(minval(this%Fringe_kernel_edges))
+      big = p_maxval(maxval(this%Fringe_kernel_edges))
+      call message_min_max(1,"Bounds for Fringe_funcE:", small, big)
 
       if (Apply_y_fringe) then
          Fringe_yst        = Fringe_yst*Ly
@@ -373,9 +380,13 @@ contains
          end do
          deallocate(y1, y2, S1, S2, Fringe_func)
       
-         call message_min_max(1,"Bounds for Fringe_funcC:", p_minval(minval(this%Fringe_kernel_cells)), p_maxval(maxval(this%Fringe_kernel_cells)))
+         small = p_minval(minval(this%Fringe_kernel_cells))
+         big = p_maxval(maxval(this%Fringe_kernel_cells))
+         call message_min_max(1,"Bounds for Fringe_funcC:", small, big)
       
-         call message_min_max(1,"Bounds for Fringe_funcE:", p_minval(minval(this%Fringe_kernel_edges)), p_maxval(maxval(this%Fringe_kernel_edges)))
+         small = p_minval(minval(this%Fringe_kernel_edges))
+         big = p_maxval(maxval(this%Fringe_kernel_edges))
+         call message_min_max(1,"Bounds for Fringe_funcE:", small, big)
 
       end if 
       
