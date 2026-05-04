@@ -113,32 +113,12 @@ program HIT_deficit
     call make_global_zaxis(adsim)  ! allocate the global-z axis variables
     nxfringe = min(nxadsim * aniso_x, nxhitsim)  ! determine domain range from HIT to use in fringe targets
 
-    !!!!!!!!!!!!! decide whether to turn on the TI controller !!!!!!!!!!!!!
-    control_TI = .false.
-    if (TI_target > 0) then
-        TI_fact = one
-        TI_xid = minloc(abs(adsim%mesh(:,1,1,1) - TI_xloc), 1)  ! xid corresponding to TI sampling location
-        control_TI = .true.
-        call message(0, "TI controller activated")
-        call message(1, "TI controller parameters")
-        call message(2, "Kp", Kp_TI)
-        call message(2, "KIinv", KIinv_TI)
-        call message(1, "tracking x-location:", adsim%mesh(TI_xid,1,1,1))
-        call message(1, "target TI: ", TI_target)
-        if (TI_at_rotor) call message(1, "zmid_for_TI (+/- 0.5):", zmid_for_TI)
-    else if (TI_fact >= 0) then
-        call message(0, "TI controller not used")
-        call message(1, "Using fixed TI gain/loss: ", TI_fact)
-    else
-        call message(0, "No TI settings provided, superimposing HIT fluctuations")
-        TI_fact = one
-    end if
-
     !!!!!!!!!!!!! allocate target cells for the fringe !!!!!!!!!!!!!
     allocate(utarget0(adsim%gpC%xsz(1), adsim%gpC%xsz(2), adsim%gpC%xsz(3)))
     allocate(vtarget0(adsim%gpC%xsz(1), adsim%gpC%xsz(2), adsim%gpC%xsz(3)))
     allocate(wtarget0(adsim%gpE%xsz(1), adsim%gpE%xsz(2), adsim%gpE%xsz(3)))
-    if (adsim%isStratified) allocate(Ttarget0(adsim%gpC%xsz(1), adsim%gpC%xsz(2), adsim%gpC%xsz(3)))
+    allocate(Ttarget0(adsim%gpC%xsz(1), adsim%gpC%xsz(2), adsim%gpC%xsz(3)))
+    ! if (adsim%isStratified) allocate(Ttarget0(adsim%gpC%xsz(1), adsim%gpC%xsz(2), adsim%gpC%xsz(3)))
     call init_fringe_targets(AD_inputfile, adsim%mesh)  ! populates utarget0, vtarget0, wtarget0
 
     ! allocate moving (turbulent) targets
@@ -175,6 +155,27 @@ program HIT_deficit
         call adsim%fringe_x%associateFringeTarget_scalar(Ttarget0)
         call emptysim%fringe_x%associateFringeTargets(utarget, vtarget, wtarget, Ttarget0)
         call emptysim%fringe_x%associateFringeTarget_scalar(Ttarget0)
+    end if
+
+    !!!!!!!!!!!!! decide whether to turn on the TI controller !!!!!!!!!!!!!
+    control_TI = .false.
+    if (TI_target > 0) then
+        TI_fact = one
+        TI_xid = minloc(abs(adsim%mesh(:,1,1,1) - TI_xloc), 1)  ! xid corresponding to TI sampling location
+        control_TI = .true.
+        call message(0, "TI controller activated")
+        call message(1, "TI controller parameters")
+        call message(2, "Kp", Kp_TI)
+        call message(2, "KIinv", KIinv_TI)
+        call message(1, "tracking x-location:", adsim%mesh(TI_xid,1,1,1))
+        call message(1, "target TI: ", TI_target)
+        if (TI_at_rotor) call message(1, "zmid_for_TI (+/- 0.5):", zmid_for_TI)
+    else if (TI_fact >= 0) then
+        call message(0, "TI controller not used")
+        call message(1, "Using fixed TI gain/loss: ", TI_fact)
+    else
+        call message(0, "No TI settings provided, superimposing HIT fluctuations")
+        TI_fact = one
     end if
 
     ! phaseshift turbulent fringe targets using the laminar fringe targets
@@ -249,12 +250,7 @@ program HIT_deficit
         if (.not. freeze_HIT) call doTemporalStuff(hit, 2)
     end do
 
-    ! wrapup tasks
-    call budg_tavg%doBudgets(.true.)   !<--- force dump if budget calculation had started
-    call budg_vavg%doBudgets(.true.)   !<--- force dump if budget calculation had started
-    call budg_tavg_empty%doBudgets(.true.)   !<--- force dump if budget calculation had started
-    call budg_tavg_deficit%doBudgets(.true.) !<--- force dump if budget calculation had started
-
+    ! wrapup tasks - dump forced on last time step by default
     call budg_tavg%destroy()           !<-- release memory taken by the budget class
     call budg_vavg%destroy()           !<-- release memory taken by the budget class
     call budg_tavg_empty%destroy()           !<-- release memory taken by the budget class
@@ -276,12 +272,12 @@ program HIT_deficit
 
     deallocate(hit, adsim)
 
-! deallocate fringe targets
-    deallocate(utarget0, vtarget0, wtarget0)
+    ! deallocate fringe targets
+    deallocate(utarget0, vtarget0, wtarget0, Ttarget0)
     deallocate(utarget, vtarget, wtarget)
     deallocate(utarget_1d, vtarget_1d)
     deallocate(z_global)
-    if (adsim%isStratified) deallocate(Ttarget0)
+    ! if (adsim%isStratified) deallocate(Ttarget0)
 
     call MPI_Finalize(ierr)
 
@@ -335,9 +331,7 @@ contains
         integer :: nz_norm = 1
         logical, intent(in) :: first_timestep
 
-        if (TI_target < 0) then
-            return  ! Doesn't compute/update anything
-        end if
+        if (TI_target < 0) return  ! Doesn't compute/update anything
 
         ! need to compute TKE, TI
         buff1 = 0.5 * ((sim%u(TI_xid,:,:)-utarget0(TI_xid,:,:))**2 + (sim%v(TI_xid,:,:)-vtarget0(TI_xid,:,:))**2 + (sim%wC(TI_xid,:,:))**2)  ! TKE

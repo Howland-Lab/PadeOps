@@ -3,7 +3,7 @@ module HIT_shear_parameters
     use exits, only: message
     use kind_parameters,  only: rkind
     use constants, only: kappa, zero
-    use basic_io, only: read_2d_ascii, write_2d_ascii
+    use basic_io, only: read_2d_ascii
     implicit none
 
     ! I realize it is probably bad practice to store information in the shared
