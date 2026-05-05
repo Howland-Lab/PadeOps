@@ -870,7 +870,7 @@ module budgets_time_avg_deficit_compact_mod
         !     this%budget_3(:,:,:,21) = this%budget_3(:,:,:,21) + vbase * buffer
         ! end if 
 
-        nullify(du, dv, dw, rbuffxE1, rbuffxE2, buffer, buffer, cbuffyE1, cbuffyC1, ubase, vbase, wbase)  
+        nullify(du, dv, dw, rbuffxE1, rbuffxE2, buffer, cbuffyE1, cbuffyC1, ubase, vbase, wbase)  
         nullify(dudxC_prim, dudyC_prim, dudzC_prim, dudxC_pre, dudyC_pre, dudzC_pre)
         nullify(dvdxC_prim, dvdyC_prim, dvdzC_prim, dvdxC_pre, dvdyC_pre, dvdzC_pre)
         nullify(dwdxC_prim, dwdyC_prim, dwdzC_prim, dwdxC_pre, dwdyC_pre, dwdzC_pre)      
@@ -1433,7 +1433,6 @@ module budgets_time_avg_deficit_compact_mod
     subroutine destroy(this)
         class(budgets_time_avg_deficit_compact), intent(inout) :: this
 
-        nullify(this%pre_budget, this%prim_igrid_sim)
         if(this%do_budgets) then
             if(allocated(this%budget_0)) deallocate(this%budget_0)
             if(allocated(this%budget_1)) deallocate(this%budget_1)
@@ -1458,6 +1457,8 @@ module budgets_time_avg_deficit_compact_mod
         if(allocated(this%vcor)) deallocate(this%vcor)
         if(allocated(this%wcor)) deallocate(this%wcor)
         if(allocated(this%wb)) deallocate(this%wb)
+
+        nullify(this%pre_budget, this%prim_igrid_sim)
     end subroutine 
 
     ! ----------------------private derivative operators ------------------------
