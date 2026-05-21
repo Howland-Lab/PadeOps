@@ -449,7 +449,7 @@ contains
         logical :: WriteTurbineForce = .false., useforcedStratification = .false., useDynamicYaw = .FALSE., useDynamicTurbine = .FALSE. 
         integer :: buoyancyDirection = 3, yawUpdateInterval = 100000, dealiasType = 0
         real(rkind), allocatable :: ztmp(:)
-        real(rkind) :: Lx
+        real(rkind) :: Lx, Ly
 
         real(rkind), dimension(:,:,:), allocatable, target :: tmpzE, tmpzC, tmpyE, tmpyC
         namelist /INPUT/ nx, ny, nz, tstop, dt, CFL, nsteps, inputdir, outputdir, prow, pcol, &
@@ -1206,9 +1206,10 @@ contains
          ztmp(this%gpE%xsz(3)) = ztmp(this%gpE%xsz(3) - 1) + this%dz
 
          ! domain length (x-pencil decomposition is implicit)
-         Lx = this%gpC%xsz(1) * abs(this%mesh(2,1,1,1) - this%mesh(1,1,1,1))
+         Lx = this%gpC%xsz(1) * this%dx
+         Ly = this%gpC%ysz(2) * this%dy
 
-         call this%fringe_ad%init(trim(inputfile), this%gpE%xsz(1), this%gpE%xsz(2), this%gpE%xsz(3), this%mesh(:,1,1,1), ztmp, Lx, this%dz)
+         call this%fringe_ad%init(trim(inputfile), this%gpE%xsz(1), this%gpE%xsz(2), this%gpE%xsz(3), this%mesh(:,1,1,1), this%mesh(1,:,1,2), ztmp, Lx, Ly, this%dz, this%dy)
          deallocate(ztmp)
        end if
        
