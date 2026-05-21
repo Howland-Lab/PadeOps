@@ -1,0 +1,23 @@
+&INPUT
+inputdir                      = "/anvil/scratch/x-kali/PadeOpsSims/EXT-BLH800/t092440_n014462" 
+outputdir                     = "/anvil/scratch/x-kali/PadeOpsSims/EXT-BLH800/t092440_n014462"   ! Directory for all output files
+nx                            = 2200          ! Number of points in X
+ny                            = 1000           ! Number of points in Y
+nz                            = 800           ! Number of points in Z
+Lx                            =  698.4126984D0      ! Domain Length (appropriate dimesnions/non-dimensionalized)
+Ly                            =  158.7301587D0      ! Domain Width  (appropriate dimesnions/non-dimensionalized)
+Lz                            =  63.49206349D0       ! Domain Height (appropriate dimesnions/non-dimensionalized)
+prow                          = 0           ! Number of rows in 2D processor decomposition (set 0 for auto-tuning)
+pcol                          = 0           ! Number of rows in 2D processor decomposition (set 0 for auto-tuning)
+periodic_z                    = .False.     ! [optional]
+field_grid                    = "C"         ! C: Cell based, E: Edge based 
+infile                        = "Run09_comp_deficit_budget0_term01_t092440_n014462.s3D"
+basefile                      = "Run08_budget0_term01_t092440_n014462.s3D"       ! Will be summed with infile
+outfile                       = "Run09_budget0_term01_t092440_n014462.s3D"
+x1                            = 119.0
+x2                            = 541.0
+y1                            = 40.0
+y2                            = 120.0
+z1                            = -1.0
+z2                            = 7.0
+/
