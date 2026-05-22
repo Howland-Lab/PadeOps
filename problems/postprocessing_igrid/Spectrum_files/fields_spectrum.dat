@@ -1,0 +1,12 @@
+field1
+{
+    {"file":field_file_1, "scale":1.0}
+    {"file":field_file_2, "scale":-1.0}
+}
+
+field2
+{
+    field_file_1 1.0
+    field_file_2 2.0
+    field_file_3 -1.0
+}
