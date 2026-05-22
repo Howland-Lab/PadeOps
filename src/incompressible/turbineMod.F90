@@ -780,12 +780,13 @@ subroutine getForceRHS(this, dt, u, v, wC, urhs, vrhs, wrhs, newTimeStep, inst_h
                if (present(budgetCall)) callTimeAdvance = (.not. budgetCall)
                ! needed calculations for each turbine
                do i = 1, this%nTurbines
+                    ! calculate power/thrust
+                    call this%turbArrayADM_fil(i)%get_RHS(u,v,wC,this%fx,this%fy,this%fz, budgetCall)
+                    ! move turbine for next timestep --> NOTE: swapped from SAG quals results
                     ! TODO move outside switch/case
                     if ((callTimeAdvance) .and. (this%useDynamicTurbine)) then  
                         call this%dynamicArray(i)%time_advance(dt)
                     endif
-
-                    call this%turbArrayADM_fil(i)%get_RHS(u,v,wC,this%fx,this%fy,this%fz, budgetCall)
                end do
            case (6)
                do i = 1, this%nTurbines
