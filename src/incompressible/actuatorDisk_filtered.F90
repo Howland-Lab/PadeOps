@@ -79,7 +79,7 @@ subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG, dx, dy, dz)
     integer :: ioUnit, ierr
     real(rkind) :: xLoc=1.d0, yLoc=1.d0, zLoc=0.1d0
     real(rkind) :: diam=0.08d0, cT=0.65d0, h  !, Cp = 0.3
-    real(rkind) :: yaw=0.d0, tilt=0.d0, phase_turbine=0.d0
+    real(rkind) :: yaw=0.d0, tilt=0.d0
     real(rkind) :: thickness=1.5d0, filterWidth=0.5, time2initialize=0.d0
     logical :: useCorrection=.true., useDynamicYaw=.false., quickDecomp=.false., use_h=.false.
 

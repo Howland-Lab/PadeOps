@@ -114,13 +114,12 @@ contains
     subroutine doBudgets(this, forceDump)
         class(budgets_multi_phase_avg), intent(inout) :: this
         logical, intent(in), optional :: forceDump
-        real(rkind) :: delx, uturb, surge_amp, surge_freq
         real(rkind) :: sim_curr_phase
         integer:: i
         ! call doBudgets for each phase budget
         if (this%do_budgets)  then
             ! get needed arguments from first wind turbine (assumes all turbines move the same)
-            sim_curr_phase = this$igrid_sim%WindTurbineArr%dynamicArray(1)%phase_turbine
+            sim_curr_phase = this%igrid_sim%WindTurbineArr%dynamicArray(1)%phase_turbine
             call message(0, "Current phase ", sim_curr_phase)
             do i = 1, this%nphases
                 call this%phase_budgets(i)%phase_doBudgets(sim_curr_phase, forceDump)

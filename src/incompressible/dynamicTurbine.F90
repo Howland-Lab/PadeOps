@@ -25,6 +25,8 @@ module dynamicTurbineMod
         real(rkind) :: yaw, tilt, roll = zero  ! turbine angles 
         real(rkind) :: time  ! simulation time, non-dimensional
         real(rkind) :: surge_freq, surge_amplitude, pitch_amplitude
+        real(rkind) :: phase_turbine = zero
+        real(rkind) :: static_tilt ! mean tilt value -> tilt can vary sinusoidally around
 
         ! methods to implement motion: 
         logical :: use_dynamic_turbine, use_simple_periodic, verbose 
@@ -65,6 +67,7 @@ subroutine init(this, turbine)
     this%time = zero  ! TODO - may need to pass a non-zero start-time in 
     call this%turbine%get_pos(this%xloc, this%yloc, this%zloc)
     call this%turbine%get_angle(this%yaw, this%tilt)  ! stored in DEGREES
+    this%static_tilt = this%tilt
 
     ! save namelist variables
     this%use_dynamic_turbine = use_dynamic_turbine
@@ -93,7 +96,7 @@ subroutine time_advance(this, dt)
 
     ! STEP 2: first, update the position & velocity of the turbine (if not needed, skip time_advance)
     if (this%use_simple_periodic) then
-        call this%sinusoid_update()
+        call this%sinusoid_update(dt)
     else
         call gracefulExit("Unknown or missing time advance type in DYNAMICTURBINE module", 423)
     endif
@@ -128,22 +131,28 @@ subroutine time_advance(this, dt)
 end subroutine
 
 ! most basic case: sinusoidal variation
-subroutine sinusoid_update(this)
+subroutine sinusoid_update(this, dt)
     class(dynamicTurbine), intent(inout) :: this
-    real(rkind) :: omega
+    real(rkind), intent(in) :: dt
+    real(rkind) :: omega, omega_t
 
-    omega = two * pi * this%surge_freq
     if (.not. (this%surge_freq == zero)) then
+        ! update the turbine phase
+        this%phase_turbine = this%phase_turbine + this%surge_freq * dt
+        this%phase_turbine = modulo(this%phase_turbine, one)
+
+        ! update omega values
+        omega = two * pi * this%surge_freq
+        omega_t = two * pi * this%phase_turbine
+
         ! sinusoid needs updating every timestep as long as f != 0, A != 0
         this%do_redraw = .true.
 
-        ! TODO update to include other DOF
-        this%ut = this%surge_amplitude * cos(omega * this%time)
-        this%delx = this%surge_amplitude / omega * sin(omega * this%time)
+        ! update surge velocity and position
+        this%ut = this%surge_amplitude * cos(omega_t)
+        this%delx = this%surge_amplitude / omega * sin(omega_t)
         ! update the pitch (tilt) as well
-        this%tilt = this%pitch_amplitude * sin(omega * this%time)
-        ! update the turbine phase
-        this%phase_turbine = modulo(this%surge_freq * this%time, 1._rkind)  ! same as before
+        this%tilt = this%pitch_amplitude * sin(omega_t) + this%static_tilt
     endif
 
 end subroutine
