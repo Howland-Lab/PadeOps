@@ -226,7 +226,7 @@ contains
       normalized = line
       do i = 1, len_trim(normalized)
          select case (normalized(i:i))
-         case ('{', '}', '"', ',', ':')
+         case ('{', '}', ',', ':')
             normalized(i:i) = ' '
          end select
       end do
@@ -284,7 +284,7 @@ contains
       if (remove_spatial_mean) then
          mean_value = p_sum(sum(field))/npts
          field = field - mean_value
-         call message(1, 'Removed volume mean:', mean_value)
+         call message(0, 'Removed volume mean:', mean_value)
       end if
 
       if (remove_horizontal_mean) then
@@ -317,7 +317,7 @@ contains
          field(:,:,k) = field(:,:,k) - profile_global(kg)
       end do
 
-      call message(1, 'Removed horizontally averaged mean profile')
+      call message(0, 'Removed horizontally averaged mean profile')
       deallocate(profile_local, profile_global)
    end subroutine remove_horizontal_profile
 
@@ -400,9 +400,9 @@ contains
          else
             spectral_energy = sum(spectrum_global)
          end if
-         call message(1, 'Physical-space variance/energy:', physical_energy)
-         call message(1, 'Spectrum-integrated energy:', spectral_energy)
-         call message(1, 'Parseval absolute error:', abs(spectral_energy - physical_energy))
+         call message(0, 'Physical-space variance/energy:', physical_energy)
+         call message(0, 'Spectrum-integrated energy:', spectral_energy)
+         call message(0, 'Parseval absolute error:', abs(spectral_energy - physical_energy))
       end if
    end subroutine parseval_check
 
@@ -414,7 +414,7 @@ contains
       if (nrank /= 0) return
 
       outfile = trim(outputdir)//'/spectrum_'//trim(sanitize_field_name(field_name))//'.csv'
-      call message(1, 'Writing spectrum to '//trim(outfile))
+      call message(0, 'Writing spectrum to '//trim(outfile))
 
       open(newunit=unit, file=trim(outfile), status='replace', action='write', form='formatted')
       write(unit, '(A)') 'k,E'
@@ -502,7 +502,7 @@ program spectrum
    call read_field_specs(trim(infile), specs)
 
    do ispec = 1, size(specs)
-      call message(1, 'Computing spectrum for '//trim(specs(ispec)%name))
+      call message(0, 'Computing spectrum for '//trim(specs(ispec)%name))
       call read_field(specs(ispec))
       call remove_requested_means()
       call spectC%fft(field, fhat)
