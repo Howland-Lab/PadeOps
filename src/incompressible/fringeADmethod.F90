@@ -64,7 +64,7 @@ contains
         logical :: y_fringe_active
 
         ! ------------------------------------------------------------------
-        ! FRINGEAD namelist variables.
+        ! ADFRINGE namelist variables.
         !
         ! FringeAD_st and FringeAD_en define the x-extent over which the AD
         ! fringe is active. This interval is periodic in x.
@@ -136,7 +136,7 @@ contains
         real(rkind) :: xshift             = zero
         real(rkind) :: yshift             = zero
 
-        namelist /FRINGEAD/ FringeAD_st, FringeAD_en, FringeAD_delta_st, FringeAD_delta_en, &
+        namelist /ADFRINGE/ FringeAD_st, FringeAD_en, FringeAD_delta_st, FringeAD_delta_en, &
                             FringeAD_H, FringeAD_deltaH, FringeAD_deltaY, use_tanh,         &
                             FringeAD_taper_y
 
@@ -154,20 +154,20 @@ contains
         ioUnit = 1019
 
         ! ------------------------------------------------------------------
-        ! Read FRINGEAD namelist.
+        ! Read ADFRINGE namelist.
         ! ------------------------------------------------------------------
         open(unit=ioUnit, file=trim(inputfile), form='FORMATTED', iostat=ierr)
         if (ierr /= 0) then
-            call message('fringeADMethod:init could not open input file for FRINGEAD namelist.')
+            call message('fringeADMethod:init could not open input file for ADFRINGE namelist.')
             this%Fringe_kernel = one
             return
         end if
 
-        read(unit=ioUnit, nml=FRINGEAD, iostat=ierr)
+        read(unit=ioUnit, nml=ADFRINGE, iostat=ierr)
         close(ioUnit)
 
         if (ierr /= 0) then
-            call message('fringeADMethod:init could not read FRINGEAD namelist; using defaults where needed.')
+            call message('fringeADMethod:init could not read ADFRINGE namelist; using defaults where needed.')
         end if
 
         ! ------------------------------------------------------------------
@@ -188,6 +188,32 @@ contains
                 Apply_y_fringe = .false.
             end if
         end if
+
+        call message(0, 'AD fringe parameters:')
+        call message(1, 'FringeAD_st', FringeAD_st)
+        call message(1, 'FringeAD_en', FringeAD_en)
+        call message(1, 'FringeAD_delta_st', FringeAD_delta_st)
+        call message(1, 'FringeAD_delta_en', FringeAD_delta_en)
+        call message(1, 'FringeAD_H', FringeAD_H)
+        call message(1, 'FringeAD_deltaH', FringeAD_deltaH)
+        call message(1, 'FringeAD_deltaY', FringeAD_deltaY)
+        if (use_tanh) then
+            call message(1, 'use_tanh = .true.')
+        else
+            call message(1, 'use_tanh = .false.')
+        end if
+        if (FringeAD_taper_y) then
+            call message(1, 'FringeAD_taper_y = .true.')
+        else
+            call message(1, 'FringeAD_taper_y = .false.')
+        end if
+        if (Apply_y_fringe) then
+            call message(1, 'Apply_y_fringe = .true.')
+        else
+            call message(1, 'Apply_y_fringe = .false.')
+        end if
+        call message(1, 'Fringe_yst', Fringe_yst)
+        call message(1, 'Fringe_yen', Fringe_yen)
 
         ! ------------------------------------------------------------------
         ! x-direction: build the periodic AD-fringe function.
