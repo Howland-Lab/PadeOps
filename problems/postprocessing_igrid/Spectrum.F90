@@ -18,6 +18,10 @@ module spectrum_mod
    logical :: remove_horizontal_mean=.false.
    logical :: include_one_half=.false.
    logical :: write_density=.false.
+   logical :: write_x_spectrum=.true.
+   logical :: write_y_spectrum=.true.
+   logical :: write_vertical_summary=.true.
+   logical :: write_height_spectra=.false.
 
    type(decomp_info) :: gpC
    type(spectral) :: spectC
@@ -25,8 +29,15 @@ module spectrum_mod
    complex(rkind), dimension(:,:,:), allocatable :: fhat
    real(rkind), dimension(:), allocatable :: kbin, spectrum_local, spectrum_global
    integer, dimension(:), allocatable :: counts_local, counts_global
+   real(rkind), dimension(:), allocatable :: kxbin, kybin, spectrum_x_local, spectrum_x_global
+   real(rkind), dimension(:), allocatable :: spectrum_y_local, spectrum_y_global
+   integer, dimension(:), allocatable :: counts_x_local, counts_x_global
+   integer, dimension(:), allocatable :: counts_y_local, counts_y_global
+   real(rkind), dimension(:,:), allocatable :: spectrum_height_local, spectrum_height_global
+   integer, dimension(:,:), allocatable :: counts_height_local, counts_height_global
    integer :: nbins, ierr
-   real(rkind) :: dk, normfact
+   integer :: nbins_x, nbins_y
+   real(rkind) :: dk, dkx, dky, normfact
 
    type field_component
       character(len=clen) :: filename = ''
@@ -326,25 +337,56 @@ contains
       real(rkind) :: kmax
 
       dk = min(two*pi/Lx, two*pi/Ly)
+      dkx = two*pi/Lx
+      dky = two*pi/Ly
       kmax = sqrt((pi/dx)**2 + (pi/dy)**2)
       nbins = int(kmax/dk) + 2
+      nbins_x = nx/2 + 1
+      nbins_y = ny/2 + 1
       normfact = one/(nhorz*nhorz*real(nz,rkind))
 
       allocate(kbin(nbins), spectrum_local(nbins), spectrum_global(nbins))
       allocate(counts_local(nbins), counts_global(nbins))
+      allocate(kxbin(nbins_x), kybin(nbins_y))
+      allocate(spectrum_x_local(nbins_x), spectrum_x_global(nbins_x))
+      allocate(spectrum_y_local(nbins_y), spectrum_y_global(nbins_y))
+      allocate(counts_x_local(nbins_x), counts_x_global(nbins_x))
+      allocate(counts_y_local(nbins_y), counts_y_global(nbins_y))
+      allocate(spectrum_height_local(nbins,nz), spectrum_height_global(nbins,nz))
+      allocate(counts_height_local(nbins,nz), counts_height_global(nbins,nz))
 
       do b = 1, nbins
          kbin(b) = (real(b,rkind) - half)*dk
+      end do
+
+      do b = 1, nbins_x
+         kxbin(b) = real(b-1,rkind)*dkx
+      end do
+
+      do b = 1, nbins_y
+         kybin(b) = real(b-1,rkind)*dky
       end do
 
       spectrum_local = zero
       spectrum_global = zero
       counts_local = 0
       counts_global = 0
+      spectrum_x_local = zero
+      spectrum_x_global = zero
+      spectrum_y_local = zero
+      spectrum_y_global = zero
+      counts_x_local = 0
+      counts_x_global = 0
+      counts_y_local = 0
+      counts_y_global = 0
+      spectrum_height_local = zero
+      spectrum_height_global = zero
+      counts_height_local = 0
+      counts_height_global = 0
    end subroutine init_bins
 
    subroutine compute_spectrum()
-      integer :: i, j, k, ig, ibin, multiplicity
+      integer :: i, j, k, ig, jg, kg, ibin, ixbin, iybin, multiplicity
       real(rkind) :: kmag, amp2, factor
 
       factor = one
@@ -352,20 +394,43 @@ contains
 
       spectrum_local = zero
       counts_local = 0
+      spectrum_x_local = zero
+      spectrum_y_local = zero
+      counts_x_local = 0
+      counts_y_local = 0
+      spectrum_height_local = zero
+      counts_height_local = 0
 
       do k = 1, size(fhat,3)
+         kg = spectC%spectdecomp%yst(3) + k - 1
          do j = 1, size(fhat,2)
+            jg = spectC%spectdecomp%yst(2) + j - 1
+            iybin = y_abs_bin(jg)
             do i = 1, size(fhat,1)
                kmag = sqrt(spectC%kabs_sq(i,j,k))
                ibin = int(kmag/dk) + 1
 
+               ig = spectC%spectdecomp%yst(1) + i - 1
+               ixbin = ig
+               multiplicity = hermitian_multiplicity(ig)
+               amp2 = factor*real(multiplicity,rkind)* &
+                  real(fhat(i,j,k)*conjg(fhat(i,j,k)), rkind)*normfact
+
                if ((ibin >= 1) .and. (ibin <= nbins)) then
-                  ig = spectC%spectdecomp%yst(1) + i - 1
-                  multiplicity = hermitian_multiplicity(ig)
-                  amp2 = real(fhat(i,j,k)*conjg(fhat(i,j,k)), rkind)
-                  spectrum_local(ibin) = spectrum_local(ibin) + &
-                     factor*real(multiplicity,rkind)*amp2*normfact
+                  spectrum_local(ibin) = spectrum_local(ibin) + amp2
                   counts_local(ibin) = counts_local(ibin) + multiplicity
+                  spectrum_height_local(ibin,kg) = spectrum_height_local(ibin,kg) + amp2*real(nz,rkind)
+                  counts_height_local(ibin,kg) = counts_height_local(ibin,kg) + multiplicity
+               end if
+
+               if ((ixbin >= 1) .and. (ixbin <= nbins_x)) then
+                  spectrum_x_local(ixbin) = spectrum_x_local(ixbin) + amp2
+                  counts_x_local(ixbin) = counts_x_local(ixbin) + multiplicity
+               end if
+
+               if ((iybin >= 1) .and. (iybin <= nbins_y)) then
+                  spectrum_y_local(iybin) = spectrum_y_local(iybin) + amp2
+                  counts_y_local(iybin) = counts_y_local(iybin) + multiplicity
                end if
             end do
          end do
@@ -373,9 +438,32 @@ contains
 
       call MPI_Reduce(spectrum_local, spectrum_global, nbins, mpirkind, MPI_SUM, 0, MPI_COMM_WORLD, ierr)
       call MPI_Reduce(counts_local, counts_global, nbins, MPI_INTEGER, MPI_SUM, 0, MPI_COMM_WORLD, ierr)
+      call MPI_Reduce(spectrum_x_local, spectrum_x_global, nbins_x, mpirkind, MPI_SUM, 0, MPI_COMM_WORLD, ierr)
+      call MPI_Reduce(spectrum_y_local, spectrum_y_global, nbins_y, mpirkind, MPI_SUM, 0, MPI_COMM_WORLD, ierr)
+      call MPI_Reduce(counts_x_local, counts_x_global, nbins_x, MPI_INTEGER, MPI_SUM, 0, MPI_COMM_WORLD, ierr)
+      call MPI_Reduce(counts_y_local, counts_y_global, nbins_y, MPI_INTEGER, MPI_SUM, 0, MPI_COMM_WORLD, ierr)
+      call MPI_Reduce(spectrum_height_local, spectrum_height_global, nbins*nz, &
+         mpirkind, MPI_SUM, 0, MPI_COMM_WORLD, ierr)
+      call MPI_Reduce(counts_height_local, counts_height_global, nbins*nz, &
+         MPI_INTEGER, MPI_SUM, 0, MPI_COMM_WORLD, ierr)
 
-      if (write_density .and. nrank == 0) spectrum_global = spectrum_global/dk
+      if (write_density .and. nrank == 0) then
+         spectrum_global = spectrum_global/dk
+         spectrum_x_global = spectrum_x_global/dkx
+         spectrum_y_global = spectrum_y_global/dky
+         spectrum_height_global = spectrum_height_global/dk
+      end if
    end subroutine compute_spectrum
+
+   integer function y_abs_bin(jg)
+      integer, intent(in) :: jg
+
+      if (jg <= ny/2 + 1) then
+         y_abs_bin = jg
+      else
+         y_abs_bin = ny - jg + 2
+      end if
+   end function y_abs_bin
 
    integer function hermitian_multiplicity(ig)
       integer, intent(in) :: ig
@@ -388,7 +476,7 @@ contains
    end function hermitian_multiplicity
 
    subroutine parseval_check()
-      real(rkind) :: physical_energy, spectral_energy, factor
+      real(rkind) :: physical_energy, spectral_energy, spectral_x_energy, spectral_y_energy, factor
 
       factor = one
       if (include_one_half) factor = half
@@ -401,8 +489,17 @@ contains
             spectral_energy = sum(spectrum_global)
          end if
          call message(0, 'Physical-space variance/energy:', physical_energy)
-         call message(0, 'Spectrum-integrated energy:', spectral_energy)
-         call message(0, 'Parseval absolute error:', abs(spectral_energy - physical_energy))
+         call message(0, 'Horizontal spectrum-integrated energy:', spectral_energy)
+         call message(0, 'Horizontal spectrum Parseval absolute error:', abs(spectral_energy - physical_energy))
+         if (write_density) then
+            spectral_x_energy = sum(spectrum_x_global)*dkx
+            spectral_y_energy = sum(spectrum_y_global)*dky
+         else
+            spectral_x_energy = sum(spectrum_x_global)
+            spectral_y_energy = sum(spectrum_y_global)
+         end if
+         call message(0, 'Streamwise spectrum-integrated energy:', spectral_x_energy)
+         call message(0, 'Spanwise spectrum-integrated energy:', spectral_y_energy)
       end if
    end subroutine parseval_check
 
@@ -414,7 +511,7 @@ contains
       if (nrank /= 0) return
 
       outfile = trim(outputdir)//'/spectrum_'//trim(sanitize_field_name(field_name))//'.csv'
-      call message(0, 'Writing spectrum to '//trim(outfile))
+      call message(0, 'Writing vertically averaged horizontal spectrum to '//trim(outfile))
 
       open(newunit=unit, file=trim(outfile), status='replace', action='write', form='formatted')
       write(unit, '(A)') 'k,E'
@@ -423,6 +520,103 @@ contains
       end do
       close(unit)
    end subroutine export_csv
+
+   subroutine export_directional_csv(field_name)
+      character(len=*), intent(in) :: field_name
+      character(len=clen) :: outfile, clean_name
+      integer :: unit, b
+
+      if (nrank /= 0) return
+
+      clean_name = sanitize_field_name(field_name)
+
+      if (write_x_spectrum) then
+         outfile = trim(outputdir)//'/spectrum_x_'//trim(clean_name)//'.csv'
+         call message(0, 'Writing streamwise spectrum to '//trim(outfile))
+         open(newunit=unit, file=trim(outfile), status='replace', action='write', form='formatted')
+         write(unit, '(A)') 'kx,E'
+         do b = 1, nbins_x
+            if (counts_x_global(b) > 0) write(unit, '(ES24.16,",",ES24.16)') kxbin(b), spectrum_x_global(b)
+         end do
+         close(unit)
+      end if
+
+      if (write_y_spectrum) then
+         outfile = trim(outputdir)//'/spectrum_y_'//trim(clean_name)//'.csv'
+         call message(0, 'Writing spanwise spectrum to '//trim(outfile))
+         open(newunit=unit, file=trim(outfile), status='replace', action='write', form='formatted')
+         write(unit, '(A)') 'ky,E'
+         do b = 1, nbins_y
+            if (counts_y_global(b) > 0) write(unit, '(ES24.16,",",ES24.16)') kybin(b), spectrum_y_global(b)
+         end do
+         close(unit)
+      end if
+   end subroutine export_directional_csv
+
+   subroutine export_vertical_summary_csv(field_name)
+      character(len=*), intent(in) :: field_name
+      character(len=clen) :: outfile, clean_name
+      integer :: unit, b, kg
+      real(rkind) :: energy_sum, zc, zspread, zg
+
+      if (nrank /= 0) return
+      if (.not. write_vertical_summary) return
+
+      clean_name = sanitize_field_name(field_name)
+      outfile = trim(outputdir)//'/spectrum_zsummary_'//trim(clean_name)//'.csv'
+      call message(0, 'Writing vertical spectrum summary to '//trim(outfile))
+
+      open(newunit=unit, file=trim(outfile), status='replace', action='write', form='formatted')
+      write(unit, '(A)') 'k,E,z_centroid,z_spread'
+      do b = 1, nbins
+         if (counts_global(b) <= 0) cycle
+         energy_sum = sum(spectrum_height_global(b,:))
+         if (energy_sum <= zero) cycle
+
+         zc = zero
+         do kg = 1, nz
+            zg = (real(kg,rkind) - half)*dz
+            zc = zc + zg*spectrum_height_global(b,kg)
+         end do
+         zc = zc/energy_sum
+
+         zspread = zero
+         do kg = 1, nz
+            zg = (real(kg,rkind) - half)*dz
+            zspread = zspread + (zg - zc)**2*spectrum_height_global(b,kg)
+         end do
+         zspread = sqrt(zspread/energy_sum)
+
+         write(unit, '(ES24.16,",",ES24.16,",",ES24.16,",",ES24.16)') &
+            kbin(b), spectrum_global(b), zc, zspread
+      end do
+      close(unit)
+   end subroutine export_vertical_summary_csv
+
+   subroutine export_height_spectra_csv(field_name)
+      character(len=*), intent(in) :: field_name
+      character(len=clen) :: outfile, clean_name
+      integer :: unit, b, kg
+      real(rkind) :: zg
+
+      if (nrank /= 0) return
+      if (.not. write_height_spectra) return
+
+      clean_name = sanitize_field_name(field_name)
+      outfile = trim(outputdir)//'/spectrum_height_'//trim(clean_name)//'.csv'
+      call message(0, 'Writing height-resolved horizontal spectra to '//trim(outfile))
+
+      open(newunit=unit, file=trim(outfile), status='replace', action='write', form='formatted')
+      write(unit, '(A)') 'z,k,E'
+      do kg = 1, nz
+         zg = (real(kg,rkind) - half)*dz
+         do b = 1, nbins
+            if (counts_height_global(b,kg) > 0) write(unit, '(ES24.16,",",ES24.16,",",ES24.16)') &
+               zg, kbin(b), spectrum_height_global(b,kg)
+         end do
+      end do
+      close(unit)
+   end subroutine export_height_spectra_csv
 
    function sanitize_field_name(field_name) result(clean_name)
       implicit none
@@ -456,7 +650,8 @@ program spectrum
    type(spectrum_field), allocatable :: specs(:)
       
    namelist /INPUT/ inputdir, outputdir, nx, ny, nz, Lx, Ly, Lz, prow, pcol, fields, &
-                    remove_spatial_mean, remove_horizontal_mean, include_one_half, write_density
+                    remove_spatial_mean, remove_horizontal_mean, include_one_half, write_density, &
+                    write_x_spectrum, write_y_spectrum, write_vertical_summary, write_height_spectra
 
    call MPI_Init(ierr)
    call MPI_Comm_rank(MPI_COMM_WORLD, nrank, ierr)
@@ -484,7 +679,8 @@ program spectrum
    call decomp_2d_init(nx, ny, nz, prow, pcol)
    call decomp_info_init(nx, ny, nz, gpC)
 
-   call spectC%init('x', nx, ny, nz, dx, dy, dz, 'FOUR', '2/3rd',dimTransform=2, fixOddball=.false., init_periodicInZ=.false.)
+   call spectC%init('x', nx, ny, nz, dx, dy, dz, 'FOUR', '2/3rd', &
+      dimTransform=2, fixOddball=.false., init_periodicInZ=.false.)
    
    allocate(field(gpC%xsz(1), gpC%xsz(2), gpC%xsz(3)))
    allocate(rbuffxC(gpC%xsz(1), gpC%xsz(2), gpC%xsz(3)))
@@ -509,9 +705,15 @@ program spectrum
       call compute_spectrum()
       call parseval_check()
       call export_csv(specs(ispec)%name)
+      call export_directional_csv(specs(ispec)%name)
+      call export_vertical_summary_csv(specs(ispec)%name)
+      call export_height_spectra_csv(specs(ispec)%name)
    end do
 
    deallocate(field, rbuffxC, fhat, kbin, spectrum_local, spectrum_global, counts_local, counts_global)
+   deallocate(kxbin, kybin, spectrum_x_local, spectrum_x_global, spectrum_y_local, spectrum_y_global)
+   deallocate(counts_x_local, counts_x_global, counts_y_local, counts_y_global)
+   deallocate(spectrum_height_local, spectrum_height_global, counts_height_local, counts_height_global)
    call spectC%destroy()
    call decomp_info_finalize(gpC)
    call decomp_2d_finalize()

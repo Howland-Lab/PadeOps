@@ -14,4 +14,8 @@ remove_spatial_mean           = .false.
 remove_horizontal_mean        = .false.
 include_one_half              = .false.
 write_density                 = .true.
+write_x_spectrum              = .true.
+write_y_spectrum              = .true.
+write_vertical_summary        = .true.
+write_height_spectra          = .false.
 /
