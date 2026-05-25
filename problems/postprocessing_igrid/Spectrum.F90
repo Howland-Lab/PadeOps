@@ -22,11 +22,15 @@ module spectrum_mod
    logical :: write_y_spectrum=.true.
    logical :: write_vertical_summary=.true.
    logical :: write_height_spectra=.false.
+   logical :: write_yz_plane_spectra=.false.
 
    type(decomp_info) :: gpC
+   type(decomp_info) :: gpYSpec
    type(spectral) :: spectC
    real(rkind), dimension(:,:,:), allocatable :: field, rbuffxC
+   real(rkind), dimension(:,:,:), allocatable :: field_y
    complex(rkind), dimension(:,:,:), allocatable :: fhat
+   complex(rkind), dimension(:,:,:), allocatable :: field_yhat
    real(rkind), dimension(:), allocatable :: kbin, spectrum_local, spectrum_global
    integer, dimension(:), allocatable :: counts_local, counts_global
    real(rkind), dimension(:), allocatable :: kxbin, kybin, spectrum_x_local, spectrum_x_global
@@ -35,9 +39,13 @@ module spectrum_mod
    integer, dimension(:), allocatable :: counts_y_local, counts_y_global
    real(rkind), dimension(:,:), allocatable :: spectrum_height_local, spectrum_height_global
    integer, dimension(:,:), allocatable :: counts_height_local, counts_height_global
+   real(rkind), dimension(:,:), allocatable :: spectrum_yzplane_local, spectrum_yzplane_global
    integer :: nbins, ierr
    integer :: nbins_x, nbins_y
-   real(rkind) :: dk, dkx, dky, normfact
+   real(rkind) :: dk, dkx, dky, normfact, normfact_yzplane
+   integer(kind=8) :: plan_r2c_y_plane = 0
+
+   include "fftw3.f"
 
    type field_component
       character(len=clen) :: filename = ''
@@ -344,6 +352,7 @@ contains
       nbins_x = nx/2 + 1
       nbins_y = ny/2 + 1
       normfact = one/(nhorz*nhorz*real(nz,rkind))
+      normfact_yzplane = one/(real(ny,rkind)*real(ny,rkind)*real(nz,rkind))
 
       allocate(kbin(nbins), spectrum_local(nbins), spectrum_global(nbins))
       allocate(counts_local(nbins), counts_global(nbins))
@@ -354,6 +363,7 @@ contains
       allocate(counts_y_local(nbins_y), counts_y_global(nbins_y))
       allocate(spectrum_height_local(nbins,nz), spectrum_height_global(nbins,nz))
       allocate(counts_height_local(nbins,nz), counts_height_global(nbins,nz))
+      allocate(spectrum_yzplane_local(nbins_y,nx), spectrum_yzplane_global(nbins_y,nx))
 
       do b = 1, nbins
          kbin(b) = (real(b,rkind) - half)*dk
@@ -383,7 +393,43 @@ contains
       spectrum_height_global = zero
       counts_height_local = 0
       counts_height_global = 0
+      spectrum_yzplane_local = zero
+      spectrum_yzplane_global = zero
    end subroutine init_bins
+
+   subroutine init_yz_plane_spectra()
+      integer :: ierr_local
+      integer :: n_sizeact, n_sizeinput, n_sizeoutput, n_howmany, n_jump, n_chunk
+      real(rkind), dimension(:,:), allocatable :: real_arr_2d
+      complex(rkind), dimension(:,:), allocatable :: cmplx_arr_2d
+
+      if (.not. write_yz_plane_spectra) return
+
+      call decomp_info_init(nx, ny/2 + 1, nz, gpYSpec)
+      allocate(field_y(gpC%ysz(1), gpC%ysz(2), gpC%ysz(3)), stat=ierr_local)
+      if (ierr_local /= 0) call gracefulExit("Could not allocate y-pencil field buffer.", 130)
+      allocate(field_yhat(gpYSpec%ysz(1), gpYSpec%ysz(2), gpYSpec%ysz(3)), stat=ierr_local)
+      if (ierr_local /= 0) call gracefulExit("Could not allocate y-plane spectrum buffer.", 131)
+
+      allocate(real_arr_2d(gpC%ysz(1), gpC%ysz(2)), stat=ierr_local)
+      if (ierr_local /= 0) call gracefulExit("Could not allocate y FFT planning real buffer.", 132)
+      allocate(cmplx_arr_2d(gpYSpec%ysz(1), gpYSpec%ysz(2)), stat=ierr_local)
+      if (ierr_local /= 0) call gracefulExit("Could not allocate y FFT planning complex buffer.", 133)
+
+      n_sizeact = gpC%ysz(2)
+      n_sizeinput = gpC%ysz(2)
+      n_sizeoutput = gpYSpec%ysz(2)
+      n_howmany = gpC%ysz(1)
+      n_jump = gpC%ysz(1)
+      n_chunk = 1
+      call dfftw_plan_many_dft_r2c(plan_r2c_y_plane, 1, n_sizeact, &
+         n_howmany, real_arr_2d, n_sizeinput, n_jump, n_chunk, &
+         cmplx_arr_2d, n_sizeoutput, n_jump, n_chunk, FFTW_MEASURE)
+
+      deallocate(real_arr_2d, cmplx_arr_2d)
+      field_y = zero
+      field_yhat = cmplx(zero, zero, kind=rkind)
+   end subroutine init_yz_plane_spectra
 
    subroutine compute_spectrum()
       integer :: i, j, k, ig, jg, kg, ibin, ixbin, iybin, multiplicity
@@ -474,6 +520,55 @@ contains
          hermitian_multiplicity = 2
       end if
    end function hermitian_multiplicity
+
+   integer function y_hermitian_multiplicity(iy)
+      integer, intent(in) :: iy
+
+      if ((iy == 1) .or. (iy == ny/2 + 1)) then
+         y_hermitian_multiplicity = 1
+      else
+         y_hermitian_multiplicity = 2
+      end if
+   end function y_hermitian_multiplicity
+
+   subroutine compute_yz_plane_spectrum()
+      integer :: i, j, k, ig, multiplicity
+      real(rkind) :: amp2, factor
+
+      if (.not. write_yz_plane_spectra) return
+
+      factor = one
+      if (include_one_half) factor = half
+
+      spectrum_yzplane_local = zero
+      field_y = zero
+      field_yhat = cmplx(zero, zero, kind=rkind)
+
+      call transpose_x_to_y(field, field_y, gpC)
+
+      do k = 1, gpC%ysz(3)
+         call dfftw_execute_dft_r2c(plan_r2c_y_plane, field_y(:,:,k), field_yhat(:,:,k))
+      end do
+
+      do k = 1, size(field_yhat,3)
+         do j = 1, size(field_yhat,2)
+            multiplicity = y_hermitian_multiplicity(j)
+            do i = 1, size(field_yhat,1)
+               ig = gpYSpec%yst(1) + i - 1
+               amp2 = factor*real(multiplicity,rkind)* &
+                  real(field_yhat(i,j,k)*conjg(field_yhat(i,j,k)), rkind)*normfact_yzplane
+               if ((ig >= 1) .and. (ig <= nx)) then
+                  spectrum_yzplane_local(j,ig) = spectrum_yzplane_local(j,ig) + amp2
+               end if
+            end do
+         end do
+      end do
+
+      call MPI_Reduce(spectrum_yzplane_local, spectrum_yzplane_global, nbins_y*nx, &
+         mpirkind, MPI_SUM, 0, MPI_COMM_WORLD, ierr)
+
+      if (write_density .and. nrank == 0) spectrum_yzplane_global = spectrum_yzplane_global/dky
+   end subroutine compute_yz_plane_spectrum
 
    subroutine parseval_check()
       real(rkind) :: physical_energy, spectral_energy, spectral_x_energy, spectral_y_energy, factor
@@ -618,6 +713,30 @@ contains
       close(unit)
    end subroutine export_height_spectra_csv
 
+   subroutine export_yz_plane_spectra_csv(field_name)
+      character(len=*), intent(in) :: field_name
+      character(len=clen) :: outfile, clean_name
+      integer :: unit, b, ig
+      real(rkind) :: xg
+
+      if (nrank /= 0) return
+      if (.not. write_yz_plane_spectra) return
+
+      clean_name = sanitize_field_name(field_name)
+      outfile = trim(outputdir)//'/spectrum_yzplane_'//trim(clean_name)//'.csv'
+      call message(0, 'Writing y spectra for each y-z plane to '//trim(outfile))
+
+      open(newunit=unit, file=trim(outfile), status='replace', action='write', form='formatted')
+      write(unit, '(A)') 'x,ky,E'
+      do ig = 1, nx
+         xg = (real(ig,rkind) - half)*dx
+         do b = 1, nbins_y
+            write(unit, '(ES24.16,",",ES24.16,",",ES24.16)') xg, kybin(b), spectrum_yzplane_global(b,ig)
+         end do
+      end do
+      close(unit)
+   end subroutine export_yz_plane_spectra_csv
+
    function sanitize_field_name(field_name) result(clean_name)
       implicit none
       character(len=*), intent(in) :: field_name
@@ -651,7 +770,8 @@ program spectrum
       
    namelist /INPUT/ inputdir, outputdir, nx, ny, nz, Lx, Ly, Lz, prow, pcol, fields, &
                     remove_spatial_mean, remove_horizontal_mean, include_one_half, write_density, &
-                    write_x_spectrum, write_y_spectrum, write_vertical_summary, write_height_spectra
+                    write_x_spectrum, write_y_spectrum, write_vertical_summary, write_height_spectra, &
+                    write_yz_plane_spectra
 
    call MPI_Init(ierr)
    call MPI_Comm_rank(MPI_COMM_WORLD, nrank, ierr)
@@ -695,12 +815,14 @@ program spectrum
    inquire(file=trim(infile), exist=exists)
    if (.not. exists) call gracefulExit('Input field-spec file not found: '//trim(infile), 106)
    call init_bins()
+   call init_yz_plane_spectra()
    call read_field_specs(trim(infile), specs)
 
    do ispec = 1, size(specs)
       call message(0, 'Computing spectrum for '//trim(specs(ispec)%name))
       call read_field(specs(ispec))
       call remove_requested_means()
+      call compute_yz_plane_spectrum()
       call spectC%fft(field, fhat)
       call compute_spectrum()
       call parseval_check()
@@ -708,12 +830,19 @@ program spectrum
       call export_directional_csv(specs(ispec)%name)
       call export_vertical_summary_csv(specs(ispec)%name)
       call export_height_spectra_csv(specs(ispec)%name)
+      call export_yz_plane_spectra_csv(specs(ispec)%name)
    end do
 
    deallocate(field, rbuffxC, fhat, kbin, spectrum_local, spectrum_global, counts_local, counts_global)
    deallocate(kxbin, kybin, spectrum_x_local, spectrum_x_global, spectrum_y_local, spectrum_y_global)
    deallocate(counts_x_local, counts_x_global, counts_y_local, counts_y_global)
    deallocate(spectrum_height_local, spectrum_height_global, counts_height_local, counts_height_global)
+   deallocate(spectrum_yzplane_local, spectrum_yzplane_global)
+   if (write_yz_plane_spectra) then
+      call dfftw_destroy_plan(plan_r2c_y_plane)
+      deallocate(field_y, field_yhat)
+      call decomp_info_finalize(gpYSpec)
+   end if
    call spectC%destroy()
    call decomp_info_finalize(gpC)
    call decomp_2d_finalize()

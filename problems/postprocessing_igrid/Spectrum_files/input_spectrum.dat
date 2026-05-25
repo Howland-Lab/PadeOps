@@ -18,4 +18,5 @@ write_x_spectrum              = .true.
 write_y_spectrum              = .true.
 write_vertical_summary        = .true.
 write_height_spectra          = .false.
+write_yz_plane_spectra        = .true.
 /
