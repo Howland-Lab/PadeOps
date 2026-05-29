@@ -571,7 +571,8 @@ contains
    end subroutine compute_yz_plane_spectrum
 
    subroutine parseval_check()
-      real(rkind) :: physical_energy, spectral_energy, spectral_x_energy, spectral_y_energy, factor
+      real(rkind) :: physical_energy, spectral_energy, spectral_x_energy, spectral_y_energy
+      real(rkind) :: spectral_height_energy, spectral_yzplane_energy, factor
 
       factor = one
       if (include_one_half) factor = half
@@ -583,18 +584,35 @@ contains
          else
             spectral_energy = sum(spectrum_global)
          end if
-         call message(0, 'Physical-space variance/energy:', physical_energy)
-         call message(0, 'Horizontal spectrum-integrated energy:', spectral_energy)
-         call message(0, 'Horizontal spectrum Parseval absolute error:', abs(spectral_energy - physical_energy))
+         call message(2, 'Physical-space variance/energy:', physical_energy)
+         call message(2, 'Horizontal spectrum-integrated energy:', spectral_energy)
+         call message(2, 'Horizontal spectrum Parseval absolute error:', abs(spectral_energy - physical_energy))
          if (write_density) then
             spectral_x_energy = sum(spectrum_x_global)*dkx
             spectral_y_energy = sum(spectrum_y_global)*dky
+            spectral_height_energy = sum(spectrum_height_global)*dk/real(nz,rkind)
          else
             spectral_x_energy = sum(spectrum_x_global)
             spectral_y_energy = sum(spectrum_y_global)
+            spectral_height_energy = sum(spectrum_height_global)/real(nz,rkind)
          end if
-         call message(0, 'Streamwise spectrum-integrated energy:', spectral_x_energy)
-         call message(0, 'Spanwise spectrum-integrated energy:', spectral_y_energy)
+         call message(2, 'Streamwise spectrum-integrated energy:', spectral_x_energy)
+         call message(2, 'Streamwise spectrum Parseval absolute error:', abs(spectral_x_energy - physical_energy))
+         call message(2, 'Spanwise spectrum-integrated energy:', spectral_y_energy)
+         call message(2, 'Spanwise spectrum Parseval absolute error:', abs(spectral_y_energy - physical_energy))
+         call message(2, 'Height-resolved horizontal spectrum-integrated energy:', spectral_height_energy)
+         call message(2, 'Height-resolved horizontal spectrum Parseval absolute error:', &
+            abs(spectral_height_energy - physical_energy))
+         if (write_yz_plane_spectra) then
+            if (write_density) then
+               spectral_yzplane_energy = sum(spectrum_yzplane_global)*dky/real(nx,rkind)
+            else
+               spectral_yzplane_energy = sum(spectrum_yzplane_global)/real(nx,rkind)
+            end if
+            call message(2, 'Y-Z plane spectrum-integrated energy:', spectral_yzplane_energy)
+            call message(2, 'Y-Z plane spectrum Parseval absolute error:', &
+               abs(spectral_yzplane_energy - physical_energy))
+         end if
       end if
    end subroutine parseval_check
 
@@ -606,7 +624,7 @@ contains
       if (nrank /= 0) return
 
       outfile = trim(outputdir)//'/spectrum_'//trim(sanitize_field_name(field_name))//'.csv'
-      call message(0, 'Writing vertically averaged horizontal spectrum to '//trim(outfile))
+      call message(1, 'Writing vertically averaged horizontal spectrum to '//trim(outfile))
 
       open(newunit=unit, file=trim(outfile), status='replace', action='write', form='formatted')
       write(unit, '(A)') 'k,E'
@@ -627,7 +645,7 @@ contains
 
       if (write_x_spectrum) then
          outfile = trim(outputdir)//'/spectrum_x_'//trim(clean_name)//'.csv'
-         call message(0, 'Writing streamwise spectrum to '//trim(outfile))
+         call message(1, 'Writing streamwise spectrum to '//trim(outfile))
          open(newunit=unit, file=trim(outfile), status='replace', action='write', form='formatted')
          write(unit, '(A)') 'kx,E'
          do b = 1, nbins_x
@@ -638,7 +656,7 @@ contains
 
       if (write_y_spectrum) then
          outfile = trim(outputdir)//'/spectrum_y_'//trim(clean_name)//'.csv'
-         call message(0, 'Writing spanwise spectrum to '//trim(outfile))
+         call message(1, 'Writing spanwise spectrum to '//trim(outfile))
          open(newunit=unit, file=trim(outfile), status='replace', action='write', form='formatted')
          write(unit, '(A)') 'ky,E'
          do b = 1, nbins_y
@@ -659,7 +677,7 @@ contains
 
       clean_name = sanitize_field_name(field_name)
       outfile = trim(outputdir)//'/spectrum_zsummary_'//trim(clean_name)//'.csv'
-      call message(0, 'Writing vertical spectrum summary to '//trim(outfile))
+      call message(1, 'Writing vertical spectrum summary to '//trim(outfile))
 
       open(newunit=unit, file=trim(outfile), status='replace', action='write', form='formatted')
       write(unit, '(A)') 'k,E,z_centroid,z_spread'
@@ -699,7 +717,7 @@ contains
 
       clean_name = sanitize_field_name(field_name)
       outfile = trim(outputdir)//'/spectrum_height_'//trim(clean_name)//'.csv'
-      call message(0, 'Writing height-resolved horizontal spectra to '//trim(outfile))
+      call message(1, 'Writing height-resolved horizontal spectra to '//trim(outfile))
 
       open(newunit=unit, file=trim(outfile), status='replace', action='write', form='formatted')
       write(unit, '(A)') 'z,k,E'
@@ -724,7 +742,7 @@ contains
 
       clean_name = sanitize_field_name(field_name)
       outfile = trim(outputdir)//'/spectrum_yzplane_'//trim(clean_name)//'.csv'
-      call message(0, 'Writing y spectra for each y-z plane to '//trim(outfile))
+      call message(1, 'Writing y spectra for each y-z plane to '//trim(outfile))
 
       open(newunit=unit, file=trim(outfile), status='replace', action='write', form='formatted')
       write(unit, '(A)') 'x,ky,E'
