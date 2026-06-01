@@ -134,6 +134,7 @@ module budgets_time_avg_mod
         procedure, private  :: updateBudget
         procedure, private  :: DumpBudget
         procedure, private  :: restartBudget
+        procedure, private  :: restart_budget_field
         procedure, private  :: dump_budget_field 
         procedure, private  :: dump_budget_field_2d
   
@@ -173,15 +174,18 @@ contains
         type(igrid), intent(inout), target :: igrid_sim 
         
         character(len=clen) :: budgets_dir = "NULL"
+        character(len=clen) :: restart_dir = "NULL"
         integer :: ioUnit, ierr,  budgetType = 1, restart_tid = 0, restart_rid = 0, restart_counter = 0
         logical :: restart_budgets = .false. 
         integer :: tidx_compute = 1000000, tidx_dump = 1000000, tidx_budget_start = -100
         real(rkind) :: time_budget_start = -1.0d0
         logical :: do_budgets = .false.
         integer :: save_dimension = 3 
-        namelist /BUDGET_TIME_AVG/ budgetType, budgets_dir, restart_budgets, restart_rid, restart_tid, restart_counter, tidx_dump, &
+        namelist /BUDGET_TIME_AVG/ budgetType, budgets_dir, restart_budgets, restart_dir, restart_rid, restart_tid, restart_counter, tidx_dump, &
         tidx_compute, do_budgets, tidx_budget_start, time_budget_start, save_dimension 
         
+        restart_dir = "NULL"
+
         ! STEP 1: Read in inputs, link pointers and allocate budget vectors
         ioUnit = 534
         open(unit=ioUnit, file=trim(inputfile), form='FORMATTED', iostat=ierr)
@@ -234,10 +238,24 @@ contains
             if ((trim(budgets_dir) .eq. "null") .or.(trim(budgets_dir) .eq. "NULL")) then
                 this%budgets_dir = igrid_sim%outputDir
             end if 
+            ! set buget restart directory if not provided
+            if ((trim(restart_dir) .eq. "null") .or.(trim(restart_dir) .eq. "NULL")) then
+                restart_dir = this%budgets_dir
+            end if 
+
+            !if (restart_budgets) then
+                !call GracefulExit("To be done",1234)
+            !    call this%RestartBudget(restart_dir, restart_rid, restart_tid, restart_counter)
+            !else
+            
+!    call this%resetBudget()
+            !end if
 
             if (restart_budgets) then
-                call GracefulExit("To be done",1234)
-                call this%RestartBudget(restart_rid, restart_tid, restart_counter)
+               call message(0, "budget_time_avg: Initializing budget restart")
+               this%counter = restart_counter
+               call this%RestartBudget(restart_dir, restart_rid, restart_tid, restart_counter)
+               call message(1, "budget_time_avg: Budget restarts initialized")
             else
                 call this%resetBudget()
             end if
@@ -1046,15 +1064,134 @@ contains
     ! EYS  
 
 
-    subroutine restartBudget(this, rid, tid, cid)
-        class(budgets_time_avg), intent(inout) :: this
-        integer, intent(in) :: rid, cid, tid
+    subroutine restartBudget(this, dir, rid, tid, cid)
+        !class(budgets_time_avg), intent(inout) :: this
+        !integer, intent(in) :: rid, cid, tid
         !character(len=clen) :: fname, tempname 
 
-        this%counter = cid
+        !this%counter = cid
 
         ! << Incomplete for now - write after completing dumpbudget and look at
         ! budget_xy_avg for reference. >>
+        class(budgets_time_avg), intent(inout) :: this
+        real(rkind), dimension(:,:,:), pointer :: buff
+        integer, intent(in) :: rid, cid, tid
+        character(len=clen), intent(in) :: dir
+        integer :: idx
+
+        buff => this%igrid_sim%rbuffxC(:,:,:,1)
+
+        ! Budget 0: 
+        do idx = 1,size(this%budget_0,4)
+           call this%restart_budget_field(this%budget_0(:,:,:,idx), dir, rid, tid, cid, 0, idx)
+        end do
+
+        ! Step 8: Go back to summing for Budget 0
+            this%budget_0(:,:,:,25) = this%budget_0(:,:,:,25) + this%budget_0(:,:,:,13)*this%budget_0(:,:,:,1)
+            this%budget_0(:,:,:,25) = this%budget_0(:,:,:,25) + this%budget_0(:,:,:,15)*this%budget_0(:,:,:,2)
+            this%budget_0(:,:,:,25) = this%budget_0(:,:,:,25) + this%budget_0(:,:,:,16)*this%budget_0(:,:,:,3)
+            
+            this%budget_0(:,:,:,24) = this%budget_0(:,:,:,24) + this%budget_0(:,:,:,12)*this%budget_0(:,:,:,1)
+            this%budget_0(:,:,:,24) = this%budget_0(:,:,:,24) + this%budget_0(:,:,:,14)*this%budget_0(:,:,:,2)
+            this%budget_0(:,:,:,24) = this%budget_0(:,:,:,24) + this%budget_0(:,:,:,15)*this%budget_0(:,:,:,3)
+            
+            this%budget_0(:,:,:,23) = this%budget_0(:,:,:,23) + this%budget_0(:,:,:,11)*this%budget_0(:,:,:,1)
+            this%budget_0(:,:,:,23) = this%budget_0(:,:,:,23) + this%budget_0(:,:,:,12)*this%budget_0(:,:,:,2)
+            this%budget_0(:,:,:,23) = this%budget_0(:,:,:,23) + this%budget_0(:,:,:,13)*this%budget_0(:,:,:,3)
+            
+            this%igrid_sim%rbuffxC(:,:,:,1) = half*(this%budget_0(:,:,:,4) + this%budget_0(:,:,:,7) + this%budget_0(:,:,:,9))
+            this%budget_0(:,:,:,22) = this%budget_0(:,:,:,22) + this%budget_0(:,:,:,3)*this%igrid_sim%rbuffxC(:,:,:,1)
+            this%budget_0(:,:,:,21) = this%budget_0(:,:,:,21) + this%budget_0(:,:,:,2)*this%igrid_sim%rbuffxC(:,:,:,1)
+            this%budget_0(:,:,:,20) = this%budget_0(:,:,:,20) + this%budget_0(:,:,:,1)*this%igrid_sim%rbuffxC(:,:,:,1)
+            
+            this%budget_0(:,:,:,19) = this%budget_0(:,:,:,19) + this%budget_0(:,:,:,3)*this%budget_0(:,:,:,10)
+            this%budget_0(:,:,:,18) = this%budget_0(:,:,:,18) + this%budget_0(:,:,:,2)*this%budget_0(:,:,:,10)
+            this%budget_0(:,:,:,17) = this%budget_0(:,:,:,17) + this%budget_0(:,:,:,1)*this%budget_0(:,:,:,10)
+
+        ! Step 9: Go back to <ui uj> from <Rij>
+        this%budget_0(:,:,:,4)  = this%budget_0(:,:,:,4)  + this%budget_0(:,:,:,1)*this%budget_0(:,:,:,1) ! R11
+        this%budget_0(:,:,:,5)  = this%budget_0(:,:,:,5)  + this%budget_0(:,:,:,1)*this%budget_0(:,:,:,2) ! R12
+        this%budget_0(:,:,:,6)  = this%budget_0(:,:,:,6)  + this%budget_0(:,:,:,1)*this%budget_0(:,:,:,3) ! R13
+        this%budget_0(:,:,:,7)  = this%budget_0(:,:,:,7)  + this%budget_0(:,:,:,2)*this%budget_0(:,:,:,2) ! R22
+        this%budget_0(:,:,:,8)  = this%budget_0(:,:,:,8)  + this%budget_0(:,:,:,2)*this%budget_0(:,:,:,3) ! R23
+        this%budget_0(:,:,:,9)  = this%budget_0(:,:,:,9)  + this%budget_0(:,:,:,3)*this%budget_0(:,:,:,3) ! R33
+        
+        ! STEP 10a: Potential temperature terms for stratified flow
+        if (this%isStratified) then
+           this%budget_0(:,:,:,27) = this%budget_0(:,:,:,27) + this%budget_0(:,:,:,1)*this%budget_0(:,:,:,26)
+           this%budget_0(:,:,:,28) = this%budget_0(:,:,:,28) + this%budget_0(:,:,:,2)*this%budget_0(:,:,:,26)
+           this%budget_0(:,:,:,29) = this%budget_0(:,:,:,29) + this%budget_0(:,:,:,3)*this%budget_0(:,:,:,26)
+           this%budget_0(:,:,:,30) = this%budget_0(:,:,:,30) + this%budget_0(:,:,:,26)*this%budget_0(:,:,:,26)
+        end if        
+        ! Step 10b: Scalar variances
+        if (this%HaveScalars) then
+           do idx = 1,this%igrid_sim%n_scalars
+              this%budget_0(:,:,:,30+this%igrid_sim%n_scalars+idx) = &
+                   this%budget_0(:,:,:,30+this%igrid_sim%n_scalars+idx) + & 
+                   this%budget_0(:,:,:,30+idx)*this%budget_0(:,:,:,30+idx)
+           end do
+        end if
+
+        ! Step 11: Go back to summing instead of averaging
+        this%budget_0 = this%budget_0*(real(cid,rkind) + 1.d-18)
+        ! Budget 1: 
+        if (this%budgetType>0) then
+           do idx = 1,size(this%budget_1,4)
+              !          if (allocated(this%budget_1)) deallocate(this%budget_1)
+              call this%restart_budget_field(this%budget_1(:,:,:,idx), dir, rid, tid, cid, 1, idx)
+              this%budget_1(:,:,:,idx) = this%budget_1(:,:,:,idx)*(real(cid,rkind) + 1.d-18)
+           end do
+        end if 
+
+        ! Budget 2
+        if (this%budgetType>1) then
+           do idx = 1,size(this%budget_2,4)
+              call this%restart_budget_field(this%budget_2(:,:,:,idx), dir, rid, tid, cid, 2, idx)   
+           end do
+           
+        end if
+        
+        ! Budget 3:
+        if (this%budgetType>2) then
+           this%budget_0 = this%budget_0/(real(cid,rkind) + 1.d-18)
+           this%budget_1 = this%budget_1/(real(cid,rkind) + 1.d-18)
+           do idx = 1,size(this%budget_3,4)
+              !          if (allocated(this%budget_3)) deallocate(this%budget_3)
+              call this%restart_budget_field(this%budget_3(:,:,:,idx), dir, rid, tid, cid, 3, idx)   
+           end do
+           ! Revert arrays to the correct state for Assemble (Order is very
+           ! important throughout this subroutine, particularly indices 5 and 6)
+           this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + this%budget_0(:,:,:,1)*this%budget_1(:,:,:,4)
+           this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + this%budget_2(:,:,:,6)
+           this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) + this%budget_3(:,:,:,6) + this%budget_2(:,:,:,5) !+ this%budget_2(:,:,:,6) kktodo
+           this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + this%budget_2(:,:,:,4)
+           this%budget_3(:,:,:,3) = this%budget_3(:,:,:,3) + this%budget_3(:,:,:,2) + this%budget_2(:,:,:,2) + this%budget_2(:,:,:,3)
+           this%budget_3 = this%budget_3*(real(cid,rkind) + 1.d-18)
+           this%budget_0 = this%budget_0*(real(cid,rkind) + 1.d-18)
+           this%budget_1 = this%budget_1*(real(cid,rkind) + 1.d-18)
+           
+        end if
+
+           this%budget_0 = this%budget_0*(real(this%counter,rkind) + 1.d-18)
+           this%budget_1 = this%budget_1*(real(cid,rkind) + 1.d-18)
+
+
+        nullify(buff)
+
+    end subroutine 
+
+    subroutine restart_budget_field(this, field, dir, runID, timeID, counterID, budgetID, fieldID)
+        use decomp_2d_io
+        class(budgets_time_avg), intent(inout) :: this
+        real(rkind), dimension(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)), intent(out) :: field
+        integer, intent(in) :: runID, counterID, timeID, budgetID, fieldID
+        character(len=clen) :: fname, tempname
+        character(len=clen), intent(in) :: dir
+
+        write(tempname,"(A3,I2.2,A7,I1.1,A5,I2.2,A2,I6.6,A2,I6.6,A4)") "Run",runID,"_budget",budgetID,"_term",fieldID,"_t",timeID,"_n",counterID,".s3D"
+        fname = dir(:len_trim(dir))//"/"//trim(tempname)
+
+        call decomp_2d_read_one(1,field,fname, this%igrid_sim%gpC)           
     end subroutine 
     
     subroutine ResetBudget(this)

@@ -1,4 +1,4 @@
-    pure subroutine get_geostrophic_forcing(this, Fg_x, Fg_y)
+   pure subroutine get_geostrophic_forcing(this, Fg_x, Fg_y)
         class(igrid), intent(in) :: this
         real(rkind), intent(out) :: Fg_x, Fg_y
         real(rkind) :: gx, gy 
@@ -11,7 +11,6 @@
 
 
     end subroutine 
-
 
     subroutine addCoriolisTerm(this, urhs, vrhs, wrhs)
        class(igrid), intent(inout), target :: this

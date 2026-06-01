@@ -19,7 +19,7 @@ program gabls_concurrent
     character(len=clen) :: inputfile, primary_inputFile, precursor_inputFile
     integer :: ierr, ioUnit
     type(budgets_xy_avg) :: budg_xy
-    type(budgets_time_avg) :: budg_tavg
+    type(budgets_time_avg) :: budg_tavg, pre_budg_tavg
     real(rkind) :: dt1, dt2, dt
     logical :: synchronize_RK_fringe = .true.
 
@@ -46,12 +46,13 @@ program gabls_concurrent
     call precursor%start_io(.true.)
 
     if (primary%usefringe) then
-        call primary%fringe_x%associateFringeTargets(precursor%u, precursor%v, precursor%wC, precursor%T)
+        call primary%fringe_x%associateFringeTargets(precursor%u, precursor%v, precursor%w, precursor%T)
     end if
 
     call budg_xy%init(primary_inputfile, primary)   !<-- Budget class initialization
 
     call budg_tavg%init(primary_inputfile, primary)   !<-- Budget class initialization
+    call pre_budg_tavg%init(precursor_inputfile, precursor)
 
     call message("==========================================================")
     call message(0, "All memory allocated! Now running the simulation.")
@@ -90,6 +91,7 @@ program gabls_concurrent
        call budg_xy%doBudgets()         !<--- perform budget related operations 
 
        call budg_tavg%doBudgets()
+       call pre_budg_tavg%doBudgets()
 
        call doTemporalStuff(primary, 1)
        call doTemporalStuff(precursor,2)
@@ -98,6 +100,7 @@ program gabls_concurrent
 
     call budg_xy%destroy()
     call budg_tavg%destroy()           !<-- release memory taken by the budget class 
+    call pre_budg_tavg%destroy()
 
     call precursor%finalize_io()
     call primary%finalize_io()
