@@ -58,7 +58,7 @@
            call this%sgsmodel%getRHS_SGS(this%u_rhs, this%v_rhs, this%w_rhs,      this%duidxjC, this%duidxjE, &
                                          this%uhat,  this%vhat,  this%whatC,      this%That,    this%u,       &
                                          this%v,     this%wC,    this%T,          this%newTimeStep,this%dTdxC,   this%dTdyC,   & 
-                                         this%dTdzC, this%dTdxE, this%dTdyE, this%dTdzE, this%mesh(:,1,1,1), this%dt)   ! (EYS 06202025: added knowledge of dt and streamwise dimension) 
+                                         this%dTdzC, this%dTdxE, this%dTdyE, this%dTdzE, this%mesh(:,1,1,1), this%dt)
 
            if (this%isStratified .or. this%initspinup) then
               call this%sgsmodel%getRHS_SGS_Scalar(this%T_rhs, this%dTdxC, this%dTdyC, this%dTdzC, this%dTdzE, &
@@ -124,11 +124,11 @@
        if ((this%useWindTurbines) .and. associated(this%uturb)) then
           if (copyTurbRHS) then
            call this%WindTurbineArr%getForceRHS(this%dt, this%u, this%v, this%wC, this%uturb, this%vturb, this%wturb, &
-                 & this%newTimestep, this%inst_horz_avg_turb, uturb=this%urhs_turbine, vturb=this%vrhs_turbine, wturb=this%wrhs_turbine) 
+                 & this%newTimestep, this%inst_horz_avg_turb, uturb=this%urhs_turbine, vturb=this%vrhs_turbine, wturb=this%wrhs_turbine, budgetCall = .true.) 
           else
                call this%WindTurbineArr%getForceRHS(this%dt, this%u, this%v, this%wC,&
                                     !this%uturb, this%v_rhs, this%w_rhs, this%newTimestep, this%inst_horz_avg_turb)
-                                    this%uturb, this%vturb, this%wturb, this%newTimestep, this%inst_horz_avg_turb)
+                                    this%uturb, this%vturb, this%wturb, this%newTimestep, this%inst_horz_avg_turb, budgetCall = .true.)
           end if
           this%u_rhs = this%u_rhs + this%uturb
           this%v_rhs = this%v_rhs + this%vturb
@@ -157,12 +157,12 @@
            call this%sgsmodel%getRHS_SGS(this%usgs, this%vsgs, this%wsgs,      this%duidxjC, this%duidxjE,    &
                                          this%uhat,  this%vhat,  this%whatC,   this%That,    this%u,       &
                                          this%v,     this%wC,    this%T,       this%newTimeStep,this%dTdxC,   this%dTdyC,   & 
-                                         this%dTdzC, this%dTdxE, this%dTdyE, this%dTdzE, this%mesh(:,1,1,1), this%dt)  ! (EYS 06202025: added knowledge of dt and streamwise dimension) 
+                                         this%dTdzC, this%dTdxE, this%dTdyE, this%dTdzE, this%mesh(:,1,1,1), this%dt)
          else
            call this%sgsmodel%getRHS_SGS(this%u_rhs, this%v_rhs, this%w_rhs,      this%duidxjC, this%duidxjE, &
                                          this%uhat,  this%vhat,  this%whatC,      this%That,    this%u,       &
                                          this%v,     this%wC,    this%T,       this%newTimeStep,this%dTdxC,   this%dTdyC,   & 
-                                         this%dTdzC, this%dTdxE, this%dTdyE, this%dTdzE, this%mesh(:,1,1,1), this%dt)  ! (EYS 06202025: added knowledge of dt and streamwise dimension) 
+                                         this%dTdzC, this%dTdxE, this%dTdyE, this%dTdzE, this%mesh(:,1,1,1), this%dt)
          end if
 
            if (this%isStratified .or. this%initspinup) then
@@ -283,6 +283,7 @@
            call this%angCont_yaw%update_RHS_control(this%dt, this%u_rhs, this%v_rhs, &
                          this%w_rhs, this%u, this%v, this%newTimeStep, this%angleHubHeight, this%wFilt, this%deltaGalpha, this%zHubIndex, this%angleTrigger)
            this%totalAngle = this%totalAngle + this%angleHubHeight
+           this%angleHubHeight = 1.d0  ! HOTFIX - do not use angleHubHeight for the hub height wind angle
        end if 
 
        ! Step 10: Populate RHS for scalars
