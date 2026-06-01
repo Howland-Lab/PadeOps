@@ -95,7 +95,6 @@ module IncompressibleGrid
         complex(rkind), dimension(:,:,:,:), allocatable :: SfieldsC
         complex(rkind), dimension(:,:,:,:), allocatable :: SfieldsE
 
-        ! Added by Weixuan (01302026)
         logical :: use_z0_field = .FALSE.
         real(rkind), dimension(:,:), allocatable :: z0_xy_C
 
@@ -135,6 +134,7 @@ module IncompressibleGrid
 
         real(rkind), dimension(:,:,:), allocatable :: rDampC, rDampE         
         real(rkind) :: Re, G_Geostrophic, G_alpha, frameAngle, dtby2, meanfact, Tref, dPfdx, dPfdy, dPfdz
+        logical :: useConstantG
         complex(rkind), dimension(:,:,:), allocatable :: GxHat, GyHat, GxHat_Edge, GyHat_Edge
         real(rkind) :: Ro = 1.d5, Fr = 1000.d0, PrandtlFluid = 1.d0, BulkRichardson = 0.d90
         logical :: assume_fplane = .true.
@@ -398,7 +398,7 @@ contains
 #include "igrid_files/popRHS_stuff.F90"
 #include "igrid_files/RK45_staging.F90"
 
-    subroutine init(this,inputfile,initialize2decomp)
+    subroutine init(this,inputfile, initialize2decomp)
         class(igrid), intent(inout), target :: this        
         character(len=clen), intent(in) :: inputfile 
         character(len=clen) :: input_z0_dir, outputdir, inputdir, scalar_info_dir, turbInfoDir, ksOutputDir, controlDir = "null", moisture_info_dir, inputDirDyaw
@@ -410,6 +410,7 @@ contains
         real(rkind) :: dt=-one,tstop=one,CFL =-one,tSimStartStats=100.d0,dpfdy=zero,dPfdz=zero,CviscDT=1.d0,deltaT_dump=1.d0, deltaT_restartdump=1.d0
         real(rkind) :: Pr = 0.7_rkind, Re = 8000._rkind, Ro = 1000._rkind,dpFdx = zero, G_alpha = 0.d0, PrandtlFluid = 1.d0, moistureFactor = 0.61_rkind
         real(rkind) :: SpongeTscale = 50._rkind, zstSponge = 0.8_rkind, Fr = 1000.d0, G_geostrophic = 1.d0
+        logical :: useConstantG = .true.
         logical ::useRestartFile=.false.,isInviscid=.false.,useCoriolis = .true., PreProcessForKS = .false.  
         logical ::isStratified=.false.,useMoisture=.false.,dumpPlanes = .false.,useExtraForcing = .false.
         logical ::useSGS = .false.,useSpongeLayer=.false.,useWindTurbines = .false., useTopAndBottomSymmetricSponge = .false. 
@@ -435,10 +436,9 @@ contains
         character(len=4) :: scheme_xy = "FOUR"
         integer :: MeanTIDX, MeanRID, vizDump_schedule = 0    
         character(len=clen) :: MeanFilesDir, powerDumpDir 
-        logical :: WriteTurbineForce = .false., useforcedStratification = .false., useDynamicYaw = .FALSE. 
+        logical :: WriteTurbineForce = .false., useforcedStratification = .false., useDynamicYaw = .FALSE., useDynamicTurbine = .FALSE. 
         integer :: buoyancyDirection = 3, yawUpdateInterval = 100000, dealiasType = 0
         logical :: use_z0_field = .FALSE.
-        !real(rkind), dimension(:,:), allocatable :: z0_xy_C 
         integer :: nrank, ierror
         real(rkind), allocatable :: z0_global(:,:)
 
@@ -450,10 +450,10 @@ contains
                     & t_stop_pointProbe, t_pointProbe, deltaT_restartdump
         namelist /STATS/tid_StatsDump,tid_compStats,tSimStartStats,normStatsByUstar,computeSpectra,timeAvgFullFields, computeVorticity
         namelist /PHYSICS/isInviscid,useCoriolis,useExtraForcing,isStratified,useMoisture,Re,Ro,Pr,Fr, Ra, useSGS, PrandtlFluid, BulkRichardson, BuoyancyTermType,useforcedStratification,&
-                          useGeostrophicForcing, G_geostrophic, G_alpha, dpFdx,dpFdy,dpFdz,assume_fplane,latitude,useHITForcing, useScalars, frameAngle, buoyancyDirection, useHITRealSpaceLinearForcing, HITForceTimeScale
+                          useGeostrophicForcing, G_geostrophic, G_alpha, dpFdx,dpFdy,dpFdz,assume_fplane,latitude,useHITForcing, useScalars, frameAngle, buoyancyDirection, useHITRealSpaceLinearForcing, HITForceTimeScale, useConstantG
         namelist /BCs/ PeriodicInZ, topWall, botWall, useSpongeLayer, zstSponge, SpongeTScale, sponge_type, botBC_Temp, topBC_Temp, useTopAndBottomSymmetricSponge, useFringe, usedoublefringex, useControl
         namelist /WINDTURBINES/ useWindTurbines, num_turbines, ADM, turbInfoDir, ADM_Type, powerDumpDir, useDynamicYaw, &
-                                yawUpdateInterval, inputDirDyaw 
+                                yawUpdateInterval, inputDirDyaw, useDynamicTurbine
         namelist /NUMERICS/ AdvectionTerm, ComputeStokesPressure, NumericalSchemeVert, &
                             UseDealiasFilterVert, t_DivergenceCheck, TimeSteppingScheme, InitSpinUp, &
                             useExhaustiveFFT, dealiasFact, scheme_xy, donot_dealias, dealiasType 
@@ -477,7 +477,7 @@ contains
         read(unit=ioUnit, NML=PHYSICS)
         read(unit=ioUnit, NML=PRESSURE_CALC)
         read(unit=ioUnit, NML=BCs)
-        read(unit=ioUnit, NML=ROUGHNESS)    ! Added by Weixuan, 01292026 
+        read(unit=ioUnit, NML=ROUGHNESS)
         read(unit=ioUnit, NML=WINDTURBINES)
         read(unit=ioUnit, NML=KSPREPROCESS)
         this%useMoisture = useMoisture
@@ -508,7 +508,6 @@ contains
         this%donot_dealias = donot_dealias; this%ioType = ioType; this%HITForceTimeScale = HITForceTimeScale
         this%moistureFactor = moistureFactor; this%useHITRealSpaceLinearForcing = useHITRealSpaceLinearForcing
         this%use_z0_field = use_z0_field
-        !call message(1, 'finished reading input file')
 
         if (this%CFL > zero) this%useCFL = .true. 
         if ((this%CFL < zero) .and. (this%dt < zero)) then
@@ -519,7 +518,7 @@ contains
         this%tSimStartStats = tSimStartStats; this%useWindTurbines = useWindTurbines
         this%tid_compStats = tid_compStats; this%useExtraForcing = useExtraForcing; this%useSGS = useSGS 
         this%UseDealiasFilterVert = UseDealiasFilterVert
-        this%G_geostrophic = G_geostrophic; this%G_alpha = G_alpha; this%Fr = Fr; 
+        this%G_geostrophic = G_geostrophic; this%G_alpha = G_alpha; this%Fr = Fr; this%useConstantG = useConstantG
         this%fastCalcPressure = fastCalcPressure 
         this%t_start_planeDump = t_start_planeDump; this%t_stop_planeDump = t_stop_planeDump
         this%t_planeDump = t_planeDump; this%BotBC_temp = BotBC_temp; this%Ro = Ro; 
@@ -560,24 +559,20 @@ contains
                open(unit=125, file=trim(input_z0_dir), form='formatted', status='old', action='read')
                read(125, *, iostat=ierr) z0_global
                close(125)
-               !do j = 1, nx
-               !    call message(1, 'z0 = ', z0_global(j,1))
-               !end do
            else
                allocate(z0_global(nx, ny))
            end if
            call MPI_Bcast(z0_global, nx*ny, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierror)
            if (.not. allocated(this%z0_xy_C)) then
-               allocate(this%z0_xy_C( this%gpC%xsz(1), this%gpC%xsz(2) ))
+               allocate(this%z0_xy_C(this%gpC%xsz(1), this%gpC%xsz(2)))
            end if
 
-           this%z0_xy_C(:,:) = z0_global( this%gpC%xst(1):this%gpC%xen(1), &
-                                this%gpC%xst(2):this%gpC%xen(2) )
+           this%z0_xy_C(:,:) = z0_global(this%gpC%xst(1):this%gpC%xen(1), &
+                                this%gpC%xst(2):this%gpC%xen(2))
 
            deallocate(z0_global)
-       end if       
-
-
+       end if
+       
        if (this%useSystemInteractions) then
            if ((trim(controlDir) .eq. "null") .or.(trim(ControlDir) .eq. "NULL")) then
                this%controlDir = this%outputDir
@@ -833,6 +828,7 @@ contains
            call message(1, "Geostrophic Velocity Magnitude  :", this%G_geostrophic) 
            call message(1, "Geostrophic Velocity Direction  :", this%G_alpha)
            call message(1, "Rossby Number:", this%Ro) 
+           ! if (this%useConstantG) then - FIX THIS FOR G(z)
            call this%spectC%alloc_r2c_out(this%GxHat)
            call this%spectC%alloc_r2c_out(this%GyHat)
            call this%spectE%alloc_r2c_out(this%GxHat_Edge)
@@ -872,7 +868,6 @@ contains
            call this%spectC%fft(this%rbuffxC(:,:,:,1),this%dpF_dxhat)
        end if  
 
-        call message(1, "STEP 11 STARTS")
         ! STEP 11: Initialize SGS model
         allocate(this%SGSmodel)
         if (this%useSGS) then
@@ -903,7 +898,6 @@ contains
         this%max_nuSGS = zero
 
 
-        call message(1, "STEP 12 STARTS")
         ! STEP 12: Set Sponge Layer
         if (this%useSponge) then
             allocate(this%RdampC(this%sp_gpC%ysz(1), this%sp_gpC%ysz(2), this%sp_gpC%ysz(3)))
@@ -1185,7 +1179,8 @@ contains
                call this%fringe_x%init(inputfile, this%dx, this%mesh(:,1,1,1), this%dy, this%mesh(1,:,1,2), &
                                        this%spectC, this%spectE, this%gpC, this%gpE, &
                                        this%rbuffxC, this%rbuffxE, this%cbuffyC, this%cbuffyE)   
-                if (this%fringe_x%do_shifts) then
+
+               if (this%fringe_x%do_shifts) then
                   ! initialize shifted boundary conditions (Munters, Meneveau, Meyers (2016))
                   call this%fringe_x%allocateTargetArray_Cells(this%fringe_x%u_for_shifts)
                   call this%fringe_x%allocateTargetArray_Cells(this%fringe_x%v_for_shifts)
@@ -1314,13 +1309,10 @@ contains
            end if 
        end if 
        
-       ! call message(1, 'STEP 23')
-
        ! STEP 24: Compute pressure  
        if ((this%storePressure) .or. (this%fastCalcPressure)) then
            call this%ComputePressure()
        end if 
-       ! call message(1, "STEP 24")
 
        ! STEP 25: Schedule time dumps
        this%vizDump_Schedule = vizDump_Schedule
@@ -1337,7 +1329,6 @@ contains
                this%t_NextRestartDump = this%tsim + deltaT_restartdump
            end if 
        end if 
-       ! call message(1, "STEP 25")
 
        ! STEP 26: HDF5 IO
        if (ioType .ne. 0) then
@@ -1353,7 +1344,7 @@ contains
                        this%rbuffxC, this%rbuffxE, this%cbuffyC, this%cbuffyE, & 
                        this%rbuffyC, this%rbuffzC, this%restartPhi) 
        end if
-       this%angleHubHeight = 1.d0       
+       this%angleHubHeight = 1.d0      
        this%totalAngle = 0.d0
        this%wFilt = 0.d0
        this%deltaGalpha = 0.d0
@@ -1362,7 +1353,6 @@ contains
        call this%compute_deltaT()
        this%dtOld = this%dt
        this%dtRat = one 
-       ! call message(1, "STEP 28")
       
 
        ! STEP 29: Set the buoyancy direction
