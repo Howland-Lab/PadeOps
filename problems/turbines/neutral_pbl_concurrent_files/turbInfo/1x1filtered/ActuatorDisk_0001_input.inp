@@ -1,0 +1,13 @@
+&ACTUATOR_DISK
+xLoc         =   5.00000000d0
+yLoc         =   5.00000000d0
+zLoc         =   2.50000000d0
+diam         =   1.00000000d0
+cT           =   1.33000000d0
+tilt         =   0.00000000d0	! in degrees
+yaw          =   0.d0 		! in degrees, CCW positive (from above)
+filterWidth  =   0.33600000d0  	! non-dimensionalized to `diam`
+useCorrection = .true.		! Use correction from Shapiro, et al. (2019)
+useDynamicYaw   = .FALSE. 
+quickDecomp  = .true.		! Quick kernel decomposition in x
+/

@@ -30,6 +30,8 @@ module actuatorDisk_T2mod
         real(rkind), dimension(:), allocatable :: xs, ys, zs
         integer, dimension(:,:), allocatable :: startEnds
         real(rkind), dimension(:,:), allocatable :: powerTime
+        real(rkind), dimension(:, :), allocatable :: uTime
+        real(rkind), dimension(:, :), allocatable :: vTime
 
         ! Grid Info
         integer :: nxLoc, nyLoc, nzLoc 
@@ -71,9 +73,8 @@ subroutine init(this, inputDir, ActuatorDisk_T2ID, xG, yG, zG)
     integer :: xLc(1), yLc(1), zLc(1), xst, xen, yst, yen, zst, zen, ierr, xlen
     integer  :: ntry = 100
     real(rkind) :: time2initialize = 0, correction_factor = 1.0d0, normfact_p
-    integer :: shapiro_correction
 
-    namelist /ACTUATOR_DISK/ xLoc, yLoc, zLoc, diam, cT, yaw, tilt!, shapiro_correction
+    namelist /ACTUATOR_DISK/ xLoc, yLoc, zLoc, diam, cT, yaw, tilt
     
     ! Read input file for this turbine    
     write(tempname,"(A13,I4.4,A10)") "ActuatorDisk_", ActuatorDisk_T2ID, "_input.inp"
@@ -93,12 +94,6 @@ subroutine init(this, inputDir, ActuatorDisk_T2ID, xG, yG, zG)
     this%delta = epsFact * (dx*dy*dz)**(1.d0/3.d0)
     this%OneByDelSq = 1.d0/(this%delta**2)
     this%tInd = 1
-    
-    !write(*,*) this%M
-    !if (shapiro_correction) then
-    !    this%M = (1.d0 + (cT/4.d0) * (1.d0/((3.d0*pi)**0.5d0)) * this%delta / (this%diam/2.d0) ) ** -1.d0
-    !endif
-    !write(*,*) this%M
 
     allocate(tmp(size(xG,2),size(xG,3)))
     allocate(tmp_tag(size(xG,2),size(xG,3)))
@@ -205,6 +200,8 @@ subroutine init(this, inputDir, ActuatorDisk_T2ID, xG, yG, zG)
     this%smearing_base = this%smearing_base/correction_factor
     if((this%Am_I_Split .and. this%myComm_nrank==0) .or. (.not. this%Am_I_Split)) then
            allocate(this%powerTime(1000000,1))
+           allocate(this%uTime(1000000, 1))
+           allocate(this%vTime(1000000, 1))
     end if
 
     call message(2, "Smearing grid parameter, ntry", ntry)
@@ -294,7 +291,6 @@ subroutine get_RHS(this, u, v, w, rhsxvals, rhsyvals, rhszvals, inst_val)
     rhsxvals = rhsxvals + force*this%smearing_base 
     rhsyvals = zero
     rhszvals = zero
-
     !if (present(inst_val)) then
       if((this%Am_I_Split .and. this%myComm_nrank==0) .or. (.not. this%Am_I_Split)) then
         inst_val(1) = force
@@ -309,6 +305,8 @@ subroutine get_RHS(this, u, v, w, rhsxvals, rhsyvals, rhszvals, inst_val)
                                  ! somewhere besides turbineMod which corrupts
                                  ! the power measurements!
             this%powerTime(this%tInd,1) = -force*sqrt(usp_sq)
+            this%uTime(this%tInd, 1) = this%uface
+            this%vTime(this%tInd, 1) = this%vface
             this%tInd = this%tInd + 1
             write(*,*) this%uface
             write(*,*) this%vface
@@ -351,7 +349,7 @@ subroutine sample_on_circle(R,xcen, ycen, xloc,yloc,np)
     real(rkind), dimension(:), allocatable, intent(out) :: xloc, yloc
     real(rkind), dimension(:), allocatable :: xtmp, ytmp, rtmp
     integer :: idx, i, j, nsz, iidx
-
+    
     allocate(xline(np),yline(np))
     allocate(xtmp(np**2),ytmp(np**2), rtmp(np**2), tag(np**2))
     

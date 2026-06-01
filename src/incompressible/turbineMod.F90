@@ -8,7 +8,10 @@ module turbineMod
     use actuatorDisk_RotMod, only: actuatorDisk_Rot
     use actuatorLineMod, only: actuatorLine
     use actuatorDisk_YawMod, only: actuatorDisk_yaw
+    use actuatorDisk_FilteredMod, only: actuatorDisk_filtered
+    use actuatorDisk_CTMod, only: actuatorDisk_CT
     use dynamicYawMod, only: dynamicYaw
+    use dynamicTurbineMod, only: dynamicTurbine
     use exits, only: GracefulExit, message
     use spectralMod, only: spectral  
     use mpi 
@@ -40,7 +43,10 @@ module turbineMod
         type(actuatorDisk_Rot), allocatable, dimension(:) :: turbArrayADM_Rot
         type(actuatorLine), allocatable, dimension(:) :: turbArrayALM
         type(actuatorDisk_yaw), allocatable, dimension(:) :: turbArrayADM_Tyaw
+        type(actuatorDisk_filtered), allocatable, dimension(:) :: turbArrayADM_fil
+        type(actuatorDisk_CT), allocatable, dimension(:) :: turbArrayADM_CT
         type(dynamicYaw) :: dyaw
+        type(dynamicTurbine), allocatable, dimension(:) :: dynamicArray
 
         type(decomp_info), pointer :: gpC, sp_gpC, gpE, sp_gpE
         type(spectral), pointer :: spectC, spectE
@@ -63,7 +69,7 @@ module turbineMod
         real(rkind), allocatable, dimension(:,:,:) :: ySendBuf, zSendBuf, yRightHalo, zRightHalo, zLeftHalo
 
         real(rkind), dimension(:,:,:), allocatable :: rbuff, blanks, speed, scalarSource
-        logical :: dumpTurbField = .false., useDynamicYaw, firstStep
+        logical :: dumpTurbField = .false., useDynamicYaw, firstStep, useDynamicTurbine
         integer :: step = 0, ADM_Type, yawUpdateInterval 
         character(len=clen)                           :: powerDumpDir
         ! Variables to link domain and control
@@ -168,24 +174,24 @@ subroutine init(this, inputFile, gpC, gpE, spectC, spectE, cbuffyC, cbuffYE, cbu
     complex(rkind), dimension(:,:,:,:), target, intent(inout) :: cbuffyC, cbuffyE, cbuffzC, cbuffzE
     real(rkind), dimension(:,:,:,:), intent(in) :: mesh
     real(rkind), intent(in) :: dx, dy, dz
-    logical :: useWindTurbines = .TRUE., useDynamicYaw = .FALSE. ! .FALSE. implies ALM
+    logical :: useWindTurbines = .TRUE., useDynamicYaw = .FALSE., useDynamicTurbine = .FALSE. 
     real(rkind) :: xyzPads(6)
     logical :: ADM = .TRUE., WriteTurbineForce  ! .FALSE. implies ALM
     ! Dynamic yaw stuff
     character(len=clen) :: inputDirDyaw = "/home1/05294/mhowland/dynamicYawFiles/dynamicYaw.inp"
     real(rkind), dimension(:), allocatable :: xLoc, yLoc
     integer :: yawUpdateInterval = 1000
-
     integer :: i, ierr, ADM_Type = 2
 
     namelist /WINDTURBINES/ useWindTurbines, num_turbines, ADM, turbInfoDir, ADM_Type, & 
-                            WriteTurbineForce, powerDumpDir, useDynamicYaw, yawUpdateInterval, inputDirDyaw
+                            WriteTurbineForce, powerDumpDir, useDynamicYaw, yawUpdateInterval, inputDirDyaw, & 
+                            useDynamicTurbine
 
     ioUnit = 11
     open(unit=ioUnit, file=trim(inputfile), form='FORMATTED')
     read(unit=ioUnit, NML=WINDTURBINES)
     close(ioUnit)
-
+    
     this%gpC => gpC
     this%spectC => spectC
     this%sp_gpC => this%spectC%spectdecomp
@@ -208,11 +214,12 @@ subroutine init(this, inputFile, gpC, gpE, spectC, spectE, cbuffyC, cbuffYE, cbu
     this%nTurbines = num_turbines;
     this%powerDumpDir = powerDumpDir
     this%useDynamicYaw = useDynamicYaw
+    this%useDynamicTurbine = useDynamicTurbine
     this%yawUpdateInterval = yawUpdateInterval
     this%Tf = this%yawUpdateInterval
     this%hubIndex = 1
 
-    ! Initialize the yaw and tilf
+    ! Initialize the yaw and tilt
     allocate(this%gamma(this%nTurbines))
     allocate(this%gamma_nm1(this%nTurbines))
     allocate(this%theta(this%nTurbines))
@@ -295,6 +302,34 @@ subroutine init(this, inputFile, gpC, gpE, spectC, spectE, cbuffyC, cbuffYE, cbu
          this%hubIndex = nint(this%turbArrayADM_Tyaw(1)%zLoc / dz)
          this%windAngle = 0.d0
          call message(0,"YAWING WIND TURBINE (Type 4) array initialized")
+
+      case (5)
+         ! Allocate turbine array + buffers
+         allocate(this%turbArrayADM_fil(this%nTurbines))
+         allocate(this%dynamicArray(this%nTurbines))  ! TODO make generic turbine and move this outside
+
+         do i = 1, this%nTurbines
+             call this%turbArrayADM_fil(i)%init(turbInfoDir, i, mesh(:,:,:,1), mesh(:,:,:,2), mesh(:,:,:,3), dx, dy, dz)
+             this%gamma(i) = this%turbArrayADM_fil(i)%yaw*pi/180.d0  ! stored in RADIANS  TODO - phase this out
+             this%theta(i) = 0.d0  ! tilt angle
+             
+             ! initialize turbine dynamics
+             if (this%useDynamicTurbine) then
+                 call this%dynamicArray(i)%init(this%turbArrayADM_fil(i))
+             endif
+         end do
+         call message(0,"FILTERED ADM WIND TURBINE (Type 5) array initialized")
+
+      case (6) 
+        ! added ADM type 6 for pressure figure KSH 09/17/2023
+        allocate (this%turbArrayADM_CT(this%nTurbines))
+         do i = 1, this%nTurbines
+             call this%turbArrayADM_CT(i)%init(turbInfoDir, i, mesh(:,:,:,1), mesh(:,:,:,2), mesh(:,:,:,3), dx, dy, dz)
+             this%gamma(i) = this%turbArrayADM_CT(i)%yaw*pi/180.d0  ! stored in RADIANS TODO - phase this out
+             this%theta(i) = 0.d0
+         end do
+         call message(0,"CT ADM WIND TURBINE (Type 6) array initialized")
+
       end select 
     else
       call GracefulExit("Actuator Line implementation temporarily disabled. Talk to Aditya if you want to know why.",423)
@@ -353,6 +388,14 @@ subroutine destroy(this)
     case (4)
       do i = 1, this%nTurbines
         call this%turbArrayADM_Tyaw(i)%destroy()
+      end do
+    case (5)
+      do i = 1, this%nTurbines
+        call this%turbArrayADM_fil(i)%destroy()
+      end do
+    case (6)
+      do i = 1, this%nTurbines
+        call this%turbArrayADM_ct(i)%destroy()
       end do
     end select
       !deallocate(this%turbArrayADM)
@@ -507,7 +550,7 @@ subroutine halo_communication(this, u, v, wC)
 
 end subroutine
 
-subroutine getForceRHS(this, dt, u, v, wC, urhs, vrhs, wrhs, newTimeStep, inst_horz_avg, uturb, vturb, wturb)
+subroutine getForceRHS(this, dt, u, v, wC, urhs, vrhs, wrhs, newTimeStep, inst_horz_avg, uturb, vturb, wturb, budgetCall)
     class(TurbineArray), intent(inout), target :: this
     real(rkind),                                                                         intent(in) :: dt
     real(rkind),    dimension(this%gpC%xsz(1),   this%gpC%xsz(2),   this%gpC%xsz(3)),    intent(in) :: u, v, wC
@@ -517,6 +560,7 @@ subroutine getForceRHS(this, dt, u, v, wC, urhs, vrhs, wrhs, newTimeStep, inst_h
     real(rkind),    dimension(:),                                                        intent(out)   :: inst_horz_avg
     complex(rkind), dimension(this%sp_gpC%ysz(1),this%sp_gpC%ysz(2),this%sp_gpC%ysz(3)), intent(inout), optional :: uturb, vturb
     complex(rkind), dimension(this%sp_gpE%ysz(1),this%sp_gpE%ysz(2),this%sp_gpE%ysz(3)), intent(inout), optional :: wturb
+    logical,                                                                             intent(in), optional :: budgetCall
     integer :: i, tavg, temp
     character(len=clen) :: tempname, tempname2, fname
     real(rkind) :: alpha_m, tmp, dirStd = 0.d0
@@ -525,6 +569,7 @@ subroutine getForceRHS(this, dt, u, v, wC, urhs, vrhs, wrhs, newTimeStep, inst_h
     ! Lookup table stuff
     real(rkind) :: alpha_input
     integer :: alpha_index
+    logical :: callTimeAdvance
 
     if (newTimeStep) then
          this%fx = zero; this%fy = zero; this%fz = zero
@@ -729,6 +774,24 @@ subroutine getForceRHS(this, dt, u, v, wC, urhs, vrhs, wrhs, newTimeStep, inst_h
                    this%gamma_nm1 = this%gamma
                end if
                this%step=this%step+1
+           case (5)
+               ! time should not advance if getForceRHS is being called for budget calculations
+               callTimeAdvance = .true.
+               if (present(budgetCall)) callTimeAdvance = (.not. budgetCall)
+               ! needed calculations for each turbine
+               do i = 1, this%nTurbines
+                    ! TODO move outside switch/case
+                    if ((callTimeAdvance) .and. (this%useDynamicTurbine)) then  
+                        call this%dynamicArray(i)%time_advance(dt)
+                    endif
+
+                    call this%turbArrayADM_fil(i)%get_RHS(u,v,wC,this%fx,this%fy,this%fz, budgetCall)
+               end do
+           case (6)
+               do i = 1, this%nTurbines
+                    ! call message(2, "Turbine yaw: ", this%gamma(i))
+                    call this%turbArrayADM_ct(i)%get_RHS(u,v,wC,this%fx,this%fy,this%fz, this%gamma(i), this%theta(i))
+               end do
            end select 
     end if 
 
@@ -753,19 +816,67 @@ end subroutine
 
 subroutine write_turbine_power(this, TID, outputdir, runID)
     use basic_io
+
     class(TurbineArray), intent(inout), target :: this
     integer :: i, runID, TID
     character(len=*), intent(in) :: outputdir
     character(len=clen) :: filename, tempname
+!    real(rkind), dimension(2) :: uface
 
     do i = 1,this%nTurbines
         if (this%ADM_Type==2) then
-           if (allocated(this%turbArrayADM_T2(i)%powerTime)) then
-               write(tempname,"(A3,I2.2,A2,I6.6,A6,I2.2,A4)") "Run",runID,"_t", TID, "_turbP",i,".pow"
-               filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
-               call write_2d_ascii(this%turbArrayADM_T2(i)%powerTime(1:this%turbArrayADM_T2(i)%tInd-1,:),filename)  
-               this%turbArrayADM_T2(i)%tInd = 1
-           end if
+            if (allocated(this%turbArrayADM_T2(i)%powerTime)) then
+                write(tempname,"(A3,I2.2,A2,I6.6,A6,I2.2,A4)") "Run",runID,"_t", TID, "_turbP",i,".pow"
+                filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
+                call write_2d_ascii(this%turbArrayADM_T2(i)%powerTime(1:this%turbArrayADM_T2(i)%tInd-1,:),filename)  
+                ! this%turbArrayADM_T2(i)%tInd = 1
+                
+                ! Take two: 
+                write(tempname,"(A3,I2.2,A2,I6.6,A6,I2.2,A4)") "Run",runID,"_t", TID, "_turbU",i,".vel"
+                filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
+                call write_2d_ascii(this%turbArrayADM_T2(i)%uTime(1:this%turbArrayADM_T2(i)%tInd-1,:),filename)  
+ 
+                write(tempname,"(A3,I2.2,A2,I6.6,A6,I2.2,A4)") "Run",runID,"_t", TID, "_turbV",i,".vel"
+                filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
+                call write_2d_ascii(this%turbArrayADM_T2(i)%vTime(1:this%turbArrayADM_T2(i)%tInd-1,:),filename)  
+                 
+                this%turbArrayADM_T2(i)%tInd = 1
+            end if
+        elseif (this%ADM_Type==5) then
+            if (allocated(this%turbArrayADM_fil(i)%powerTime)) then
+                write(tempname,"(A3,I2.2,A2,I6.6,A6,I2.2,A4)") "Run",runID,"_t", TID, "_turbP",i,".pow"
+                filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
+                call write_1d_ascii(this%turbArrayADM_fil(i)%powerTime(1:this%turbArrayADM_fil(i)%tInd-1),filename)  
+                 
+                write(tempname,"(A3,I2.2,A2,I6.6,A6,I2.2,A4)") "Run",runID,"_t", TID, "_turbU",i,".vel"
+                filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
+                call write_1d_ascii(this%turbArrayADM_fil(i)%uTime(1:this%turbArrayADM_fil(i)%tInd-1),filename)  
+ 
+                write(tempname,"(A3,I2.2,A2,I6.6,A6,I2.2,A4)") "Run",runID,"_t", TID, "_turbV",i,".vel"
+                filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
+                call write_1d_ascii(this%turbArrayADM_fil(i)%vTime(1:this%turbArrayADM_fil(i)%tInd-1),filename)  
+                this%turbArrayADM_fil(i)%tInd = 1
+            end if 
+        elseif (this%ADM_Type==6) then
+            if (allocated(this%turbArrayADM_ct(i)%powerTime)) then
+                write(tempname,"(A3,I2.2,A2,I6.6,A6,I2.2,A4)") "Run",runID,"_t", TID, "_turbP",i,".pow"
+                filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
+                call write_1d_ascii(this%turbArrayADM_ct(i)%powerTime(1:this%turbArrayADM_ct(i)%tInd-1),filename)  
+                 
+                write(tempname,"(A3,I2.2,A2,I6.6,A6,I2.2,A4)") "Run",runID,"_t", TID, "_turbU",i,".vel"
+                filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
+                call write_1d_ascii(this%turbArrayADM_ct(i)%uTime(1:this%turbArrayADM_ct(i)%tInd-1),filename)  
+ 
+                write(tempname,"(A3,I2.2,A2,I6.6,A6,I2.2,A4)") "Run",runID,"_t", TID, "_turbV",i,".vel"
+                filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
+                call write_1d_ascii(this%turbArrayADM_ct(i)%vTime(1:this%turbArrayADM_ct(i)%tInd-1),filename)  
+                
+                ! helpful for debuggin: write turbine thrust (make sure it is constant)
+                write(tempname,"(A3,I2.2,A2,I6.6,A6,I2.2,A4)") "Run",runID,"_t", TID, "_turbT",i,".thr"
+                filename = outputDir(:len_trim(outputDir))//"/"//trim(tempname)
+                call write_1d_ascii(this%turbArrayADM_ct(i)%thrustTime(1:this%turbArrayADM_ct(i)%tInd-1),filename)  
+                this%turbArrayADM_ct(i)%tInd = 1
+            end if 
         end if
     end do
     

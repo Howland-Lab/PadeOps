@@ -1,0 +1,21 @@
+&concurrent
+HIT_InputFile                 = "/scratch/08445/tg877441/hit_ad/newtest/test_02/input_hit.dat"
+AD_InputFile                  = "/scratch/08445/tg877441/hit_ad/newtest/test_02/input_AD.dat"
+InflowSpeed                   = 1.d0
+k_bandpass_left               = 4.0d0
+k_bandpass_right              = 128.d0
+TI_target                     = 0.04        ! TI target value (0.04 = 4%). Set to -1 to disable TI controller
+TI_xloc                       = 0           ! x-location to compute TI from simulation if TI_target is used
+TI_fact                       = 1.d0        ! If TI_target < 0, then TI_fact scales HIT for fringe targets
+freeze_HIT                    = .false.     ! Freezes HIT turbulence (used for Mann turbulence, for example)
+/
+/
+&FILTER_INFO
+applyfilters = .FALSE. 
+nfilters     = 2
+fof_dir      = "/projects/windFlowModeling/PadeOps/HIT_Interact/filter_visualizations/"
+tid_FIL_FullField = 75
+tid_FIL_Planes = 4
+filoutdir    = "/scratch/globus/aghate/filter_visualization/ad_data" 
+/
+/

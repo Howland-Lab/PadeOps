@@ -3,7 +3,7 @@ module forcingmod
    use decomp_2d
    use constants, only: im0, one, zero, two, pi
    use spectralMod, only: spectral 
-   use exits, only: GracefulExit
+   use exits, only: GracefulExit, message
    use mpi 
 
    implicit none
@@ -28,7 +28,7 @@ module forcingmod
       real(rkind), dimension(:), allocatable :: tmpModes
       real(rkind) :: alpha_t = 1.d0 
       real(rkind) :: normfact = 1.d0, A_force = 1.d0 
-      integer     :: DomAspectRatioZ
+      integer     :: DomAspectRatioX, DomAspectRatioY, DomAspectRatioZ
       logical :: useLinearForcing, firstCall
     
       contains
@@ -51,28 +51,33 @@ subroutine init(this, inputfile, sp_gpC, sp_gpE, spectC, cbuffyE, cbuffyC, cbuff
    complex(rkind), dimension(:,:,:  ), intent(inout), target :: cbuffzE, cbuffyE, cbuffyC
    complex(rkind), dimension(:,:,:,:), intent(inout), target :: cbuffzC
    class(spectral), intent(in), target :: spectC
-   integer :: RandSeedToAdd = 0, ierr, DomAspectRatioZ = 1
-   real(rkind) :: alpha_t = 1.d0 
-   integer :: Nwaves = 20
+   integer :: RandSeedToAdd = 0, ierr, DomAspectRatioZ = 1 ! DomAspectRatioZ left for back-compatibility, but deprecated (computed automatically)
+   real(rkind) :: alpha_t = 1.d0
+   integer :: Nwaves = 20, nxmin
    real(rkind) :: kmin = 2.d0, kmax = 10.d0, EpsAmplitude = 0.1d0, A_force = 1.d0 
    logical :: useLinearForcing = .false. 
    real(rkind) :: filtfact_linForcing = 0.5d0
-   namelist /HIT_Forcing/ kmin, kmax, Nwaves, EpsAmplitude, RandSeedToAdd, DomAspectRatioZ, alpha_t, useLinearForcing, filtfact_linForcing  
+   namelist /HIT_Forcing/ kmin, kmax, Nwaves, DomAspectRatioZ, EpsAmplitude, RandSeedToAdd, alpha_t, useLinearForcing, filtfact_linForcing  
 
    open(unit=123, file=trim(inputfile), form='FORMATTED', iostat=ierr)
    read(unit=123, NML=HIT_Forcing)
    close(123)
 
-   if(DomAspectRatioZ < 1.0d0) then
-       call GracefulExit("Aspect ratio in z must be greater than 1", 111)
+   ! ASSUMES ISOTROPIC GRID
+   nxmin = min(spectC%nx_g, spectC%ny_g, spectC%nz_g)
+   if ((mod(spectC%nx_g, nxmin) > 0) .or. (mod(spectC%ny_g, nxmin) > 0) .or. (mod(spectC%nz_g, nxmin) > 0)) then
+       call GracefulExit("Domain aspect ratios must be integer values", 111)
    endif
+   this%DomAspectRatioX = spectC%nx_g / nxmin
+   this%DomAspectRatioY = spectC%ny_g / nxmin
+   this%DomAspectRatioZ = spectC%nz_g / nxmin
 
    this%A_force = A_force
    this%kmin = kmin
    this%kmax = kmax
    this%EpsAmplitude = EpsAmplitude
    this%Nwaves = Nwaves
-   this%DomAspectRatioZ = DomAspectRatioZ
+   
    this%sp_gpC => sp_gpC
    this%sp_gpE => sp_gpE
    this%spectC => spectC
@@ -83,7 +88,7 @@ subroutine init(this, inputfile, sp_gpC, sp_gpE, spectC, cbuffyE, cbuffyC, cbuff
    allocate(this%fxhat_old (this%sp_gpC%zsz(1), this%sp_gpC%zsz(2), this%sp_gpC%zsz(3)))
    allocate(this%fyhat_old (this%sp_gpC%zsz(1), this%sp_gpC%zsz(2), this%sp_gpC%zsz(3)))
    allocate(this%fzhat_old (this%sp_gpC%zsz(1), this%sp_gpC%zsz(2), this%sp_gpC%zsz(3)))
-  
+
    this%firstCall = .true.
    this%fxhat    => cbuffzC(:,:,:,1)
    this%fyhat    => cbuffzC(:,:,:,2)
@@ -220,21 +225,17 @@ subroutine embed_forcing_mode(this, kx, ky, kz)
    integer, intent(in) :: kx, ky, kz
    
    real(rkind) :: den, fac
-   integer :: gid_x, gid_y, gid_yC, gid_z, gid_zC
-   integer :: lid_x, lid_y, lid_yC
+   integer :: gid_x, gid_y, gid_z
+   integer :: lid_x, lid_y
 
    ! Get global ID of the mode and conjugate
-   gid_x  = kx + 1
-   gid_y  = ky + 1
-   gid_yC = this%sp_gpC%ysz(2) - ky + 1 
+   gid_x  = this%DomAspectRatioX*kx + 1
+   gid_y  = this%DomAspectRatioY*ky + 1
    gid_z  = this%DomAspectRatioZ*kz + 1
-   gid_zC = this%sp_gpC%zsz(3) - this%DomAspectRatioZ*kz + 1 
 
    ! Get local ID of the mode and conjugate
    lid_x  = gid_x  - this%sp_gpC%zst(1) + 1
-   lid_y  = gid_y  - this%sp_gpC%zst(2) + 1
-   lid_yC = gid_yC - this%sp_gpC%zst(2) + 1
-   
+   lid_y  = gid_y  - this%sp_gpC%zst(2) + 1   
 
    if ((lid_x >= 1).and.(lid_x <= this%sp_gpC%zsz(1))) then
       if ((lid_y >= 1).and.(lid_y <= this%sp_gpC%zsz(2))) then

@@ -136,7 +136,7 @@ contains
     subroutine init(this, inputfile, igrid_sim) 
         class(budgets_vol_avg), intent(inout) :: this
         character(len=*), intent(in) :: inputfile 
-        type(igrid), intent(inout), target :: igrid_sim 
+        class(igrid), intent(inout), target :: igrid_sim 
         
         character(len=clen) :: budgets_dir = "NULL"
         integer :: ioUnit, ierr,  budgetType = 1, restart_tid = 0, restart_rid = 0, restart_counter = 0
