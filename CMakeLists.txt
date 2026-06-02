@@ -92,6 +92,25 @@ elseif ( CMAKE_Fortran_COMPILER_ID MATCHES "GNU")
     elseif ( CMAKE_BUILD_TYPE MATCHES "Debug" )
         set(CMAKE_Fortran_FLAGS "-O0 -qsuffix=cpp=f90 -qxlf2003=polymorphic")
     endif()
+
+# AOCC / AMD compiler suite
+elseif ( CMAKE_Fortran_COMPILER_ID MATCHES "AOCC|AMD" )
+    if ( DEFINED ENV{ARCH_OPT_FLAG} AND NOT "$ENV{ARCH_OPT_FLAG}" STREQUAL "" )
+        set(OPTFLAG "$ENV{ARCH_OPT_FLAG}")
+    else()
+        # ARCHER2 CPU nodes are AMD EPYC Rome / Zen 2
+        #set(OPTFLAG "-march=znver2")
+        set(OPTFLAG "")
+    endif()
+    if ( CMAKE_BUILD_TYPE MATCHES "Release" )
+        set(CMAKE_Fortran_FLAGS
+            "${CMAKE_Fortran_FLAGS} -O3 ${OPTFLAG} -fopenmp -ffree-form -ffast-math -funroll-loops"
+        )
+    elseif ( CMAKE_BUILD_TYPE MATCHES "Debug" )
+        set(CMAKE_Fortran_FLAGS
+            "${CMAKE_Fortran_FLAGS} -O0 -g -fopenmp -ffree-form -fcheck=all -fbounds-check -ffpe-trap=zero,overflow"
+        )
+    endif()
  
 endif()
 

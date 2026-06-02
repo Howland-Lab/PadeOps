@@ -1,7 +1,7 @@
-#ifdef __GFORTRAN__
-module ifport
-end module ifport
-#endif
+! #ifdef __GFORTRAN__
+! module ifport
+! end module ifport
+! #endif
 
 module random
     use kind_parameters, only: rkind
@@ -70,7 +70,6 @@ contains
 
         array = mu + sigma*array
         nullify(uarr1, uarr2)
-        nullify(uarr1, uarr2)
         deallocate(uarr)
     end subroutine
 
@@ -97,7 +96,6 @@ contains
         array = sqrt(-two*log(uarr1))*cos(two*pi*uarr2)        
 
         array = mu + sigma*array
-        nullify(uarr1, uarr2)
         nullify(uarr1, uarr2)
         deallocate(uarr)
     end subroutine
@@ -189,12 +187,20 @@ contains
 
 
     subroutine init_random_seed()
-        ! Taken from GNU 
         use iso_fortran_env, only: int64
-        use ifport
+        use iso_c_binding, only: c_int
         implicit none
+
+        interface
+            function c_getpid() bind(C, name="getpid") result(pid)
+                import :: c_int
+                integer(c_int) :: pid
+            end function c_getpid
+        end interface
+
         integer, allocatable :: iseed(:)
-        integer :: i, n, un, istat, dt(8), pid
+        integer :: i, n, un, istat, dt(8)
+        integer(c_int) :: pid
         integer(int64) :: t
         
         call random_seed(size = n)
@@ -219,7 +225,7 @@ contains
                    + dt(6) * 60 * 1000 + dt(7) * 1000 &
                    + dt(8)
            end if
-           pid = getpid()
+           pid = c_getpid()
            t = ieor(t, int(pid, kind(t)))
            do i = 1, n
               iseed(i) = lcg(t)
