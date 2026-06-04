@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
 
 # --- Modules ---
-#module load PrgEnv-gnu
-module restore 
-module load PrgEnv-aocc/8.4.0
+module purge 
+module load PrgEnv-gnu
+# module load PrgEnv-aocc/8.4.0
 module load craype-x86-rome
-module load craype-network-ofi
-module load cray-libsci/23.09.1.1
-module load cray-fftw/3.3.10.5
-module load cray-hdf5-parallel/1.12.2.7
+module load cray-libsci
+module load cray-fftw
+module load cray-hdf5-parallel
 module list
 
-export COMPILER_ID=AMD
+export COMPILER_ID=GNU
 export CC=cc
 export CXX=CC
 export FC=ftn
@@ -31,5 +30,7 @@ export DECOMP_PATH="${CWD}/dependencies/2decomp_fft"
 
 export CMAKE_PREFIX_PATH="${HDF5_PATH}:${FFTW_PATH}:${CMAKE_PREFIX_PATH}"
 
+export MPICH_OFI_STARTUP_CONNECT=1  
+
 # --- Architecture flags ---
-export ARCH_OPT_FLAG="-march=znver2"
+export ARCH_OPT_FLAG=""
