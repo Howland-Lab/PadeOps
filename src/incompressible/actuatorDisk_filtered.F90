@@ -371,7 +371,7 @@ end subroutine
 subroutine get_R(this)
     class(actuatordisk_filtered), intent(inout) :: this
     real(rkind) :: yrad, trad, xs, ys, zs, C1, xtmp, ytmp, ztmp  ! rotations, in radians
-    real(rkind), dimension(this%npts) :: xi, yi, zi
+    real(rkind), dimension(int(this%npts)) :: xi, yi, zi
     ! integer :: k
     real(rkind) :: rcut, coef, rsq
     real(rkind) :: xmin, xmax, ymin, ymax, zmin, zmax
