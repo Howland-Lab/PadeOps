@@ -408,7 +408,7 @@ subroutine get_R(this)
     coef   = -6.d0 / this%delta**2
     C1     = (6.d0/pi/this%delta**2)**(three/two)
 
-    do k = 1, this%npts
+    do k = 1, int(this%npts)
         ! bounds in physical space
         xmin = xi(k) - rcut
         xmax = xi(k) + rcut
