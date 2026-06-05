@@ -135,9 +135,11 @@ subroutine destroy(this)
    class(Pade6stagg), intent(inout) :: this
   
    if (this%isPeriodic) then
-      if (this%scheme == cd06 .OR. this%scheme == fd02) then
+      if (this%scheme == cd06) then
          Call this%derPeriodic%destroy()
          Deallocate(this%derPeriodic)
+      else if (this%scheme == fd02) then
+         call this%fd02_periodic%destroy()
       else if (this%scheme == fourierColl) then
          nullify(this%spectC)
       end if
@@ -984,10 +986,10 @@ subroutine interpz_C2E_cmplx(this,input,output,bot,top)
                call this%fd02_nn%interpZ_Cell2Edge(input,output,zeroC,zeroC)
             elseif (top ==  0) then
                call this%fd02_nn%interpZ_Cell2Edge(input,output,zeroC,zeroC)
-               output(:,:,this%gp%zsz(3)+1) = two*input(:,:,this%gp%zsz(3)) - output(:,:,this%gp%zsz(3))
+               output(:,:,this%sp_gp%zsz(3)+1) = two*input(:,:,this%sp_gp%zsz(3)) - output(:,:,this%sp_gp%zsz(3))
             elseif (top ==  1) then
                call this%fd02_nn%interpZ_Cell2Edge(input,output,zeroC,zeroC)
-               output(:,:,this%gp%zsz(3)+1) = input(:,:,this%gp%zsz(3)) 
+               output(:,:,this%sp_gp%zsz(3)+1) = input(:,:,this%sp_gp%zsz(3)) 
             end if
          case(0)  ! bottom = sided
             if     (top == -1) then
@@ -996,11 +998,11 @@ subroutine interpz_C2E_cmplx(this,input,output,bot,top)
             elseif (top ==  0) then
                call this%fd02_nn%interpZ_Cell2Edge(input,output,zeroC,zeroC)
                output(:,:,1) = two*input(:,:,1) - output(:,:,2)
-               output(:,:,this%gp%zsz(3)+1) = two*input(:,:,this%gp%zsz(3)) - output(:,:,this%gp%zsz(3))
+               output(:,:,this%sp_gp%zsz(3)+1) = two*input(:,:,this%sp_gp%zsz(3)) - output(:,:,this%sp_gp%zsz(3))
             elseif (top ==  1) then
                call this%fd02_nn%interpZ_Cell2Edge(input,output,zeroC,zeroC)
                output(:,:,1) = two*input(:,:,1) - output(:,:,2)
-               output(:,:,this%gp%zsz(3)+1) = input(:,:,this%gp%zsz(3)) 
+               output(:,:,this%sp_gp%zsz(3)+1) = input(:,:,this%sp_gp%zsz(3)) 
             end if
          case(1)  ! bottom = even
             if     (top == -1) then
@@ -1009,11 +1011,11 @@ subroutine interpz_C2E_cmplx(this,input,output,bot,top)
             elseif (top ==  0) then
                call this%fd02_nn%interpZ_Cell2Edge(input,output,zeroC,zeroC)
                output(:,:,1) = input(:,:,1) 
-               output(:,:,this%gp%zsz(3)+1) = two*input(:,:,this%gp%zsz(3)) - output(:,:,this%gp%zsz(3))
+               output(:,:,this%sp_gp%zsz(3)+1) = two*input(:,:,this%sp_gp%zsz(3)) - output(:,:,this%sp_gp%zsz(3))
             elseif (top ==  1) then
                call this%fd02_nn%interpZ_Cell2Edge(input,output,zeroC,zeroC)
                output(:,:,1) = input(:,:,1) 
-               output(:,:,this%gp%zsz(3)+1) = input(:,:,this%gp%zsz(3)) 
+               output(:,:,this%sp_gp%zsz(3)+1) = input(:,:,this%sp_gp%zsz(3)) 
             end if
          end select
       case (cd06)
