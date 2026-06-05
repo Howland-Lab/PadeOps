@@ -176,7 +176,7 @@ subroutine init(this, inputFile, gpC, gpE, spectC, spectE, cbuffyC, cbuffYE, cbu
     real(rkind), intent(in) :: dx, dy, dz
     logical :: useWindTurbines = .TRUE., useDynamicYaw = .FALSE., useDynamicTurbine = .FALSE. 
     real(rkind) :: xyzPads(6)
-    logical :: ADM = .TRUE., WriteTurbineForce  ! .FALSE. implies ALM
+    logical :: ADM = .TRUE., WriteTurbineForce=.FALSE.  ! .FALSE. implies ALM
     ! Dynamic yaw stuff
     character(len=clen) :: inputDirDyaw = "/home1/05294/mhowland/dynamicYawFiles/dynamicYaw.inp"
     real(rkind), dimension(:), allocatable :: xLoc, yLoc
