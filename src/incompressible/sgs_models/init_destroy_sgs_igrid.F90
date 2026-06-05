@@ -52,7 +52,7 @@ subroutine init(this, gpC, gpE, spectC, spectE, dx, dy, dz, inputfile, zMeshE, z
   character(len=*), intent(in) :: inputfile
   real(rkind), dimension(:), intent(in) :: zMeshE, zMeshC
   real(rkind), dimension(:,:,:), intent(in), target :: fBody_x, fBody_y, fBody_z
-  logical, intent(out) :: computeFbody
+  logical, intent(inout) :: computeFbody
   real(rkind), dimension(:,:,:,:), intent(in), target :: rbuffxC, rbuffyE, rbuffzE, rbuffyC, rbuffzC
   complex(rkind), dimension(:,:,:,:), intent(in), target :: cbuffyC, cbuffzC, cbuffyE, cbuffzE
   type(Pade6stagg), target, intent(in) :: PadeDer
