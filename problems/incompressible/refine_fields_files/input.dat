@@ -1,0 +1,24 @@
+$INPUT
+inputdir         = "/mnt/lustre/a2fs-work3/work/e773/e773/pounds/PadeOpsSims/INV800-5K"
+outputdir        = "/mnt/lustre/a2fs-work3/work/e773/e773/pounds/PadeOpsSims/INV800-5K"
+nx               = 1200                   ! Number of points in X
+ny               = 500                    ! Number of points in Y
+nz               = 800                    ! Number of points in Z
+Lx               = 761.904761904D0        ! Domain Length (appropriate dimesnions/non-dimensionalized)
+Ly               = 158.7301587D0          ! Domain Width  (appropriate dimesnions/non-dimensionalized)
+Lz               = 63.49206349D0          ! Domain Height (appropriate dimesnions/non-dimensionalized)
+prow             = 0                      ! Number of rows in 2D processor decomposition (set 0 for auto-tuning)
+pcol             = 0                      ! Number of rows in 2D processor decomposition (set 0 for auto-tuning)
+refine_x         = 2
+refine_y         = 2
+refine_z         = 1
+inputFile_TID    = ---
+inputFile_RID    = 4
+outputFile_TID   = ---
+outputFile_RID   = 6
+isStratified     = .TRUE.
+botWall          = 3                      ! no_slip = 1, slip = 2, wall model = 3 
+topWall          = 2                      ! no_slip = 1, slip = 2, wall model = 3
+botBC_Temp       = 0                      ! 0: Dirichlet (could be time dependent),  1: Homog. Neumann (no-flux)
+topBC_Temp       = 0
+/
