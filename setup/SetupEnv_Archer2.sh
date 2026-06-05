@@ -28,8 +28,7 @@ export FFTPACK_PATH="${CWD}/dependencies/fftpack"
 export DECOMP_PATH="${CWD}/dependencies/2decomp_fft"
 # export VTK_IO_PATH="${CWD}/dependencies/Lib_VTK_IO/build"
 
-export CMAKE_PREFIX_PATH="${HDF5_PATH}:${FFTW_PATH}:${CMAKE_PREFIX_PATH}"
-
+export CMAKE_PREFIX_PATH="${HDF5_PATH}:${FFTW_PATH}${CMAKE_PREFIX_PATH:+:${CMAKE_PREFIX_PATH}}"
 export MPICH_OFI_STARTUP_CONNECT=1  
 
 # --- Architecture flags ---

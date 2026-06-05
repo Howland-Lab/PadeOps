@@ -26,22 +26,20 @@ elseif( CMAKE_Fortran_COMPILER_ID MATCHES "Cray" )
    target_link_libraries(PadeOps fftw3 2decomp_fft ${HDF5_LIBRARY_PATH}/libhdf5hl_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5_hl.a ${HDF5_LIBRARY_PATH}/libhdf5_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5.a ${MPI_LIBRARIES} m z dl)
 elseif( CMAKE_Fortran_COMPILER_ID MATCHES "AOCC|AMD" )
    target_link_libraries(PadeOps fftw3 2decomp_fft ${HDF5_LIBRARY_PATH}/libhdf5hl_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5_hl.a ${HDF5_LIBRARY_PATH}/libhdf5_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5.a ${MPI_LIBRARIES} m z dl)
+elseif( CMAKE_Fortran_COMPILER_ID MATCHES "GNU" )
+   target_link_libraries(PadeOps
+      fftw3
+      2decomp_fft
+      $ENV{CRAY_LIBSCI_PREFIX_DIR}/lib/libsci_gnu_mpi.so
+      ${HDF5_LIBRARY_PATH}/libhdf5hl_fortran_parallel_gnu_91.so
+      ${HDF5_LIBRARY_PATH}/libhdf5_hl_parallel_gnu_91.so
+      ${HDF5_LIBRARY_PATH}/libhdf5_fortran_parallel_gnu_91.so
+      ${HDF5_LIBRARY_PATH}/libhdf5_parallel_gnu_91.so
+      -lz -ldl -lm -Wl,-rpath -Wl,${HDF5_LIBRARY_PATH}
+   )
 else()
    # Replace $ENV{CRAY_LIBSCI_PREFIX_DIR}/lib/libsci_gnu.a with local library if needed
    target_link_libraries(PadeOps fftw3 2decomp_fft $ENV{CRAY_LIBSCI_PREFIX_DIR}/lib/libsci_gnu.a  ${HDF5_LIBRARY_PATH}/libhdf5hl_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5_hl.a ${HDF5_LIBRARY_PATH}/libhdf5_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5.a ${MPI_LIBRARIES} -lz -ldl -lm -Wl,-rpath -Wl,${HDF5_LIBRARY_PATH})
-endif()
-
-if ( CMAKE_Fortran_COMPILER_ID MATCHES "Intel" )
-   target_link_libraries(PadeOps fftw3 2decomp_fft  ${MPI_LIBRARIES})
-elseif ( CMAKE_Fortran_COMPILER_ID MATCHES "GNU")
-   # Replace $ENV{CRAY_LIBSCI_PREFIX_DIR}/lib/libsci_gnu.a with local library if needed
-   target_link_libraries(PadeOps fftw3 2decomp_fft $ENV{CRAY_LIBSCI_PREFIX_DIR}/lib/libsci_gnu.a  ${MPI_LIBRARIES})
-elseif ( CMAKE_Fortran_COMPILER_ID MATCHES "Cray")
-   target_link_libraries(PadeOps fftw3 2decomp_fft $ENV{CRAY_LIBSCI_PREFIX_DIR}/lib/libsci_cray.a ${MPI_LIBRARIES})
-elseif ( CMAKE_Fortran_COMPILER_ID MATCHES "GNU_OSX")
-   target_link_libraries(PadeOps fftw3 2decomp_fft blas lapack  ${MPI_LIBRARIES})
-elseif ( CMAKE_Fortran_COMPILER_ID MATCHES "AOCC|AMD")
-   target_link_libraries(PadeOps fftw3 2decomp_fft ${MPI_LIBRARIES})
 endif()
    
 if (MPI_Fortran_COMPILER_FLAGS)
