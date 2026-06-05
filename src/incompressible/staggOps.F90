@@ -70,7 +70,7 @@ contains
         real(rkind) :: OneByDz
 
         OneByDz = one/this%dz
-        dfdzC(:,:,1:this%nzC) = fE(:,:,2:this%nzE) - fE(:,:,1:this%nzE-1)
+        dfdzC(:,:,1:this%nzC_cmplx) = fE(:,:,2:this%nzE_cmplx) - fE(:,:,1:this%nzE_cmplx-1)
         dfdzC = OneByDz*dfdzC
 
     end subroutine
@@ -114,11 +114,11 @@ contains
         logical, intent(in) :: isTopEven, isBotEven
 
         OneByDz = one/(this%dz)
-        dfdzE(:,:,2:this%nzE-1) =  fC(:,:,2:this%nzC) - fC(:,:,1:this%nzC-1) 
+        dfdzE(:,:,2:this%nzE_cmplx-1) =  fC(:,:,2:this%nzC_cmplx) - fC(:,:,1:this%nzC_cmplx-1) 
 
         if(this%isPeriodic) then
-           dfdzE(:,:,1) = fC(:,:,1) - fC(:,:,this%nzC)
-           dfdzE(:,:,this%nzE) = dfdzE(:,:,1)
+           dfdzE(:,:,1) = fC(:,:,1) - fC(:,:,this%nzC_cmplx)
+           dfdzE(:,:,this%nzE_cmplx) = dfdzE(:,:,1)
         else
                 if (isBotEven) then
                     dfdzE(:,:,1) = zero
@@ -127,9 +127,9 @@ contains
                 end if
 
                 if (isTopEven) then
-                    dfdzE(:,:,this%nzE) = zero
+                    dfdzE(:,:,this%nzE_cmplx) = zero
                 else 
-                    dfdzE(:,:,this%nzE) = -two*fC(:,:,this%nzC)
+                    dfdzE(:,:,this%nzE_cmplx) = -two*fC(:,:,this%nzC_cmplx)
                 end if
         end if
 
@@ -141,31 +141,6 @@ contains
         class(staggOps), intent(in) :: this
         real(rkind), dimension(this%nxC,this%nyC,this%nzC), intent(in) :: fC
         real(rkind), dimension(this%nxC,this%nyC,this%nzC), intent(out):: dfdzC
-        real(rkind) :: OneBy2Dz
-        logical, intent(in) :: isTopEven, isBotEven
-
-        OneBy2Dz = one/(two*this%dz)
-        dfdzC(:,:,2:this%nzC-1) =  fC(:,:,3:this%nzC) - fC(:,:,1:this%nzC-2) 
-        dfdzC(:,:,2:this%nzC-1) = OneBy2Dz*dfdzC(:,:,2:this%nzC-1)
-
-        if (isBotEven) then
-            dfdzC(:,:,1) = OneBy2Dz*(fC(:,:,2) - fC(:,:,1))
-        else 
-            dfdzC(:,:,1) = OneBy2Dz*(fC(:,:,2) + fC(:,:,1))
-        end if
-
-        if (isTopEven) then
-            dfdzC(:,:,this%nzC) = OneBy2Dz*(fC(:,:,this%nzC) - fC(:,:,this%nzC-1))
-        else 
-            dfdzC(:,:,this%nzC) = -OneBy2Dz*(fC(:,:,this%nzC) + fC(:,:,this%nzC-1))
-        end if
-
-    end subroutine
-  
-    pure subroutine ddz_C2C_cmplx(this,fC,dfdzC, isTopEven, isBotEven)
-        class(staggOps), intent(in) :: this
-        complex(rkind), dimension(this%nxC_cmplx,this%nyC_cmplx,this%nzC_cmplx), intent(in) :: fC
-        complex(rkind), dimension(this%nxC_cmplx,this%nyC_cmplx,this%nzC_cmplx), intent(out):: dfdzC
         real(rkind) :: OneBy2Dz
         logical, intent(in) :: isTopEven, isBotEven
 
@@ -197,6 +172,42 @@ contains
         end if 
 
     end subroutine
+  
+    pure subroutine ddz_C2C_cmplx(this,fC,dfdzC, isTopEven, isBotEven)
+        class(staggOps), intent(in) :: this
+        complex(rkind), dimension(this%nxC_cmplx,this%nyC_cmplx,this%nzC_cmplx), intent(in) :: fC
+        complex(rkind), dimension(this%nxC_cmplx,this%nyC_cmplx,this%nzC_cmplx), intent(out):: dfdzC
+        real(rkind) :: OneBy2Dz
+        logical, intent(in) :: isTopEven, isBotEven
+
+        OneBy2Dz = one/(two*this%dz)
+        dfdzC(:,:,2:this%nzC_cmplx-1) =  fC(:,:,3:this%nzC_cmplx) - fC(:,:,1:this%nzC_cmplx-2) 
+        dfdzC(:,:,2:this%nzC_cmplx-1) = OneBy2Dz*dfdzC(:,:,2:this%nzC_cmplx-1)
+
+        if (this%isBotSided) then
+            dfdzC(:,:,1) = (-half*fC(:,:,3) + two*fC(:,:,2) - three/two*fC(:,:,1))/this%dz 
+            !dfdzC(:,:,1) = (fC(:,:,2) - fC(:,:,1))/this%dz 
+        else
+            if (isBotEven) then
+                dfdzC(:,:,1) = OneBy2Dz*(fC(:,:,2) - fC(:,:,1))
+            else 
+                dfdzC(:,:,1) = OneBy2Dz*(fC(:,:,2) + fC(:,:,1))
+            end if
+        end if 
+
+        if (this%isTopSided) then
+            dfdzC(:,:,this%nzC_cmplx) = (half*fC(:,:,this%nzC_cmplx-2) - two*fC(:,:,this%nzC_cmplx-1) &
+                        + three/two*fC(:,:,this%nzC_cmplx))/this%dz 
+            !dfdzC(:,:,this%nzC_cmplx) = (fC(:,:,this%nzC_cmplx) - fC(:,:,this%nzC_cmplx-1))/this%dz 
+        else
+            if (isTopEven) then
+                dfdzC(:,:,this%nzC_cmplx) = OneBy2Dz*(fC(:,:,this%nzC_cmplx) - fC(:,:,this%nzC_cmplx-1))
+            else 
+                dfdzC(:,:,this%nzC_cmplx) = -OneBy2Dz*(fC(:,:,this%nzC_cmplx) + fC(:,:,this%nzC_cmplx-1))
+            end if
+        end if 
+
+    end subroutine
 
 
     pure subroutine d2dz2_C2C_cmplx(this,fC,d2fdz2C, isTopEven, isBotEven)
@@ -207,11 +218,11 @@ contains
         logical, intent(in) :: isTopEven, isBotEven
 
         OneByDzSq = one/(this%dz**2)
-        d2fdz2C(:,:,2:this%nzC-1) =  fC(:,:,3:this%nzE) - two*fC(:,:,2:this%nzC-1) + fC(:,:,1:this%nzE-2) 
+        d2fdz2C(:,:,2:this%nzC_cmplx-1) =  fC(:,:,3:this%nzC_cmplx) - two*fC(:,:,2:this%nzC_cmplx-1) + fC(:,:,1:this%nzC_cmplx-2) 
         
         if (this%isPeriodic) then
-               d2fdz2C(:,:,1) = fC(:,:,2) - two*fC(:,:,1) + fc(:,:,this%nzC) 
-               d2fdz2C(:,:,this%nzC) = fC(:,:,1) - two*fC(:,:,this%nzC) + fc(:,:,this%nzC-1) 
+               d2fdz2C(:,:,1) = fC(:,:,2) - two*fC(:,:,1) + fc(:,:,this%nzC_cmplx) 
+               d2fdz2C(:,:,this%nzC_cmplx) = fC(:,:,1) - two*fC(:,:,this%nzC_cmplx) + fc(:,:,this%nzC_cmplx-1) 
         else
                 if (isBotEven) then
                     d2fdz2C(:,:,1) = fC(:,:,2) - fC(:,:,1)
@@ -220,9 +231,9 @@ contains
                 end if
 
                 if (isTopEven) then
-                    d2fdz2C(:,:,this%nzC) = fC(:,:,this%nzC-1) - fC(:,:,this%nzC)
+                    d2fdz2C(:,:,this%nzC_cmplx) = fC(:,:,this%nzC_cmplx-1) - fC(:,:,this%nzC_cmplx)
                 else
-                    d2fdz2C(:,:,this%nzC) = fC(:,:,this%nzC-1) - three*fC(:,:,this%nzC)
+                    d2fdz2C(:,:,this%nzC_cmplx) = fC(:,:,this%nzC_cmplx-1) - three*fC(:,:,this%nzC_cmplx)
                 end if 
         end if
 
@@ -240,7 +251,7 @@ contains
         logical, intent(in) :: isTopEven, isBotEven
 
         OneByDzSq = one/(this%dz**2)
-        d2fdz2C(:,:,2:this%nzC-1) =  fC(:,:,3:this%nzE) - two*fC(:,:,2:this%nzC-1) + fC(:,:,1:this%nzE-2) 
+        d2fdz2C(:,:,2:this%nzC-1) =  fC(:,:,3:this%nzC) - two*fC(:,:,2:this%nzC-1) + fC(:,:,1:this%nzC-2) 
         
         if (this%isPeriodic) then
                d2fdz2C(:,:,1) = fC(:,:,2) - two*fC(:,:,1) + fc(:,:,this%nzC) 
@@ -271,11 +282,11 @@ contains
         logical, intent(in) :: isTopEven, isBotEven
 
         OneByDzSq = one/(this%dz**2)
-        d2fdz2E(:,:,2:this%nzE-1) =  fE(:,:,3:this%nzE) - two*fE(:,:,2:this%nzE-1) + fE(:,:,1:this%nzE-2) 
+        d2fdz2E(:,:,2:this%nzE_cmplx-1) =  fE(:,:,3:this%nzE_cmplx) - two*fE(:,:,2:this%nzE_cmplx-1) + fE(:,:,1:this%nzE_cmplx-2) 
         
         if (this%isPeriodic) then
-                d2fdz2E(:,:,1) =  fE(:,:,2) - two*fE(:,:,1) + fE(:,:,this%nzE-1) 
-                d2fdz2E(:,:,this%nzE) =  fE(:,:,2) - two*fE(:,:,this%nzE) + fE(:,:,this%nzE-1) 
+                d2fdz2E(:,:,1) =  fE(:,:,2) - two*fE(:,:,1) + fE(:,:,this%nzE_cmplx-1) 
+                d2fdz2E(:,:,this%nzE_cmplx) =  fE(:,:,2) - two*fE(:,:,this%nzE_cmplx) + fE(:,:,this%nzE_cmplx-1) 
         else
                 if (isBotEven) then
                     d2fdz2E(:,:,1) = two*(fE(:,:,2) - fE(:,:,1)) 
@@ -284,9 +295,9 @@ contains
                 end if
 
                 if (isTopEven) then
-                    d2fdz2E(:,:,this%nzE) = two*(fE(:,:,this%nzE-1) - fE(:,:,this%nzE))
+                    d2fdz2E(:,:,this%nzE_cmplx) = two*(fE(:,:,this%nzE_cmplx-1) - fE(:,:,this%nzE_cmplx))
                 else
-                    d2fdz2E(:,:,this%nzE) = zero  
+                    d2fdz2E(:,:,this%nzE_cmplx) = zero  
                 end if 
         end if
         
@@ -403,8 +414,8 @@ contains
         complex(rkind), intent(in), dimension(this%nxE_cmplx, this%nyE_cmplx, this%nzE_cmplx) :: edgeArr
         complex(rkind), intent(out), dimension(this%nxC_cmplx, this%nyC_cmplx, this%nzC_cmplx) :: cellArr
 
-        cellArr = edgeArr(1:this%nxC,1:this%nyC,1:this%nzC)
-        cellArr = cellArr + edgeArr(:,:,2:this%nzC+1)
+        cellArr = edgeArr(1:this%nxC_cmplx,1:this%nyC_cmplx,1:this%nzC_cmplx)
+        cellArr = cellArr + edgeArr(:,:,2:this%nzC_cmplx+1)
         cellArr = half*cellArr   
 
     end subroutine 
@@ -415,15 +426,15 @@ contains
         complex(rkind), intent(out), dimension(this%nxE_cmplx, this%nyE_cmplx, this%nzE_cmplx) :: edgeArr
         complex(rkind), intent(in) :: BotVal, TopVal
 
-        edgeArr(:,:,2:this%nzE-1) = cellArr(:,:,1:this%nzC-1) 
-        edgeArr(:,:,2:this%nzE-1) = edgeArr(:,:,2:this%nzE-1) + cellArr(:,:,2:this%nzC)
-        edgeArr(:,:,2:this%nzE-1) = half*edgeArr(:,:,2:this%nzE-1)
+        edgeArr(:,:,2:this%nzE_cmplx-1) = cellArr(:,:,1:this%nzC_cmplx-1) 
+        edgeArr(:,:,2:this%nzE_cmplx-1) = edgeArr(:,:,2:this%nzE_cmplx-1) + cellArr(:,:,2:this%nzC_cmplx)
+        edgeArr(:,:,2:this%nzE_cmplx-1) = half*edgeArr(:,:,2:this%nzE_cmplx-1)
         
         if (this%isPeriodic) then
-            edgeArr(:,:,1) = half*(cellArr(:,:,1) + cellArr(:,:,this%nzC)) 
-            edgeArr(:,:,this%nzE) = half*(cellArr(:,:,1) + cellArr(:,:,this%nzC)) 
+            edgeArr(:,:,1) = half*(cellArr(:,:,1) + cellArr(:,:,this%nzC_cmplx)) 
+            edgeArr(:,:,this%nzE_cmplx) = half*(cellArr(:,:,1) + cellArr(:,:,this%nzC_cmplx)) 
         else
-            edgeArr(:,:,this%nzE) = TopVal
+            edgeArr(:,:,this%nzE_cmplx) = TopVal
             edgeArr(:,:,1       ) = BotVal
         end if 
     end subroutine
