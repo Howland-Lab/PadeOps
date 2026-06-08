@@ -13,8 +13,7 @@ program HIT_AD_interact
     use constants, only: one, zero
     use HIT_AD_interact_parameters, only: simulationID, InflowProfileType, InflowProfileAmplit, InflowProfileThick
     use fof_mod, only: fof
-    use budgets_time_avg_mod, only: budgets_time_avg  
-    use budgets_vol_avg_mod, only: budgets_vol_avg  
+    use budgets_time_avg_mod, only: budgets_time_avg    
     !use decomp_2d,                only: nrank
     implicit none
 
@@ -22,7 +21,7 @@ program HIT_AD_interact
     character(len=clen) :: inputfile, HIT_InputFile, AD_InputFile, fof_dir, filoutdir
     integer :: ierr, ioUnit
     type(budgets_time_avg) :: budg_tavg
-    type(budgets_vol_avg)  :: budg_vavg
+    type(budgets_time_avg)  :: budg_vavg
     real(rkind), dimension(:,:,:), allocatable :: utarget0, vtarget0, wtarget0
     real(rkind), dimension(:,:,:), allocatable :: utarget1, vtarget1, wtarget1
     real(rkind) :: dt1, dt2, dt, InflowSpeed = 1.d0

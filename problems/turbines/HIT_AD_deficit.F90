@@ -103,12 +103,12 @@ program HIT_deficit
     end if
 
     ! For anisotropic PRIMARY and EMPTY domains, we will need to declare an anisotropy factor in x
-    aniso_x = nint(adsim%dx / hit%dx)
-    if (abs((adsim%dx / hit%dx) - real(aniso_x)) > 1e-5) then
-        call GracefulExit("Anisotropy factor must be an integer >= 1.", 211)
-    else if (aniso_x .ne. 1) then
-        call message(0, "PRIMARY grid is anisotropic, using aniso_x factor", aniso_x)
-    end if
+    aniso_x = 1
+    ! if (abs((adsim%dx / hit%dx) - real(aniso_x)) > 1e-5) then
+    !    call GracefulExit("Anisotropy factor must be an integer >= 1.", 211)
+    ! else if (aniso_x .ne. 1) then
+    !    call message(0, "PRIMARY grid is anisotropic, using aniso_x factor", aniso_x)
+    !  end if
 
     call make_global_zaxis(adsim)  ! allocate the global-z axis variables
     nxfringe = min(nxadsim * aniso_x, nxhitsim)  ! determine domain range from HIT to use in fringe targets
@@ -139,12 +139,13 @@ program HIT_deficit
     allocate(vtarget0(adsim%gpC%xsz(1), adsim%gpC%xsz(2), adsim%gpC%xsz(3)))
     allocate(wtarget0(adsim%gpE%xsz(1), adsim%gpE%xsz(2), adsim%gpE%xsz(3)))
     if (adsim%isStratified) allocate(Ttarget0(adsim%gpC%xsz(1), adsim%gpC%xsz(2), adsim%gpC%xsz(3)))
-    call init_fringe_targets(AD_inputfile, adsim%mesh)  ! populates utarget0, vtarget0, wtarget0
-
+    
     ! allocate moving (turbulent) targets
     allocate(utarget(adsim%gpC%xsz(1), adsim%gpC%xsz(2), adsim%gpC%xsz(3)))
     allocate(vtarget(adsim%gpC%xsz(1), adsim%gpC%xsz(2), adsim%gpC%xsz(3)))
     allocate(wtarget(adsim%gpE%xsz(1), adsim%gpE%xsz(2), adsim%gpE%xsz(3)))
+    
+    call init_fringe_targets(AD_inputfile, adsim%mesh)  ! populates utarget0, vtarget0, wtarget0
 
     ! initialize turbulent fluctuations as zero
     utarget = utarget0
@@ -159,27 +160,27 @@ program HIT_deficit
         call message(0, "Setting double fringe targets")
         ! first fringe is re-laminarization
         call adsim%fringe_x1%associateFringeTargets(utarget0, vtarget0, wtarget0, Ttarget0)
-        call adsim%fringe_x1%associateFringeTarget_scalar(Ttarget0)
+        if (adsim%isStratified) call adsim%fringe_x1%associateFringeTarget_scalar(Ttarget0)
         call emptysim%fringe_x1%associateFringeTargets(utarget0, vtarget0, wtarget0, Ttarget0)
-        call emptysim%fringe_x1%associateFringeTarget_scalar(Ttarget0)
+        if (adsim%isStratified) call emptysim%fringe_x1%associateFringeTarget_scalar(Ttarget0)
 
         ! second fringe is turbulent
         call adsim%fringe_x2%associateFringeTargets(utarget, vtarget, wtarget, Ttarget0)
-        call adsim%fringe_x2%associateFringeTarget_scalar(Ttarget0)
+        if (adsim%isStratified) call adsim%fringe_x2%associateFringeTarget_scalar(Ttarget0)
         call emptysim%fringe_x2%associateFringeTargets(utarget, vtarget, wtarget, Ttarget0)
-        call emptysim%fringe_x2%associateFringeTarget_scalar(Ttarget0)
+        if (adsim%isStratified) call emptysim%fringe_x2%associateFringeTarget_scalar(Ttarget0)
     else
         call message(0, "Setting fringe targets")
         ! first (only) fringe is turbulent
         call adsim%fringe_x%associateFringeTargets(utarget, vtarget, wtarget, Ttarget0)
-        call adsim%fringe_x%associateFringeTarget_scalar(Ttarget0)
+        if (adsim%isStratified) call adsim%fringe_x%associateFringeTarget_scalar(Ttarget0)
         call emptysim%fringe_x%associateFringeTargets(utarget, vtarget, wtarget, Ttarget0)
-        call emptysim%fringe_x%associateFringeTarget_scalar(Ttarget0)
+        if (adsim%isStratified) call emptysim%fringe_x%associateFringeTarget_scalar(Ttarget0)
     end if
 
     ! phaseshift turbulent fringe targets using the laminar fringe targets
     if (control_TI) call update_TI_fact(emptysim, .true.)  ! update TI based on the EMPTY simulation
-    call do_phaseshifting() !hit, adsim, utarget, vtarget, wtarget)
+    call do_phaseshifting(utarget, vtarget, wtarget, utarget0, vtarget0)
 
     ! initialize budgets
     call budg_tavg%init(AD_Inputfile, adsim)               !<-- Budget class initialization
@@ -242,7 +243,7 @@ program HIT_deficit
 
         ! phaseshift turbulent fringe targets using the laminar fringe targets
         if (control_TI) call update_TI_fact(emptysim, .false.)
-        call do_phaseshifting()
+        call do_phaseshifting(utarget, vtarget, wtarget, utarget0, vtarget0)
 
         call doTemporalStuff(adsim, 1)
         call doTemporalStuff(emptysim, 0)
@@ -288,7 +289,9 @@ program HIT_deficit
 contains
 
 ! Do phase shifting here - program variables are still in scope
-    subroutine do_phaseshifting()
+    subroutine do_phaseshifting(utarget_arg, vtarget_arg, wtarget_arg, utarget0_arg, vtarget0_arg)
+        real(rkind), dimension(:,:,:), intent(inout) :: utarget_arg, vtarget_arg, wtarget_arg
+        real(rkind), dimension(:,:,:), intent(in) :: utarget0_arg, vtarget0_arg
         real(rkind), dimension(size(z_global,3)) :: x_shift_z, y_shift_z
         real(rkind) :: x_shift
         integer :: ad_st, hit_st, hit_en
@@ -316,9 +319,9 @@ contains
         ad_st = nxADSim - nxfringe / aniso_x + 1
         hit_st = nxhitsim - nxfringe + 1
         hit_en = nxhitsim
-        utarget(ad_st:nxADSim,:,:) = hit%rbuffxC(hit_st:hit_en:aniso_x,:,:,1)*TI_fact + utarget0(ad_st:nxADSim,:,:)
-        vtarget(ad_st:nxADSim,:,:) = hit%rbuffxC(hit_st:hit_en:aniso_x,:,:,2)*TI_fact + vtarget0(ad_st:nxADSim,:,:)
-        wtarget(ad_st:nxADSim,:,:) = hit%rbuffxE(hit_st:hit_en:aniso_x,:,:,1)*TI_fact
+        utarget_arg(ad_st:nxADSim,:,:) = hit%rbuffxC(hit_st:hit_en:aniso_x,:,:,1)*TI_fact + utarget0_arg(ad_st:nxADSim,:,:)
+        vtarget_arg(ad_st:nxADSim,:,:) = hit%rbuffxC(hit_st:hit_en:aniso_x,:,:,2)*TI_fact + vtarget0_arg(ad_st:nxADSim,:,:)
+        wtarget_arg(ad_st:nxADSim,:,:) = hit%rbuffxE(hit_st:hit_en:aniso_x,:,:,1)*TI_fact
     end subroutine
 
     ! Update TI gain
@@ -366,7 +369,7 @@ contains
             continue  !!! do not update the controller anymore !!! (but still print debug messages)
         else
             error = TI_target - TI_inst
-            integral_err = integral_err + (error * sim.dt / KIinv_TI)
+            integral_err = integral_err + (error * sim%dt / KIinv_TI)
             TI_fact = max(zero, Kp_TI * error + integral_err)
         end if
 
