@@ -111,10 +111,13 @@ module budgets_time_avg_deficit_compact_mod
         this%tidx_compute = tidx_compute
         this%tidx_budget_start = tidx_budget_start  
         this%time_budget_start = time_budget_start  
+        ! Turbine-force budget terms are intentionally disabled in this compact
+        ! module. Re-enable this assignment together with terms 20-21 in Budget 3.
         !this%useWindTurbines = this%prim_igrid_sim%useWindTurbines
         this%isStratified    = this%prim_igrid_sim%isStratified
         this%useCoriolis    = this%prim_igrid_sim%useCoriolis
-        ! Deactivate time-weighted sum till time-averaged budgets are weighted similarily
+        ! Time weighting is intentionally disabled until the precursor and
+        ! compact-deficit accumulators use the same weighting convention.
         !this%time_weighted_average = use_time_weighted_average
         this%time_weighted_average = .False.
         this%forceDump = .false.
@@ -258,6 +261,8 @@ module budgets_time_avg_deficit_compact_mod
         call this%prim_igrid_sim%sgsmodel%populate_tauij_E_to_C()
         this%delta_tauij = this%prim_igrid_sim%tauSGS_ij - this%pre_budget%igrid_sim%tauSGS_ij
 
+        ! All arrays remain in raw-sum mode between dumps. Assemble lower-order
+        ! moments before higher-order moments so they cover identical samples.
         if(this%doMCG) call this%AssembleMCG()
         if(this%do_budget0) call this%AssembleBudget0()
         if(this%do_budget1) call this%AssembleBudget1()
@@ -281,7 +286,10 @@ module budgets_time_avg_deficit_compact_mod
         ! Buffers 1 and 2 are used locally inside getProductOfMeans
         buffer => this%prim_igrid_sim%rbuffxC(:,:,:,4)
 
-        ! Convert assembled budgets to mean instead of sum
+        ! Temporarily convert raw sums to means. getProductOfMeans assumes every
+        ! compact and precursor field used below is in mean mode.
+        ! The precursor counter is private, so matching sample counts are a
+        ! required configuration invariant.
         if(this%do_budget0) this%budget_0 = this%budget_0/totalWeight
         if(this%do_budget1) this%budget_1 = this%budget_1/totalWeight
         if(this%do_budget2) this%budget_2 = this%budget_2/totalWeight
@@ -347,7 +355,8 @@ module budgets_time_avg_deficit_compact_mod
                         end if
                     end if
 
-                    ! Get the product of means. buffer is dealiased inside getProductOfMeans
+                    ! Convert raw moments to fluctuation moments only in the
+                    ! output buffer; keep the stored arrays as raw moments.
                     call this%getProductOfMeans(budgetid, idx, buffer)
 
                     ! Remove product of means. The original budget is not impacted
@@ -359,7 +368,7 @@ module budgets_time_avg_deficit_compact_mod
             end if
         end do
 
-        ! Return to summing
+        ! Restore raw-sum mode so future samples can be accumulated directly.
         if(this%do_budget0) this%budget_0 = this%budget_0*totalWeight
         if(this%do_budget1) this%budget_1 = this%budget_1*totalWeight
         if(this%do_budget2) this%budget_2 = this%budget_2*totalWeight
@@ -372,6 +381,9 @@ module budgets_time_avg_deficit_compact_mod
     ! ---------------------- Mean Cell Gradients (MCG) ------------------------
     subroutine AssembleMCG(this)
         class(budgets_time_avg_deficit_compact), intent(inout) :: this  
+        ! Components 1:9 are grad(delta u), ordered
+        ! (du/dx,du/dy,du/dz,dv/dx,...,dw/dz). Components 10:18 use
+        ! the same ordering for the precursor velocity.
         this%MCG(:,:,:,1:9) = this%MCG(:,:,:,1:9) + this%prim_igrid_sim%duidxjC(:,:,:,1:9) - this%pre_budget%igrid_sim%duidxjC(:,:,:,1:9)
         this%MCG(:,:,:,10:18) = this%MCG(:,:,:,10:18) + this%pre_budget%igrid_sim%duidxjC(:,:,:,1:9)
     end subroutine    
@@ -887,6 +899,10 @@ module budgets_time_avg_deficit_compact_mod
         bf2 => this%prim_igrid_sim%rbuffxC(:,:,:,2)
         buffer = 0.d0
 
+        ! Return the complete mean-field correction to subtract from the raw
+        ! moment. For triple moments this groups the three negative pair/mean
+        ! products and the -2*mean(a)*mean(b)*mean(c) quantity; subtracting
+        ! buffer therefore produces the required +2 triple-mean contribution.
         if(budgetid.eq.1)then
             select case(idx)
             case(1)
@@ -1300,13 +1316,14 @@ module budgets_time_avg_deficit_compact_mod
         this%counter = cid     
         totalWeight = real(this%counter,rkind) + 1.d-18
 
-        ! I assume here that this%pre_budget%budget_0 and 
-        ! this%pre_budget%budget_1 are already restarted 
-        ! and are in summing mode
+        ! The precursor budget must already be restarted and in raw-sum mode,
+        ! with the same historical sample count as this compact budget.
         this%pre_budget%budget_0 = this%pre_budget%budget_0/totalWeight
         this%pre_budget%budget_1 = this%pre_budget%budget_1/totalWeight
 
-        ! Budget 0 
+        ! Restart files contain means/fluctuation moments. Keep all fields in
+        ! mean mode while rebuilding the raw moments used for accumulation.
+        ! Budget 0
         if(this%do_budget0)then
             do idx = 1, this%size_budget_0
                 if((idx.eq.15).or.(idx.eq.16))then
@@ -1319,6 +1336,10 @@ module budgets_time_avg_deficit_compact_mod
                 call this%restart_budget_field(this%budget_0(:,:,:,idx), dir, rid, tid, cid, 0, idx)
             end do
         end if
+
+        ! MCG is not written to file. Reconstruct its mean values before
+        ! restoring Budget 2 or 3, whose corrections depend on these gradients.
+        if(this%doMCG) call this%restartMCG()
 
         ! Budget 1
         if(this%do_budget1)then
@@ -1351,19 +1372,16 @@ module budgets_time_avg_deficit_compact_mod
             end do
         end if
 
-        ! Return to summing
+        ! Convert every reconstructed raw mean back to its historical sum.
+        ! restartMCG produced mean gradients above, so MCG needs the same
+        ! multiplication as the stored budget arrays.
         if(this%do_budget0) this%budget_0 = this%budget_0*totalWeight
         if(this%do_budget1) this%budget_1 = this%budget_1*totalWeight
         if(this%do_budget2) this%budget_2 = this%budget_2*totalWeight
         if(this%do_budget3) this%budget_3 = this%budget_3*totalWeight
+        if(this%doMCG) this%MCG = this%MCG*totalWeight
         this%pre_budget%budget_0 = this%pre_budget%budget_0*totalWeight
         this%pre_budget%budget_1 = this%pre_budget%budget_1*totalWeight
-
-        ! To save time and storage, MCG were not written to file.
-        ! We restart MCG by numerically differentiating the mean flow
-        ! MCG is automatically in the summing mode because we
-        ! differentiate budget 0 in the summing mode
-        if(this%doMCG) call this%restartMCG()
 
         nullify(buffer)         
     end subroutine
@@ -1393,6 +1411,8 @@ module budgets_time_avg_deficit_compact_mod
         dwdy_pre => this%MCG(:,:,:,17)
         dwdz_pre => this%MCG(:,:,:,18)
 
+        ! Inputs must be in mean mode. The resulting MCG fields are mean
+        ! gradients and are converted to raw sums by RestartBudget afterward.
         call this%ddx_R2R(this%budget_0(:,:,:,1), dudx_def)
         call this%ddy_R2R(this%budget_0(:,:,:,1), dudy_def)
         call this%ddz_R2R(this%budget_0(:,:,:,1), dudz_def, uBC_bottom, uBC_top)
