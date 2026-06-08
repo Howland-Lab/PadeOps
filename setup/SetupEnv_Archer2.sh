@@ -7,6 +7,7 @@ module load PrgEnv-gnu
 module load craype-x86-rome
 module load cray-libsci
 module load cray-fftw
+module load cmake
 module load cray-hdf5-parallel
 module list
 
@@ -29,7 +30,8 @@ export DECOMP_PATH="${CWD}/dependencies/2decomp_fft"
 # export VTK_IO_PATH="${CWD}/dependencies/Lib_VTK_IO/build"
 
 export CMAKE_PREFIX_PATH="${HDF5_PATH}:${FFTW_PATH}${CMAKE_PREFIX_PATH:+:${CMAKE_PREFIX_PATH}}"
-export MPICH_OFI_STARTUP_CONNECT=1  
 
 # --- Architecture flags ---
-export ARCH_OPT_FLAG=""
+export ARCH_OPT_FLAG="-march=native"
+
+export OMP_NUM_THREADS=1

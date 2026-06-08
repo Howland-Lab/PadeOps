@@ -68,17 +68,12 @@ elseif ( CMAKE_Fortran_COMPILER_ID MATCHES "GNU_OSX")
 elseif ( CMAKE_Fortran_COMPILER_ID MATCHES "GNU")
     if ( CMAKE_BUILD_TYPE MATCHES "Release" )
         if ($ENV{ARCH_OPT_FLAG})
-            # set(OPTFLAG "-march=native")
             set(OPTFLAG $ENV{ARCH_OPT_FLAG})
         else()
-            set(OPTFLAG $ENV{ARCH_OPT_FLAG})
+            set(OPTFLAG "-march=native")
         endif()
-        set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -Wall -Wconversion -Wsurprising -Wextra -Waliasing \
-            -ffree-form -ffree-line-length-none -ffast-math ${OPTFLAG} \
-            -fopenmp -fallow-argument-mismatch \
-            -finit-local-zero \
-            ")
-        #  -finit-integer=0 -finit-real=zero -finit-local-zero -finit-derived 
+        #set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -O3 -Wall -Wconversion -Wextra -Waliasing -ffree-form -ffree-line-length-none -ffast-math ${OPTFLAG} -funroll-loops -fno-protect-parens -fopenmp -fallow-argument-mismatch -finit-integer=0 -finit-real=zero")
+        set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -O3 -Wall -Wconversion -Wextra -Waliasing -ffree-form -ffree-line-length-none ${OPTFLAG} -funroll-loops -fopenmp -fallow-argument-mismatch -finit-integer=0 -finit-real=zero")
     elseif ( CMAKE_BUILD_TYPE MATCHES "Debug" )
         set(CMAKE_Fortran_FLAGS "-Og -g -fbacktrace -pg -ffree-form -ffree-line-length-none -fcheck=all -fbounds-check -ffpe-trap=zero,overflow -Wall -Wconversion -Wextra -Waliasing -Wsurprising")
     endif()
