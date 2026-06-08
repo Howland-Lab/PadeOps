@@ -338,6 +338,7 @@ contains
 
 
     subroutine init(this, gpC, gpE, stagg_scheme , dx, dy, dz, gpCspect, gpEspect, isTopSided, isBotSided, isPeriodic)
+        use exits, only: GracefulExit
         class(staggOps), intent(inout) :: this
         class(decomp_info), intent(in), target:: gpC, gpE
         integer, intent(in) :: stagg_scheme
@@ -358,6 +359,12 @@ contains
         this%nxE = gpE%zsz(1) 
         this%nyE = gpE%zsz(2) 
         this%nzE = gpE%zsz(3)
+        if (this%nzC < 3) then
+            call GracefulExit("Staggered z operators require at least three cell-centered planes.", 123)
+        end if
+        if (this%nzE /= this%nzC + 1) then
+            call GracefulExit("Staggered z descriptors require nzE = nzC + 1.", 123)
+        end if
         
         this%nxC_cmplx = 0 
         this%nyC_cmplx = 0 

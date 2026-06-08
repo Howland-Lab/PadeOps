@@ -73,10 +73,17 @@ subroutine init(this, inputfile, sp_gpC, sp_gpE, spectC, cbuffyE, cbuffyC, cbuff
    this%DomAspectRatioZ = spectC%nz_g / nxmin
 
    this%A_force = A_force
+   if (useLinearForcing .and. abs(A_force) <= tiny(one)) then
+      call GracefulExit("HIT linear-forcing amplitude A_force must be nonzero.", 111)
+   end if
    this%kmin = kmin
    this%kmax = kmax
    this%EpsAmplitude = EpsAmplitude
    this%Nwaves = Nwaves
+   this%alpha_t = alpha_t
+   if ((this%alpha_t < zero) .or. (this%alpha_t > one)) then
+      call GracefulExit("HIT forcing alpha_t must lie in [0,1].", 111)
+   end if
    
    this%sp_gpC => sp_gpC
    this%sp_gpE => sp_gpE
@@ -155,13 +162,21 @@ end subroutine
 subroutine destroy(this)
    class(HIT_shell_forcing), intent(inout) :: this
 
-   deallocate(this%uhat, this%vhat, this%what)
-   nullify(this%fxhat, this%fyhat, this%fzhat, this%cbuffzE)
-   if (nrank == 0) then
-      deallocate(this%kabs_sample, this%theta_sample, this%zeta_sample)
-   end if
-   deallocate(this%wave_x, this%wave_y, this%wave_z)
-   nullify(this%sp_gpC, this%spectC)
+   if (allocated(this%uhat)) deallocate(this%uhat)
+   if (allocated(this%vhat)) deallocate(this%vhat)
+   if (allocated(this%what)) deallocate(this%what)
+   if (allocated(this%fxhat_old)) deallocate(this%fxhat_old)
+   if (allocated(this%fyhat_old)) deallocate(this%fyhat_old)
+   if (allocated(this%fzhat_old)) deallocate(this%fzhat_old)
+   if (allocated(this%kabs_sample)) deallocate(this%kabs_sample)
+   if (allocated(this%theta_sample)) deallocate(this%theta_sample)
+   if (allocated(this%zeta_sample)) deallocate(this%zeta_sample)
+   if (allocated(this%tmpModes)) deallocate(this%tmpModes)
+   if (allocated(this%wave_x)) deallocate(this%wave_x)
+   if (allocated(this%wave_y)) deallocate(this%wave_y)
+   if (allocated(this%wave_z)) deallocate(this%wave_z)
+   nullify(this%fxhat, this%fyhat, this%fzhat, this%cbuffzE, this%cbuffyE, this%cbuffyC)
+   nullify(this%sp_gpC, this%sp_gpE, this%spectC)
 end subroutine 
 
 
@@ -232,6 +247,7 @@ subroutine embed_forcing_mode(this, kx, ky, kz)
    gid_x  = this%DomAspectRatioX*kx + 1
    gid_y  = this%DomAspectRatioY*ky + 1
    gid_z  = this%DomAspectRatioZ*kz + 1
+   if ((gid_z < 1) .or. (gid_z > this%sp_gpC%zsz(3))) return
 
    ! Get local ID of the mode and conjugate
    lid_x  = gid_x  - this%sp_gpC%zst(1) + 1
@@ -311,7 +327,10 @@ subroutine getRHS_HITforcing(this, urhs_xy, vrhs_xy, wrhs_xy, uhat_xy, vhat_xy, 
             this%fxhat_old = this%fxhat
             this%fyhat_old = this%fyhat
             this%fzhat_old = this%fzhat
-        end if 
+            ! Only the first generated forcing field bypasses temporal
+            ! blending; later timesteps retain the previous field.
+            this%firstCall = .false.
+        end if
 
         ! STEP 3b: Time filter
         this%fxhat = this%alpha_t*this%fxhat + (1.d0 - this%alpha_t)*this%fxhat_old

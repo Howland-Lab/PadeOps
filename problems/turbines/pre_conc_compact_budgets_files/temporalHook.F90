@@ -23,7 +23,7 @@ contains
         real(rkind) :: global_min, global_max, maxu
 
         if (mod(gp%step,nt_print2screen) == 0) then
-            maxDiv = maxval(gp%divergence)
+            maxDiv = maxval(abs(gp%divergence))
             DomMaxDiv = p_maxval(maxDiv)
             select case (simid)
             case (1)
@@ -40,7 +40,7 @@ contains
 
             global_min = p_minval(minval(gp%u))
             global_max = p_maxval(maxval(gp%u))
-            maxu = global_max
+            maxu = max(abs(global_min), abs(global_max))
             call message_min_max(1,"Bounds for u:", global_min, global_max)
 
             global_min = p_minval(minval(gp%v))
@@ -68,17 +68,26 @@ contains
             call message(0,"------------------------------------------")
             if (simid == 1) then
                 if (allocated(gp%scalars)) then
+                    if (size(gp%scalars) < 3) then
+                        call message(1, "Fewer than three passive scalars are allocated; printing available fields only.")
+                    end if
+                end if
+                if (allocated(gp%scalars)) then
+                    if (size(gp%scalars) >= 1) then
                     global_min = p_minval(minval(gp%scalars(1)%F))
                     global_max = p_maxval(maxval(gp%scalars(1)%F))
                     call message_min_max(1,"Bounds for SCALAR 1:", global_min, global_max)
-
+                    end if
+                    if (size(gp%scalars) >= 2) then
                     global_min = p_minval(minval(gp%scalars(2)%F))
                     global_max = p_maxval(maxval(gp%scalars(2)%F))
                     call message_min_max(1,"Bounds for SCALAR 2:", global_min, global_max)
-
+                    end if
+                    if (size(gp%scalars) >= 3) then
                     global_min = p_minval(minval(gp%scalars(3)%F))
                     global_max = p_maxval(maxval(gp%scalars(3)%F))
                     call message_min_max(1,"Bounds for SCALAR 3:", global_min, global_max)
+                    end if
                 end if
                 
                 if (maxu>4.) then
@@ -87,7 +96,7 @@ contains
                     call gp%dumpFullField(gp%v,"vVel")
                     call gp%dumpFullField(gp%wC,"wVel")
                     call gp%dumpFullField(gp%T, "potT")
-                    call gp%dumpFullField(gp%T, "prss")
+                    call gp%dumpFullField(gp%pressure, "prss")
                     call GracefulExit("u-velocity has blown up",1)
                 end if
             elseif (simid == 2) then

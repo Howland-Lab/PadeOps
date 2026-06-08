@@ -1,7 +1,18 @@
 subroutine destroyWallModel(this)
    class(sgs_igrid), intent(inout) :: this
-   deallocate(this%tauijWM, this%tauijWMhat_inZ, this%tauijWMhat_inY)
+   if (allocated(this%tauijWM)) deallocate(this%tauijWM)
+   if (allocated(this%tauijWMhat_inZ)) deallocate(this%tauijWMhat_inZ)
+   if (allocated(this%tauijWMhat_inY)) deallocate(this%tauijWMhat_inY)
    if (allocated(this%filteredSpeedSq)) deallocate(this%filteredSpeedSq)
+   if (allocated(this%usurf_filt)) deallocate(this%usurf_filt)
+   if (allocated(this%vsurf_filt)) deallocate(this%vsurf_filt)
+   if (allocated(this%Tmatch_filt)) deallocate(this%Tmatch_filt)
+   if (allocated(this%ustar_surf)) deallocate(this%ustar_surf)
+   if (allocated(this%wTheta_surf)) deallocate(this%wTheta_surf)
+   if (allocated(this%PsiM_surf)) deallocate(this%PsiM_surf)
+   if (allocated(this%Linv_surf)) deallocate(this%Linv_surf)
+   if (allocated(this%T_surf)) deallocate(this%T_surf)
+   if (allocated(this%q3HAT_AtWall)) deallocate(this%q3HAT_AtWall)
 end subroutine
 
 subroutine initWallModel(this, SurfaceFilterFact)
@@ -33,7 +44,10 @@ subroutine initWallModel(this, SurfaceFilterFact)
       allocate(this%PsiM_surf(this%gpC%zsz(1),this%gpC%zsz(2)))
       allocate(this%Linv_surf(this%gpC%zsz(1),this%gpC%zsz(2)))
       allocate(this%T_surf(this%gpC%zsz(1),this%gpC%zsz(2)))
-      allocate(this%filteredSpeedSq(this%gpC%xsz(1),this%gpC%xsz(2),this%gpC%xsz(3))) ! Howland: Added 1/25/21
+      ! Wall-model type 2 already owns this workspace.
+      if (.not. allocated(this%filteredSpeedSq)) then
+         allocate(this%filteredSpeedSq(this%gpC%xsz(1),this%gpC%xsz(2),this%gpC%xsz(3)))
+      end if
       call this%spectC%ResetSurfaceFilter(SurfaceFilterFact)
       call message(2,"Fully local wall model set up with a filter factor:", SurfaceFilterFact)
    end if 
@@ -92,12 +106,14 @@ subroutine computeWallStress(this, u, v, T, uhat, vhat, That)
            call transpose_y_to_z(cbuffy, cbuffz, this%sp_gpC)
            
            ! tau_13
-           this%tauijWMhat_inZ(:,:,1,1) = (this%WallMFactor*this%umn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex) 
+           this%tauijWMhat_inZ(:,:,1,1) = (this%WallMFactor*this%umn/(this%Uspmn + tiny(one))) * &
+                                          cbuffz(:,:,this%WM_matchingIndex)
            call transpose_z_to_y(this%tauijWMhat_inZ(:,:,:,1), this%tauijWMhat_inY(:,:,:,1), this%sp_gpE)
            call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,1), this%tauijWM(:,:,:,1))
            
            ! tau_23
-           this%tauijWMhat_inZ(:,:,1,2) = (this%WallMFactor*this%vmn/this%Uspmn) * cbuffz(:,:,this%WM_matchingIndex) 
+           this%tauijWMhat_inZ(:,:,1,2) = (this%WallMFactor*this%vmn/(this%Uspmn + tiny(one))) * &
+                                          cbuffz(:,:,this%WM_matchingIndex)
            call transpose_z_to_y(this%tauijWMhat_inZ(:,:,:,2), this%tauijWMhat_inY(:,:,:,2), this%sp_gpE)
            call this%spectE%ifft(this%tauijWMhat_inY(:,:,:,2), this%tauijWM(:,:,:,2))
         end select
@@ -172,12 +188,13 @@ subroutine getfilteredSpeedSqAtWall(this, uhatC, vhatC)
     rbuffx1 => this%filteredSpeedSq; rbuffx2 => this%rbuffxC(:,:,:,1)
 
     call transpose_y_to_z(uhatC,tauWallH,this%sp_gpC)
-    call this%spectC%SurfaceFilter_ip(tauWallH(:,:,1))
+    call this%spectC%SurfaceFilter_ip(tauWallH(:,:,this%WM_matchingIndex))
     call transpose_z_to_y(tauWallH,cbuffy, this%sp_gpC)
     call this%spectC%ifft(cbuffy,rbuffx1)
 
     call transpose_y_to_z(vhatC,tauWallH,this%sp_gpC)
-    call this%spectC%SurfaceFilter_ip(tauWallH(:,:,1))
+    ! Both horizontal components must be filtered on the same matching plane.
+    call this%spectC%SurfaceFilter_ip(tauWallH(:,:,this%WM_matchingIndex))
     call transpose_z_to_y(tauWallH,cbuffy, this%sp_gpC)
     call this%spectC%ifft(cbuffy,rbuffx2)
 
@@ -198,30 +215,30 @@ subroutine getfilteredMatchingVelocity(this, uhatC, vhatC, That)
     rbuffx1 => this%filteredSpeedSq; rbuffx2 => this%rbuffxC(:,:,:,1)
     
     call transpose_y_to_z(uhatC,tauWallH,this%sp_gpC)
-    call this%spectC%SurfaceFilter_ip(tauWallH(:,:,1))
+    call this%spectC%SurfaceFilter_ip(tauWallH(:,:,this%WM_matchingIndex))
     call transpose_z_to_y(tauWallH,cbuffy, this%sp_gpC)
     call this%spectC%ifft(cbuffy,rbuffx1)
     call transpose_x_to_y(rbuffx1,this%rbuffyC(:,:,:,1),this%gpC)
     call transpose_y_to_z(this%rbuffyC(:,:,:,1),this%rbuffzC(:,:,:,1), this%gpC)
-    this%usurf_filt = this%rbuffzC(:,:,1,1) 
+    this%usurf_filt = this%rbuffzC(:,:,this%WM_matchingIndex,1)
 
     call transpose_y_to_z(vhatC,tauWallH,this%sp_gpC)
-    call this%spectC%SurfaceFilter_ip(tauWallH(:,:,1))
+    call this%spectC%SurfaceFilter_ip(tauWallH(:,:,this%WM_matchingIndex))
     call transpose_z_to_y(tauWallH,cbuffy, this%sp_gpC)
     call this%spectC%ifft(cbuffy,rbuffx2)
     call transpose_x_to_y(rbuffx2,this%rbuffyC(:,:,:,1),this%gpC)
     call transpose_y_to_z(this%rbuffyC(:,:,:,1),this%rbuffzC(:,:,:,1), this%gpC)
-    this%vsurf_filt = this%rbuffzC(:,:,1,1) 
+    this%vsurf_filt = this%rbuffzC(:,:,this%WM_matchingIndex,1)
 
     if (this%isStratified) then
         ! Filter for temperature
         call transpose_y_to_z(That,tauWallH,this%sp_gpC)
-        call this%spectC%SurfaceFilter_ip(tauWallH(:,:,1))
+        call this%spectC%SurfaceFilter_ip(tauWallH(:,:,this%WM_matchingIndex))
         call transpose_z_to_y(tauWallH,cbuffy, this%sp_gpC)
         call this%spectC%ifft(cbuffy,rbuffx1)
         call transpose_x_to_y(rbuffx1,this%rbuffyC(:,:,:,1),this%gpC)
         call transpose_y_to_z(this%rbuffyC(:,:,:,1),this%rbuffzC(:,:,:,1), this%gpC)
-        this%Tmatch_filt = this%rbuffzC(:,:,1,1) 
+        this%Tmatch_filt = this%rbuffzC(:,:,this%WM_matchingIndex,1)
         
         ! No filter for temperature
         !call transpose_x_to_y(T,this%rbuffyC(:,:,:,1),this%gpC)
@@ -273,14 +290,29 @@ subroutine compute_local_wallmodel(this, ux, uy, Tmn, wTh_surf, ustar, Linv, Psi
     integer, parameter :: itermax = 100 
     integer :: idx
 
-    hwm = this%dz/two 
+    hwm = this%dz/two + (this%WM_matchingIndex - 1)*this%dz
+    if ((this%z0 <= zero) .or. (this%z0t <= zero) .or. (hwm <= this%z0) .or. &
+        (this%isStratified .and. hwm <= this%z0t)) then
+       call gracefulExit("Wall-model roughness lengths must be positive and below the matching height.", 324)
+    end if
+    u = sqrt(ux*ux + uy*uy)
+    if (u <= tiny(one)) then
+       ! The limiting wall stress and heat transfer are zero for calm flow.
+       wTh_surf = zero
+       ustar = zero
+       Linv = zero
+       PsiM = zero
+       T_surf = Tmn
+       this%T_surf_mean = T_surf
+       return
+    end if
     if (this%isStratified) then
       select case (this%botBC_Temp)
       case(0) ! Dirichlet BC for temperature 
           dTheta = this%Tsurf - Tmn; Linv = zero
           ustarDiff = one; wTh = zero
           a=log(hwm/this%z0); b=beta_h*hwm; c=beta_m*hwm
-          PsiM = zero; PsiH = zero; idx = 0; ustar = one; u = sqrt(ux*ux + uy*uy)
+          PsiM = zero; PsiH = zero; idx = 0; ustar = one
           at=log(hwm/this%z0t)
 
           do while ( (ustarDiff > 1d-12) .and. (idx < itermax))
@@ -300,7 +332,7 @@ subroutine compute_local_wallmodel(this, ux, uy, Tmn, wTh_surf, ustar, Linv, Psi
                   PsiH = two*log(half*(one+xisq));
                 endif
               end if 
-              ustarDiff = abs((ustarNew - ustar)/ustarNew)
+              ustarDiff = abs(ustarNew - ustar)/max(abs(ustarNew), tiny(one))
               ustar = ustarNew; idx = idx + 1
           end do 
           wTh_surf = wTh
@@ -315,7 +347,7 @@ subroutine compute_local_wallmodel(this, ux, uy, Tmn, wTh_surf, ustar, Linv, Psi
           Linv = zero; !dTheta = this%Tsurf - this%Tmn;
           ustarDiff = one; wTh = this%wTh_surf
           a=log(hwm/this%z0); b=beta_h*hwm; c=beta_m*hwm
-          PsiM = zero; PsiH = zero; idx = 0; ustar = one; u = sqrt(ux*ux + uy*uy) 
+          PsiM = zero; PsiH = zero; idx = 0; ustar = one
           at=log(hwm/this%z0t)
    
           do while ( (ustarDiff > 1d-12) .and. (idx < itermax))
@@ -334,7 +366,7 @@ subroutine compute_local_wallmodel(this, ux, uy, Tmn, wTh_surf, ustar, Linv, Psi
                   PsiH = two*log(half*(one+xisq));
                 endif
               end if 
-              ustarDiff = abs((ustarNew - ustar)/ustarNew)
+              ustarDiff = abs(ustarNew - ustar)/max(abs(ustarNew), tiny(one))
               ustar = ustarNew; idx = idx + 1
           end do
           wTh_surf = this%wTh_surf
@@ -379,6 +411,19 @@ subroutine getSurfaceQuantities(this)
     real(rkind) :: hwm
 
     hwm = this%dz/two + (this%WM_matchingIndex - 1)*this%dz
+    if ((this%z0 <= zero) .or. (this%z0t <= zero) .or. (hwm <= this%z0) .or. &
+        (this%isStratified .and. hwm <= this%z0t)) then
+       call gracefulExit("Wall-model roughness lengths must be positive and below the matching height.", 324)
+    end if
+    if (this%Uspmn <= tiny(one)) then
+       ! Avoid 0/0 in Monin-Obukhov iterations when the mean matching
+       ! velocity is calm.
+       this%ustar = zero
+       this%invObLength = zero
+       this%wTh_surf = zero
+       this%PsiM = zero
+       return
+    end if
     if (this%isStratified) then
       select case (this%botBC_Temp)
       case(0) ! Dirichlet BC for temperature 
@@ -401,7 +446,7 @@ subroutine getSurfaceQuantities(this)
                 PsiM = two*log(half*(one+xi)) + log(half*(one+xisq)) - two*atan(xi) + piby2; 
                 PsiH = two*log(half*(one+xisq));
               endif
-              ustarDiff = abs((ustarNew - ustar)/ustarNew)
+              ustarDiff = abs(ustarNew - ustar)/max(abs(ustarNew), tiny(one))
               ustar = ustarNew; idx = idx + 1
           end do 
           this%ustar = ustar; this%invObLength = Linv; this%wTh_surf = wTh
@@ -430,7 +475,7 @@ subroutine getSurfaceQuantities(this)
                 PsiM = two*log(half*(one+xi)) + log(half*(one+xisq)) - two*atan(xi) + piby2; 
                 PsiH = two*log(half*(one+xisq));
               endif
-              ustarDiff = abs((ustarNew - ustar)/ustarNew)
+              ustarDiff = abs(ustarNew - ustar)/max(abs(ustarNew), tiny(one))
               ustar = ustarNew; idx = idx + 1
           end do 
           this%ustar = ustar; this%invObLength = Linv; 

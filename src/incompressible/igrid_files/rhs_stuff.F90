@@ -220,7 +220,8 @@ subroutine addNonLinearTerm_Rot(this, u_rhs, v_rhs, w_rhs)
         call this%spectC%fft(T1c,fT1C)
         T1E = -this%w*this%dTdzE
         call this%spectE%fft(T1E,fT1E)
-        call transpose_y_to_z(fT2E,tzE, this%sp_gpE)
+        ! fT1E contains the vertical scalar-advection flux transformed above.
+        call transpose_y_to_z(fT1E,tzE, this%sp_gpE)
         call this%Pade6opZ%interpz_E2C(tzE,tzC,WdTdzBC_bottom,WdTdzBC_top)
         call transpose_z_to_y(tzC,this%T_rhs, this%sp_gpC)
         this%T_rhs = this%T_rhs + fT1C

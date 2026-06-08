@@ -365,11 +365,17 @@ subroutine destroy(this)
     class(TurbineArray), intent(inout) :: this
     integer :: i
 
-    nullify(this%gpC, this%gpE, this%spectC, this%sp_gpC)
+    nullify(this%gpC, this%gpE, this%sp_gpC, this%sp_gpE, this%spectC, this%spectE)
     nullify(this%zbuffC, this%zbuffE, this%fChat, this%fEhat)
-    deallocate(this%fx, this%fy, this%fz)
+    nullify(this%u_ref_sim, this%v_ref_sim, this%gpC_ref_sim)
+    if (allocated(this%fx)) deallocate(this%fx)
+    if (allocated(this%fy)) deallocate(this%fy)
+    if (allocated(this%fz)) deallocate(this%fz)
 
-    deallocate(this%OpsNU)
+    if (allocated(this%OpsNU)) then
+      call this%OpsNU%destroy()
+      deallocate(this%OpsNU)
+    end if
 
     !if(ADM) then
     select case (this%ADM_Type)
@@ -393,11 +399,16 @@ subroutine destroy(this)
       do i = 1, this%nTurbines
         call this%turbArrayADM_fil(i)%destroy()
       end do
+      if (allocated(this%turbArrayADM_fil)) deallocate(this%turbArrayADM_fil)
+      if (allocated(this%dynamicArray)) deallocate(this%dynamicArray)
     case (6)
       do i = 1, this%nTurbines
         call this%turbArrayADM_ct(i)%destroy()
       end do
     end select
+    if (allocated(this%gamma)) deallocate(this%gamma)
+    if (allocated(this%gamma_nm1)) deallocate(this%gamma_nm1)
+    if (allocated(this%theta)) deallocate(this%theta)
       !deallocate(this%turbArrayADM)
     !else
     !  call this%destroy_halo_communication()
@@ -570,6 +581,10 @@ subroutine getForceRHS(this, dt, u, v, wC, urhs, vrhs, wrhs, newTimeStep, inst_h
     real(rkind) :: alpha_input
     integer :: alpha_index
     logical :: callTimeAdvance
+
+    ! Filtered ADM does not produce the legacy eight-value diagnostic block.
+    ! Zero is safer for time accumulation than leaving INTENT(OUT) undefined.
+    inst_horz_avg = zero
 
     if (newTimeStep) then
          this%fx = zero; this%fy = zero; this%fz = zero

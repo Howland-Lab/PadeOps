@@ -109,6 +109,9 @@ module budgets_time_avg_deficit_compact_mod
         this%do_budgets = do_budgets
         this%tidx_dump = tidx_dump
         this%tidx_compute = tidx_compute
+        if ((this%tidx_compute <= 0) .or. (this%tidx_dump <= 0)) then
+            call GracefulExit("Compact-budget compute and dump frequencies must be positive.", 123)
+        end if
         this%tidx_budget_start = tidx_budget_start  
         this%time_budget_start = time_budget_start  
         ! Turbine-force budget terms are intentionally disabled in this compact

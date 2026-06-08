@@ -112,8 +112,18 @@ end subroutine
 
 subroutine destroy(this)
    class(Ops_Periodic), intent(inout), target :: this
-  
-   deallocate(this%rbuffy, this%rbuffz1)
+
+   call this%poiss%destroy()
+   call this%spect%destroy()
+   if (allocated(this%cbuffy1)) deallocate(this%cbuffy1)
+   if (allocated(this%cbuffy2)) deallocate(this%cbuffy2)
+   if (allocated(this%cbuffz)) deallocate(this%cbuffz)
+   if (allocated(this%rbuffy)) deallocate(this%rbuffy)
+   if (allocated(this%rbuffz1)) deallocate(this%rbuffz1)
+   if (allocated(this%rbuffz2)) deallocate(this%rbuffz2)
+   if (allocated(this%zarr1d_1)) deallocate(this%zarr1d_1)
+   if (allocated(this%zarr1d_2)) deallocate(this%zarr1d_2)
+   nullify(this%gp)
 end subroutine 
 
 subroutine ddx(this,f, dfdx)

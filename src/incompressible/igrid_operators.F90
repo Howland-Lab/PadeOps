@@ -136,7 +136,12 @@ end subroutine
 subroutine destroy_turbine_array(this)
     class(igrid_ops), intent(inout) :: this
 
-    if (allocated(this%turbArray)) deallocate(this%turbArray)
+    if (allocated(this%turbArray)) then
+        ! Filtered ADM elements may own MPI communicators; invoke their
+        ! destructor before releasing the containing object.
+        call this%turbArray%destroy()
+        deallocate(this%turbArray)
+    end if
     if (allocated(this%mesh)) deallocate(this%mesh)
     if (allocated(this%cbuffyC)) deallocate(this%cbuffyC)
     if (allocated(this%cbuffzC)) deallocate(this%cbuffzC)
@@ -156,9 +161,11 @@ subroutine get_turbine_RHS(this, u, v, w, urhs, vrhs, wrhs)
     class(igrid_ops), intent(inout) :: this
     real(rkind), dimension(this%gp%xsz(1),this%gp%xsz(2),this%gp%xsz(3)), intent(in) :: u, v, w
     real(rkind), dimension(this%gp%xsz(1),this%gp%xsz(2),this%gp%xsz(3)), intent(out) :: urhs, vrhs, wrhs
-    real(rkind) :: inst_horz_avg_turb(8)
+    real(rkind), dimension(:), allocatable :: inst_horz_avg_turb
     real(rkind) :: dt = 1.d0
 
+    allocate(inst_horz_avg_turb(8*this%turbArray%nTurbines))
+    inst_horz_avg_turb = 0.d0
     this%urhshat = 0.d0 + imi*0.d0
     this%vrhshat = 0.d0 + imi*0.d0
     this%wrhshat = 0.d0 + imi*0.d0
@@ -171,6 +178,7 @@ subroutine get_turbine_RHS(this, u, v, w, urhs, vrhs, wrhs)
     call this%spect%ifft(this%urhshat, urhs)
     call this%spect%ifft(this%vrhshat, vrhs)
     call this%spect%ifft(this%cbuffyC(:,:,:,1), wrhs)
+    deallocate(inst_horz_avg_turb)
 
 end subroutine 
 
@@ -218,6 +226,10 @@ subroutine FilterField(this, f, fout)
 
    call transpose_x_to_y(fout,this%rbuffy,this%gp)
    call transpose_y_to_z(this%rbuffy,this%rbuffz1,this%gp)
+   if (this%vfilt_times == 0) then
+        ! With no vertical passes, the horizontally filtered z-pencil is final.
+        this%rbuffz2 = this%rbuffz1
+   end if
    do fid = 1,this%vfilt_times
         call this%gfilt%filter3(this%rbuffz1,this%rbuffz2,size(this%rbuffz1,1),size(this%rbuffz1,2))
         this%rbuffz1 = this%rbuffz2
@@ -245,6 +257,7 @@ subroutine initFilter(this, nx_filt, ny_filt, vfilt_times)
     real(rkind) :: kx_co, ky_co, dxf, dyf
     integer :: i, j, ierr
 
+    if (vfilt_times < 0) call GracefulExit("vfilt_times must be nonnegative.", 34)
     allocate(this%gxfilt(this%spect%spectdecomp%ysz(1)))
     allocate(this%gyfilt(this%spect%spectdecomp%ysz(2)))
     
@@ -308,7 +321,10 @@ subroutine Read_VizSummary(this, times, timesteps)
        allocate(times(nr), timesteps(nr))
        do i=1, nr
            read (10, *) times(i), timesteps(i) 
-       end do     
+       end do
+       ! The summary is fully consumed here; no later routine reuses this
+       ! connection, and leaving unit 10 open breaks later fixed-unit I/O.
+       close(10)
     else
        call GracefulExit("Summary file not found.", 34)
     end if 
@@ -649,6 +665,9 @@ function check_dump_existence(this, label, tidx) result(file_found)
    open(777,file=trim(fname),status='old',iostat=ierr)
    if (ierr == 0) then
        file_found = .true. 
+       ! This routine only probes existence; the actual reader opens the file
+       ! separately, so do not retain this fixed-unit connection.
+       close(777)
    else
        file_found = .false. 
    end if 
@@ -716,10 +735,11 @@ subroutine WriteSummingRestartInfo(this,tidx,nsum)
        OPEN(UNIT=10, FILE=trim(fname))
        write(10,"(I7.7)") nsum
        close(10)
-   end if 
+   end if
 end subroutine
 
 subroutine ReadSummingRestartInfo(this,tidx,nsum)
+   use mpi
    class(igrid_ops), intent(inout) :: this
    integer, intent(in) :: tidx
    integer, intent(out) :: nsum
@@ -737,7 +757,9 @@ subroutine ReadSummingRestartInfo(this,tidx,nsum)
            read(10,"(I7.7)") nsum
        end if 
        close(10)
-   end if 
+   end if
+   ! All ranks normalize the same distributed restart fields with this count.
+   call MPI_BCAST(nsum, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
 end subroutine
 
 subroutine allocate3Dfield(this, field)

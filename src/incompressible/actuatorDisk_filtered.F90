@@ -132,6 +132,13 @@ subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG, dx, dy, dz)
         ! use the turbine diameter to dimensionalize the filterwidth
         this%delta = filterWidth * this%diam 
     endif
+    if ((this%diam <= zero) .or. (this%delta <= zero) .or. &
+        (this%upsample_fact <= zero)) then
+        call GracefulExit("Filtered ADM requires positive diameter, filter width, and upsample factor.", 123)
+    end if
+    if (quickDecomp .and. this%thick <= zero) then
+        call GracefulExit("Filtered ADM quick decomposition requires positive thickness.", 123)
+    end if
     ! Thickness is only used if quickDecomp = .TRUE.
     this%quickDecomp = quickDecomp
     if (quickDecomp) then
@@ -447,7 +454,7 @@ subroutine get_weights(this)
     real(rkind), dimension(this%nyLoc, this%nzLoc) :: R2
     real(rkind), dimension(this%nxLoc) :: R1
     real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc) :: R
-    real(rkind) :: smax
+    real(rkind) :: smax, kernelIntegral
 
     this%scalarsource = zero        
     if ((abs(this%yaw) < 1e-3) .and. (abs(this%tilt) < 1e-3)) then
@@ -483,10 +490,14 @@ subroutine get_weights(this)
 
     ! normalize so R integrates to 1 exactly
     if(this%Am_I_Split)then
-        this%scalarsource = this%scalarsource / (p_sum(this%scalarsource, this%mycomm)*this%dV)
+        kernelIntegral = p_sum(this%scalarsource, this%mycomm)*this%dV
     else
-        this%scalarsource = this%scalarsource / (SUM(this%scalarsource)*this%dV)
-    end if 
+        kernelIntegral = SUM(this%scalarsource)*this%dV
+    end if
+    if (kernelIntegral <= tiny(one)) then
+        call GracefulExit("Filtered ADM kernel has zero integral on its active communicator.", 123)
+    end if
+    this%scalarsource = this%scalarsource/kernelIntegral
 end subroutine
 
 ! sample a circle with points spaced dx, dy apart and centered at xcen, ycen

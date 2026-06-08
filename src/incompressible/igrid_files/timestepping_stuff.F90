@@ -633,7 +633,7 @@
    subroutine compute_deltaT(this)
        use reductions, only: p_maxval
        class(igrid), intent(inout), target :: this
-       real(rkind) :: TSmax, Tsim_next 
+       real(rkind) :: TSmax, Tsim_next, nextEvent, timeTol
        real(rkind), dimension(:,:,:), pointer :: rb1, rb2
        real(rkind), dimension(5) :: dtmin
        integer :: idx
@@ -651,7 +651,12 @@
            rb2 = abs(rb2)
            rb1 = rb1 + rb2
            TSmax = p_maxval(rb1)
-           dtmin(1)= this%CFL/TSmax
+           if (TSmax > tiny(one)) then
+              dtmin(1) = this%CFL/TSmax
+           else
+              ! A quiescent field has no convective CFL restriction.
+              dtmin(1) = 1.d15
+           end if
               
            if (.not. this%isInviscid) then
               dtmin(2) = this%CviscDT*0.5d0*this%Re*(min(this%dx,this%dy,this%dz)**2)
@@ -700,19 +705,40 @@
 
        if (this%vizDump_Schedule == 1) then
            this%DumpThisStep = .false.
-           this%DumpRestartThisStep = .false. 
+           this%DumpRestartThisStep = .false.
+
+           ! A restart can land on an old event time within roundoff. Advance
+           ! stale schedules before selecting an event to avoid a zero dt.
+           timeTol = 100.d0*epsilon(one)*max(one, abs(this%tsim), &
+                                            abs(this%t_NextDump), &
+                                            abs(this%t_NextRestartDump))
+           do while (this%t_NextDump <= this%tsim + timeTol)
+               this%t_NextDump = this%t_NextDump + this%deltaT_dump
+           end do
+           do while (this%t_NextRestartDump <= this%tsim + timeTol)
+               this%t_NextRestartDump = this%t_NextRestartDump + this%deltaT_restartdump
+           end do
+
+           ! Truncate to the earliest event only. If visualization and restart
+           ! times coincide within roundoff, both are emitted after this step.
+           nextEvent = min(this%t_NextDump, this%t_NextRestartDump)
            Tsim_next = this%tsim + this%dt
-           if (Tsim_next > this%t_NextDump) then
-               this%dt = this%t_nextDump - this%tsim
-               this%t_NextDump = this%t_NextDump + this%deltaT_dump 
-               this%t_NextDump = this%t_NextDump + this%deltaT_dump 
-               this%DumpThisStep = .true.
-           end if
-           if (Tsim_next > this%t_NextRestartDump) then
-               this%dt = this%t_nextRestartDump - this%tsim
-               this%t_NextRestartDump = this%t_NextRestartDump + this%deltaT_restartdump 
-               this%t_NextRestartDump = this%t_NextRestartDump + this%deltaT_restartdump 
-               this%DumpRestartThisStep = .true.
+           timeTol = 100.d0*epsilon(one)*max(one, abs(this%tsim), &
+                                            abs(Tsim_next), abs(nextEvent))
+           if (Tsim_next >= nextEvent - timeTol) then
+               this%dt = nextEvent - this%tsim
+               this%DumpThisStep = abs(this%t_NextDump - nextEvent) <= timeTol
+               this%DumpRestartThisStep = &
+                   abs(this%t_NextRestartDump - nextEvent) <= timeTol
+
+               ! Advance each triggered schedule exactly once.
+               if (this%DumpThisStep) then
+                   this%t_NextDump = this%t_NextDump + this%deltaT_dump
+               end if
+               if (this%DumpRestartThisStep) then
+                   this%t_NextRestartDump = this%t_NextRestartDump + &
+                                            this%deltaT_restartdump
+               end if
            end if
        end if 
 

@@ -27,7 +27,7 @@ subroutine init(this, gpSource, gpDest, xSource, ySource, zSource, xDest, yDest,
     type(decomp_info), intent(in), target :: gpSource, gpDest 
     real(rkind), dimension(:), intent(in) :: xSource, ySource, zSource, xDest, yDest, zDest
     integer :: nxS, nyS, nzS, nxD, nyD, nzD, idx 
-    real(rkind) :: delta, start
+	    real(rkind) :: delta, start, coordinate
 
     this%gpSource => gpSource
     this%gpDest => gpDest
@@ -71,25 +71,35 @@ subroutine init(this, gpSource, gpDest, xSource, ySource, zSource, xDest, yDest,
     
    
     ! Get interpolation indices and weights
-    delta = xSource(2) - xSource(1)
-    start = xSource(1)
-    do idx = 1,size(this%wx)
-        this%xInd(idx) = ceiling((xDest(idx) - start)/delta)
-        this%wx(idx) = (xSource(this%xInd(idx) + 1) - xDest(idx))/delta 
-    end do 
+	    if ((size(xSource) < 2) .or. (size(ySource) < 2) .or. (size(zSource) < 2)) then
+	        call GracefulExit("Interpolator source axes require at least two points.",34)
+	    end if
 
-    delta = ySource(2) - ySource(1)
-    start = ySource(1)
-    do idx = 1,size(this%wy)
-        this%yInd(idx) = ceiling((yDest(idx) - start)/delta)
-        this%wy(idx) = (ySource(this%yInd(idx) + 1) - yDest(idx))/delta 
-    end do 
+	    delta = xSource(2) - xSource(1)
+	    if (delta <= 0._rkind) call GracefulExit("Interpolator x-axis must be strictly increasing.",34)
+	    start = xSource(1)
+	    do idx = 1,size(this%wx)
+	        coordinate = (xDest(idx) - start)/delta
+	        this%xInd(idx) = max(1, min(size(xSource)-1, floor(coordinate) + 1))
+	        this%wx(idx) = (xSource(this%xInd(idx) + 1) - xDest(idx))/delta
+	    end do
 
-    delta = zSource(2) - zSource(1)
-    start = zSource(1)
-    do idx = 1,size(this%wz)
-        this%zInd(idx) = ceiling((zDest(idx) - start)/delta)
-        this%wz(idx) = (zSource(this%zInd(idx) + 1) - zDest(idx))/delta 
+	    delta = ySource(2) - ySource(1)
+	    if (delta <= 0._rkind) call GracefulExit("Interpolator y-axis must be strictly increasing.",34)
+	    start = ySource(1)
+	    do idx = 1,size(this%wy)
+	        coordinate = (yDest(idx) - start)/delta
+	        this%yInd(idx) = max(1, min(size(ySource)-1, floor(coordinate) + 1))
+	        this%wy(idx) = (ySource(this%yInd(idx) + 1) - yDest(idx))/delta
+	    end do
+
+	    delta = zSource(2) - zSource(1)
+	    if (delta <= 0._rkind) call GracefulExit("Interpolator z-axis must be strictly increasing.",34)
+	    start = zSource(1)
+	    do idx = 1,size(this%wz)
+	        coordinate = (zDest(idx) - start)/delta
+	        this%zInd(idx) = max(1, min(size(zSource)-1, floor(coordinate) + 1))
+	        this%wz(idx) = (zSource(this%zInd(idx) + 1) - zDest(idx))/delta
     end do 
 
     ! Create 2 intermediate transposers and buffer arrays    
@@ -107,7 +117,8 @@ end subroutine
 subroutine destroy(this)
     class(interpolator), intent(inout) :: this
     deallocate(this%wx, this%wy, this%wz, this%xInd, this%yInd, this%zInd)
-    deallocate(this%fx_X, this%fx_Y, this%fxy_Y, this%fxy_Z)
+	    deallocate(this%fx_X, this%fx_Y, this%fxy_Y, this%fxy_Z, this%fxyz_Z, this%fxyz_Y)
+	    nullify(this%gpSource, this%gpDest)
 end subroutine
 
 subroutine LinInterp3D(this, fS, fD)
@@ -151,4 +162,4 @@ subroutine LinInterp3D(this, fS, fD)
     call transpose_y_to_x(this%fxyz_Y,fD, this%gpDest) ! DONE!
 end subroutine 
 
-end module 
+end module

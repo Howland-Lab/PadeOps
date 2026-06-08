@@ -13,7 +13,14 @@ subroutine compute_Tscale(this, u, v, w)
    rb2 = (one/this%dz)*w
    rb2 = abs(rb2)
    rb1 = rb1 + rb2
-   this%Tscale = one/p_maxval(rb1)
+   this%Tscale = p_maxval(rb1)
+   if (this%Tscale > tiny(one)) then
+      this%Tscale = one/this%Tscale
+   else
+      ! A quiescent field has no advective time scale.  Use a zero inverse
+      ! scale so the added bounding diffusivity remains finite and inactive.
+      this%Tscale = zero
+   end if
 
 end subroutine 
 

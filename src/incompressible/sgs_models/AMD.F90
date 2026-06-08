@@ -19,7 +19,8 @@ end subroutine
 
 subroutine destroy_amd(this)
    class(sgs_igrid), intent(inout) :: this
-   this%isEddyViscosityModel = .true. 
+   this%isEddyViscosityModel = .false.
+   if (allocated(this%rbuffxE)) deallocate(this%rbuffxE)
 end subroutine
 
 

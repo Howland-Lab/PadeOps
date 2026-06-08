@@ -462,7 +462,7 @@ contains
                           useGeostrophicForcing, G_geostrophic, G_alpha, dpFdx,dpFdy,dpFdz,assume_fplane,latitude,useHITForcing, useScalars, frameAngle, buoyancyDirection, useHITRealSpaceLinearForcing, HITForceTimeScale, useConstantG
         namelist /BCs/ PeriodicInZ, topWall, botWall, useSpongeLayer, zstSponge, SpongeTScale, sponge_type, botBC_Temp, topBC_Temp, useTopAndBottomSymmetricSponge, useFringe, usedoublefringex, useControl, useFringeAD
         namelist /WINDTURBINES/ useWindTurbines, num_turbines, ADM, turbInfoDir, ADM_Type, powerDumpDir, useDynamicYaw, &
-                                yawUpdateInterval, inputDirDyaw, useDynamicTurbine
+                                yawUpdateInterval, inputDirDyaw, useDynamicTurbine, WriteTurbineForce
         namelist /NUMERICS/ AdvectionTerm, ComputeStokesPressure, NumericalSchemeVert, &
                             UseDealiasFilterVert, t_DivergenceCheck, TimeSteppingScheme, InitSpinUp, &
                             useExhaustiveFFT, dealiasFact, scheme_xy, donot_dealias, dealiasType 
@@ -515,10 +515,10 @@ contains
         this%donot_dealias = donot_dealias; this%ioType = ioType; this%HITForceTimeScale = HITForceTimeScale
         this%moistureFactor = moistureFactor; this%useHITRealSpaceLinearForcing = useHITRealSpaceLinearForcing
 
-        if (this%CFL > zero) this%useCFL = .true. 
-        if ((this%CFL < zero) .and. (this%dt < zero)) then
-            call GracefulExit("Both CFL and dt cannot be negative. Have you &
-            & specified either one of these in the input file?", 124)
+        this%useCFL = this%CFL > zero
+        ! Fixed-step mode requires a strictly positive dt; CFL <= 0 disables CFL mode.
+        if ((.not. this%useCFL) .and. (this%dt <= zero)) then
+            call GracefulExit("Specify either CFL > 0 or a fixed dt > 0.", 124)
         end if 
         this%t_restartDump = t_restartDump; this%tid_statsDump = tid_statsDump; this%useCoriolis = useCoriolis; 
         this%tSimStartStats = tSimStartStats; this%useWindTurbines = useWindTurbines
@@ -633,6 +633,9 @@ contains
        allocate(this%spectE)
        call this%spectE%init("x", nx, ny, nz+1, this%dx, this%dy, this%dz, &
                scheme_xy, this%filter_x, 2 , fixOddball=.false., exhaustiveFFT=useExhaustiveFFT, init_periodicInZ=.false., dealiasF=dealiasfact, dealiasType=dealiasType)
+       ! gpC/gpE describe real physical arrays of global sizes nz/nz+1.
+       ! Each spectral object independently constructs an x-R2C descriptor
+       ! with global x extent nx/2+1; these pointers must size Fourier arrays.
        this%sp_gpC => this%spectC%spectdecomp
        this%sp_gpE => this%spectE%spectdecomp
 
@@ -794,7 +797,8 @@ contains
        call this%spectC%ifft(this%uhat,this%u)
        call this%spectC%ifft(this%vhat,this%v)
        call this%spectE%ifft(this%what,this%w)
-       if (this%isStratified) call this%spectC%ifft(this%That,this%T)
+       ! InitSpinUp advances the same scalar storage even when isStratified is false.
+       if (this%isStratified .or. this%initspinup) call this%spectC%ifft(this%That,this%T)
 
        ! STEP 8: Interpolate the cell center values of w
        !if (this%useSGS) then
@@ -816,7 +820,7 @@ contains
     
        ! STEP 9: Compute duidxj
        call this%compute_duidxj()
-       if (this%isStratified) call this%compute_dTdxi() 
+       if (this%isStratified .or. this%initspinup) call this%compute_dTdxi()
 
        ! STEP 10a: Compute Coriolis Term
        if (this%useCoriolis) then
@@ -898,6 +902,8 @@ contains
         if (this%useSponge) then
             allocate(this%RdampC(this%sp_gpC%ysz(1), this%sp_gpC%ysz(2), this%sp_gpC%ysz(3)))
             allocate(this%RdampE(this%sp_gpE%ysz(1), this%sp_gpE%ysz(2), this%sp_gpE%ysz(3)))
+            ! Associate the cell y-buffer here; the SGS setup above may not run.
+            zinY => this%rbuffyC(:,:,:,1)
             zinZ => this%rbuffzC(:,:,:,1)
             zEinZ => this%rbuffzE(:,:,:,1); 
             call transpose_x_to_y(this%mesh(:,:,:,3),zinY,this%gpC)
@@ -924,7 +930,8 @@ contains
             do idx = 1,size(zEinZ,3)
                 tmpzE(:,:,idx) = zEinZ(1,1,idx)
             end do 
-            call transpose_z_to_y(tmpzE,zEinY, this%sp_gpC) 
+            ! Edge coordinates must follow the edge-grid spectral decomposition.
+            call transpose_z_to_y(tmpzE,zEinY, this%sp_gpE)
             deallocate(tmpzE)
             nullify(zEinZ, zinZ)
 
@@ -1329,6 +1336,14 @@ contains
        this%DumpThisStep = .false.
        this%DumpRestartThisStep = .false. 
        if (this%vizDump_Schedule == 1) then
+           if ((deltaT_dump <= zero) .or. (deltaT_restartdump <= zero)) then
+               call GracefulExit("deltaT_dump and deltaT_restartdump must be positive for vizDump_Schedule=1.", 123)
+           end if
+           ! Reject intervals too small to advance a floating-point time at tsim.
+           if ((this%tsim + deltaT_dump <= this%tsim) .or. &
+               (this%tsim + deltaT_restartdump <= this%tsim)) then
+               call GracefulExit("Timed dump interval is too small relative to the current simulation time.", 123)
+           end if
            this%deltaT_dump = deltaT_dump
            this%deltaT_restartdump = deltaT_restartdump
            if (useRestartFile) then

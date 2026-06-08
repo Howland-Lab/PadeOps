@@ -23,8 +23,9 @@ subroutine compute_xdim_udim(inputfile)
     character(len=*),                intent(in)    :: inputfile
     character(len=:), allocatable :: buffer
     character(len=clen) :: line
-    real(rkind) :: Ro, Fr
-    integer :: iunit
+    real(rkind) :: Ro = 1._rkind, Fr = 1._rkind
+    integer :: iunit, ios
+    character(len=clen) :: adjusted
 
     namelist /PHYSICS/Ro, Fr  ! ignore all other variables
 
@@ -32,12 +33,21 @@ subroutine compute_xdim_udim(inputfile)
     ! What we are doing here is finding JUST the variables "Fr" and "Ro" and making a 
     ! new internal namelist to parse
     buffer = "&PHYSICS" // new_line('a')
-    open(unit=10, file=trim(inputfile), form='formatted')
+    open(unit=10, file=trim(inputfile), form='formatted', status='old', action='read', iostat=ios)
+    if (ios /= 0) then
+        call message(0, "WARNING: could not open physics input; using defaults Ro=Fr=1.")
+        xdim = g * (Fr / Ro / omega)**2
+        udim = g * Fr**2 / omega / Ro
+        timeDim = xdim/udim
+        return
+    end if
     do
         read(10,'(A)', iostat=iunit) line
         if (iunit /= 0) exit
-        ! find lines beginning with "Fr " or "Ro ": 
-        if (index(adjustl(line), "Fr ") == 1 .or. index(adjustl(line), "Ro ") == 1) then
+        adjusted = adjustl(line)
+        ! Accept both "Fr = ..." and compact "Fr=..." namelist syntax.
+        if (index(adjusted, "Fr ") == 1 .or. index(adjusted, "Fr=") == 1 .or. &
+            index(adjusted, "Ro ") == 1 .or. index(adjusted, "Ro=") == 1) then
             ! strip comments: 
             if (index(line, "!") > 0) line = line(:index(line, "!")-1)
             buffer = buffer // trim(adjustl(line)) // new_line('a')
@@ -46,7 +56,12 @@ subroutine compute_xdim_udim(inputfile)
     buffer = buffer // "/" // new_line('a')
     close(10)
 
-    read(buffer, NML=PHYSICS)
+    read(buffer, NML=PHYSICS, iostat=ios)
+    if (ios /= 0) then
+        call message(0, "WARNING: could not parse Ro/Fr; using defaults Ro=Fr=1.")
+        Ro = 1._rkind
+        Fr = 1._rkind
+    end if
 
     xdim = g * (Fr / Ro / omega)**2
     udim = g * Fr**2 / omega / Ro
@@ -164,7 +179,7 @@ subroutine setInhomogeneousNeumannBC_Temp(inputfile, wTh_surf)
     implicit none
 
     character(len=*),                intent(in)    :: inputfile
-    real(rkind), intent(out) :: wTh_surf
+    real(rkind), intent(inout) :: wTh_surf
     integer :: ioUnit
     real(rkind) :: Lx = one, Ly = one, Lz = one, Tref = one, Tsurf0 = one, dTsurf_dt = zero, inv_height = zero, lapse_rate = zero, inv_thickness = one, inv_strength = zero, hpert=zero
     namelist /PROBLEM_INPUT/ Lx, Ly, Lz, Tref, Tsurf0, dTsurf_dt, inv_height, inv_thickness, inv_strength, lapse_rate, hpert
@@ -174,7 +189,10 @@ subroutine setInhomogeneousNeumannBC_Temp(inputfile, wTh_surf)
     read(unit=ioUnit, NML=PROBLEM_INPUT)
     close(ioUnit)
 
-    ! Do nothing since temperature BC is dirichlet
+    ! igrid passes the current simulation time in this argument so hooks may
+    ! prescribe a time-dependent flux.  This problem defines no such flux;
+    ! retaining the input would incorrectly use time as a heat flux.
+    wTh_surf = zero
 end subroutine
 
 subroutine setDirichletBC_Temp(inputfile, Tsurf, dTsurf_dt)

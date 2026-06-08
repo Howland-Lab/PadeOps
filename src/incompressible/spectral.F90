@@ -57,11 +57,11 @@ module spectralMod
         logical :: BandPassFilterInitialized = .false.
         logical :: TestFilterInitialized = .false.
         logical :: initPostProcessor = .false.
-        integer(kind=8) :: plan_c2c_fwd_z_oop
-        integer(kind=8) :: plan_c2c_fwd_z_ip
-        integer(kind=8) :: plan_c2c_bwd_z_oop
-        integer(kind=8) :: plan_c2c_bwd_z_ip
-        integer(kind=8) :: plan_r2c_z, plan_c2r_z
+        integer(kind=8) :: plan_c2c_fwd_z_oop = 0
+        integer(kind=8) :: plan_c2c_fwd_z_ip = 0
+        integer(kind=8) :: plan_c2c_bwd_z_oop = 0
+        integer(kind=8) :: plan_c2c_bwd_z_ip = 0
+        integer(kind=8) :: plan_r2c_z = 0, plan_c2r_z = 0
         complex(rkind), dimension(:), allocatable :: k3_C2Cder, k3_C2Eshift, k3_E2Cshift, E2Cshift, C2Eshift, xshiftfact
         real(rkind), dimension(:), allocatable, public :: k1inZ, k2inZ, k3inZ
 
@@ -1633,7 +1633,7 @@ contains
         !end if
         kdealiasx = ((two/three)*pi/this%dx)
         kdealiasy = ((two/three)*pi/this%dy)
-        kdealiasy = ((two/three)*pi/this%dz)
+        kdealiasz = ((two/three)*pi/this%dz)
 
         kfiltx = kdealiasx/filtfact
         kfilty = kdealiasy/filtfact
@@ -1701,6 +1701,33 @@ contains
 
         if (allocated(this%arr1Up)) deallocate(this%arr1Up)
         if (allocated(this%arr2Up)) deallocate(this%arr2Up)
+        if (allocated(this%GTestFilt)) deallocate(this%GTestFilt)
+        if (allocated(this%GksPrep1)) deallocate(this%GksPrep1)
+        if (allocated(this%GksPrep2)) deallocate(this%GksPrep2)
+        if (allocated(this%GhitForcing)) deallocate(this%GhitForcing)
+        if (allocated(this%G_bandpass)) deallocate(this%G_bandpass)
+        if (allocated(this%G_PostProcess)) deallocate(this%G_PostProcess)
+        if (allocated(this%fhatz)) deallocate(this%fhatz)
+        if (allocated(this%ctmpz)) deallocate(this%ctmpz)
+        if (allocated(this%k3_C2Cder)) deallocate(this%k3_C2Cder)
+        if (allocated(this%k3_C2Eshift)) deallocate(this%k3_C2Eshift)
+        if (allocated(this%k3_E2Cshift)) deallocate(this%k3_E2Cshift)
+        if (allocated(this%E2Cshift)) deallocate(this%E2Cshift)
+        if (allocated(this%C2Eshift)) deallocate(this%C2Eshift)
+        if (allocated(this%xshiftfact)) deallocate(this%xshiftfact)
+        if (allocated(this%k1inZ)) deallocate(this%k1inZ)
+        if (allocated(this%k2inZ)) deallocate(this%k2inZ)
+        if (allocated(this%k3inZ)) deallocate(this%k3inZ)
+        if (allocated(this%mk3sq)) deallocate(this%mk3sq)
+        if (this%plan_c2c_fwd_z_oop /= 0) call dfftw_destroy_plan(this%plan_c2c_fwd_z_oop)
+        if (this%plan_c2c_fwd_z_ip /= 0) call dfftw_destroy_plan(this%plan_c2c_fwd_z_ip)
+        if (this%plan_c2c_bwd_z_oop /= 0) call dfftw_destroy_plan(this%plan_c2c_bwd_z_oop)
+        if (this%plan_c2c_bwd_z_ip /= 0) call dfftw_destroy_plan(this%plan_c2c_bwd_z_ip)
+        if (this%plan_r2c_z /= 0) call dfftw_destroy_plan(this%plan_r2c_z)
+        if (this%plan_c2r_z /= 0) call dfftw_destroy_plan(this%plan_c2r_z)
+        nullify(this%cbuffz_bp, this%cbuffy_bp)
+        if (allocated(this%physdecomp)) deallocate(this%physdecomp)
+        if (allocated(this%dealiasdecomp)) deallocate(this%dealiasdecomp)
         if (allocated(this%spectdecomp)) deallocate(this%spectdecomp)
         this%isInitialized = .false.
 

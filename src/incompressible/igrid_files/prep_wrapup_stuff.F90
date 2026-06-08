@@ -50,7 +50,7 @@ end subroutine
 
 subroutine dealiasRealField_C(this, field)
     class(igrid), intent(inout) :: this
-    real(rkind), dimension(this%gpC%xsz(1),this%gpC%xsz(1),this%gpC%xsz(1)), intent(inout) :: field
+    real(rkind), dimension(this%gpC%xsz(1),this%gpC%xsz(2),this%gpC%xsz(3)), intent(inout) :: field
   
     if (this%donot_dealias) then
         return 
@@ -286,7 +286,8 @@ subroutine interpolate_cellField_to_edgeField(this, rxC, rxE, bc1, bc2)
 
        call transpose_x_to_y(rxC, this%rbuffyC(:,:,:,1), this%gpC)
        call transpose_y_to_z(this%rbuffyC(:,:,:,1), this%rbuffzC(:,:,:,1), this%gpC)
-       call this%Pade6opZ%interpz_E2C(this%rbuffzC(:,:,:,1), this%rbuffzE(:,:,:,1), bc1,bc2) 
+       ! The input is cell-centered and the destination has nz+1 edge points.
+       call this%Pade6opZ%interpz_C2E(this%rbuffzC(:,:,:,1), this%rbuffzE(:,:,:,1), bc1,bc2)
        call transpose_z_to_y(this%rbuffzE(:,:,:,1), this%rbuffyE(:,:,:,1), this%gpE)
        call transpose_y_to_x(this%rbuffyE(:,:,:,1), rxE, this%gpE)
 
@@ -357,21 +358,22 @@ subroutine ApplyCompactFilter(this)
     zbuff4 => this%cbuffzE(:,:,:,2)
 
     call transpose_y_to_z(this%uhat,zbuff1, this%sp_gpC)
-    call this%filzC%filter3(zbuff1,zbuff2,this%nxZ, this%nyZ)
-    call transpose_z_to_y(zbuff1,this%uhat, this%sp_gpC)
+    call this%filzC%filter3(zbuff1,zbuff2,size(zbuff1,1),size(zbuff1,2))
+    ! filter3 leaves its input unchanged and returns the filtered field in arg 2.
+    call transpose_z_to_y(zbuff2,this%uhat, this%sp_gpC)
 
     call transpose_y_to_z(this%vhat,zbuff1, this%sp_gpC)
-    call this%filzC%filter3(zbuff1,zbuff2,this%nxZ, this%nyZ)
-    call transpose_z_to_y(zbuff1,this%vhat, this%sp_gpC)
+    call this%filzC%filter3(zbuff1,zbuff2,size(zbuff1,1),size(zbuff1,2))
+    call transpose_z_to_y(zbuff2,this%vhat, this%sp_gpC)
 
     call transpose_y_to_z(this%what,zbuff3, this%sp_gpE)
-    call this%filzE%filter3(zbuff3,zbuff4,this%nxZ, this%nyZ)
+    call this%filzE%filter3(zbuff3,zbuff4,size(zbuff3,1),size(zbuff3,2))
     call transpose_z_to_y(zbuff4,this%what, this%sp_gpE)
 
     if (this%isStratified .or. this%initspinup) then
         call transpose_y_to_z(this%That,zbuff1, this%sp_gpC)
-        call this%filzC%filter3(zbuff1,zbuff2,this%nxZ, this%nyZ)
-        call transpose_z_to_y(zbuff1,this%That, this%sp_gpC)
+        call this%filzC%filter3(zbuff1,zbuff2,size(zbuff1,1),size(zbuff1,2))
+        call transpose_z_to_y(zbuff2,this%That, this%sp_gpC)
     end if
 
     nullify(zbuff1, zbuff2, zbuff3, zbuff4)
@@ -594,12 +596,15 @@ subroutine compute_duidxj(this)
         call this%Pade6opZ%ddz_E2C(ctmpz2,ctmpz1,uBC_bottom,uBC_top)
         call transpose_z_to_y(ctmpz1,dudzH,this%sp_gpC)
         call this%spectC%ifft(dudzH,dudzC)
-        ! Now compute d2udz2C
-        call this%Pade6opZ%ddz_C2C(ctmpz1,ctmpz3,-uBC_bottom,-uBC_top)
-        call transpose_z_to_y(ctmpz3,this%d2udz2hatC,this%sp_gpC)
+        if (.not. this%isInviscid) then
+            ! Viscous second-derivative storage is not allocated for inviscid runs.
+            call this%Pade6opZ%ddz_C2C(ctmpz1,ctmpz3,-uBC_bottom,-uBC_top)
+            call transpose_z_to_y(ctmpz3,this%d2udz2hatC,this%sp_gpC)
+        end if
         ! Now compute dudzE
         call this%Pade6opZ%interpz_C2E(ctmpz1,ctmpz4,-uBC_bottom,-uBC_top) 
-        call transpose_z_to_y(ctmpz4,dudzEH,this%sp_gpC)
+        ! ctmpz4 and dudzEH are edge-grid quantities.
+        call transpose_z_to_y(ctmpz4,dudzEH,this%sp_gpE)
         call this%spectE%ifft(dudzEH,dudz)
     else
         call transpose_y_to_z(this%uhat,ctmpz1,this%sp_gpC)
@@ -627,12 +632,15 @@ subroutine compute_duidxj(this)
         call this%Pade6opZ%ddz_E2C(ctmpz2,ctmpz1,vBC_bottom,vBC_top)
         call transpose_z_to_y(ctmpz1,dvdzH,this%sp_gpC)
         call this%spectC%ifft(dvdzH,dvdzC)
-        ! Now compute d2udz2C
-        call this%Pade6opZ%ddz_C2C(ctmpz1,ctmpz3,-vBC_bottom,-vBC_top)
-        call transpose_z_to_y(ctmpz3,this%d2vdz2hatC,this%sp_gpC)
+        if (.not. this%isInviscid) then
+            ! Viscous second-derivative storage is not allocated for inviscid runs.
+            call this%Pade6opZ%ddz_C2C(ctmpz1,ctmpz3,-vBC_bottom,-vBC_top)
+            call transpose_z_to_y(ctmpz3,this%d2vdz2hatC,this%sp_gpC)
+        end if
         ! Now compute dvdzE
         call this%Pade6opZ%interpz_C2E(ctmpz1,ctmpz4,-vBC_bottom,-vBC_top) 
-        call transpose_z_to_y(ctmpz4,dvdzEH,this%sp_gpC)
+        ! ctmpz4 and dvdzEH are edge-grid quantities.
+        call transpose_z_to_y(ctmpz4,dvdzEH,this%sp_gpE)
         call this%spectE%ifft(dvdzEH,dvdz)
     else
         call transpose_y_to_z(this%vhat,ctmpz1,this%sp_gpC)

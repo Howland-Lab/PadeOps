@@ -52,8 +52,8 @@ module PadePoissonMod
       
         complex(rkind), dimension(:,:,:), allocatable :: dwdzHATz_Periodic, div
         real(rkind) :: mfact 
-        integer(kind=8) :: plan_c2c_fwd_z
-        integer(kind=8) :: plan_c2c_bwd_z
+        integer(kind=8) :: plan_c2c_fwd_z = 0
+        integer(kind=8) :: plan_c2c_bwd_z = 0
 
         type(decomp_info), pointer :: gpC
         logical :: computeStokesPressure = .false.
@@ -647,16 +647,45 @@ contains
     subroutine destroy(this)
         class(Padepoisson), intent(inout) :: this
 
-        call dfftw_destroy_plan (this%plan_c2c_fwd_z) 
-        call dfftw_destroy_plan (this%plan_c2c_bwd_z) 
-        deallocate(this%kradsq_inv)
-        deallocate(this%f2dext,  this%wext)
-        deallocate(this%k3modcm, this%k3modcp)
-        deallocate(this%f2d, this%f2dy, this%w2)
+        ! Periodic-z initialization does not create the extended-domain plans
+        ! or arrays, so every optional resource must be tested independently.
+        if ((.not. this%PeriodicInZ) .and. this%plan_c2c_fwd_z /= 0) then
+            call dfftw_destroy_plan (this%plan_c2c_fwd_z)
+        end if
+        if ((.not. this%PeriodicInZ) .and. this%plan_c2c_bwd_z /= 0) then
+            call dfftw_destroy_plan (this%plan_c2c_bwd_z)
+        end if
+        if (allocated(this%kradsq_inv)) deallocate(this%kradsq_inv)
+        if (allocated(this%f2dext)) deallocate(this%f2dext)
+        if (allocated(this%wext)) deallocate(this%wext)
+        if (allocated(this%k3modcm)) deallocate(this%k3modcm)
+        if (allocated(this%k3modcp)) deallocate(this%k3modcp)
+        if (allocated(this%f2d)) deallocate(this%f2d)
+        if (allocated(this%f2dy)) deallocate(this%f2dy)
+        if (allocated(this%w2)) deallocate(this%w2)
+        if (allocated(this%dwdzHATz_Periodic)) deallocate(this%dwdzHATz_Periodic)
         if (allocated(this%phat_z1)) deallocate(this%phat_z1)
         if (allocated(this%phat_z2)) deallocate(this%phat_z2)
-        nullify( this%sp_gp, this%sp_gpE, this%sp, this%spE)
-        deallocate(this%derZ)
+        if (allocated(this%lambda)) deallocate(this%lambda)
+        if (allocated(this%k1inZ)) deallocate(this%k1inZ)
+        if (allocated(this%k2inZ)) deallocate(this%k2inZ)
+        if (allocated(this%chat)) deallocate(this%chat)
+        if (allocated(this%phat)) deallocate(this%phat)
+        if (allocated(this%dpdzhat)) deallocate(this%dpdzhat)
+        if (allocated(this%denFact)) deallocate(this%denFact)
+        if (allocated(this%sinh_top)) deallocate(this%sinh_top)
+        if (allocated(this%cosh_top)) deallocate(this%cosh_top)
+        if (allocated(this%sinh_bot)) deallocate(this%sinh_bot)
+        if (allocated(this%cosh_bot)) deallocate(this%cosh_bot)
+        if (allocated(this%zCell)) deallocate(this%zCell)
+        if (allocated(this%zEdge)) deallocate(this%zEdge)
+        if (allocated(this%uhatinZ)) deallocate(this%uhatinZ)
+        if (allocated(this%vhatinZ)) deallocate(this%vhatinZ)
+        if (allocated(this%whatinZ)) deallocate(this%whatinZ)
+        if (allocated(this%div)) deallocate(this%div)
+        nullify(this%k1_2d, this%k2_2d)
+        nullify(this%sp_gp, this%sp_gpE, this%sp, this%spE, this%gpC, this%derivZ)
+        if (allocated(this%derZ)) deallocate(this%derZ)
     end subroutine
 
     subroutine GetStokesPressure(this,uhat,vhat,what)

@@ -37,7 +37,8 @@ module fringeMethod
          procedure :: getLambdaFact
          procedure :: link_igrid_pointers
          procedure :: update_fringe_shifts
-         procedure :: phaseshift
+         procedure, private :: phaseshift_cell
+         procedure, private :: phaseshift_edge
    end type
     
 contains
@@ -403,9 +404,11 @@ contains
 
    subroutine link_igrid_pointers(this, uhat, vhat, what, That)
       class(fringe), intent(inout) :: this
-      complex(rkind), dimension(this%gpC%ysz(1),this%gpC%ysz(2),this%gpC%ysz(3)), intent(in), target           :: uhat, vhat
-      complex(rkind), dimension(this%gpE%ysz(1),this%gpE%ysz(2),this%gpE%ysz(3)), intent(in), target           :: what
-      complex(rkind), dimension(this%gpC%ysz(1),this%gpC%ysz(2),this%gpC%ysz(3)), intent(in), optional, target :: That
+      ! These are Fourier-space y-pencil arrays.  Their x extent is nx/2+1,
+      ! so the physical gpC/gpE descriptors are not shape-compatible.
+      complex(rkind), dimension(this%sp_gpC%ysz(1),this%sp_gpC%ysz(2),this%sp_gpC%ysz(3)), intent(in), target           :: uhat, vhat
+      complex(rkind), dimension(this%sp_gpE%ysz(1),this%sp_gpE%ysz(2),this%sp_gpE%ysz(3)), intent(in), target           :: what
+      complex(rkind), dimension(this%sp_gpC%ysz(1),this%sp_gpC%ysz(2),this%sp_gpC%ysz(3)), intent(in), optional, target :: That
 
       this%uhat => uhat
       this%vhat => vhat
@@ -461,14 +464,18 @@ contains
    subroutine update_fringe_shifts(this)
       class(fringe), intent(inout) :: this
       ! Perform lateral shifting here
-      call this%phaseshift(this%uhat, this%u_for_shifts, this%xshift, this%yshift)
-      call this%phaseshift(this%vhat, this%v_for_shifts, this%xshift, this%yshift)
-      call this%phaseshift(this%what, this%w_for_shifts, this%xshift, this%yshift)
-      call this%phaseshift(this%That, this%T_for_shifts, this%xshift, this%yshift)
+      call this%phaseshift_cell(this%uhat, this%u_for_shifts, this%xshift, this%yshift)
+      call this%phaseshift_cell(this%vhat, this%v_for_shifts, this%xshift, this%yshift)
+      call this%phaseshift_edge(this%what, this%w_for_shifts, this%xshift, this%yshift)
+      ! Temperature storage is absent in unstratified runs.  The association
+      ! flag is a more reliable guard than passing another flow-state logical.
+      if (this%T_linked_for_shifts) then
+         call this%phaseshift_cell(this%That, this%T_for_shifts, this%xshift, this%yshift)
+      end if
    end subroutine
 
 
-   subroutine phaseshift(this, uhat, uFilt, xshift, yshift)
+   subroutine phaseshift_cell(this, uhat, uFilt, xshift, yshift)
       use constants, only: imi
       class(fringe), intent(inout) :: this
       complex(rkind), dimension(this%sp_gpC%ysz(1),this%sp_gpC%ysz(2), this%sp_gpC%ysz(3)), intent(in) :: uhat
@@ -487,6 +494,28 @@ contains
       end do
       call this%spectC%ifft(tmp, uFilt)  ! inverse FFT back to real space
 
+   end subroutine
+
+   subroutine phaseshift_edge(this, what, wFilt, xshift, yshift)
+      use constants, only: imi
+      class(fringe), intent(inout) :: this
+      complex(rkind), dimension(this%sp_gpE%ysz(1),this%sp_gpE%ysz(2),this%sp_gpE%ysz(3)), intent(in) :: what
+      complex(rkind), dimension(size(what,1),size(what,2),size(what,3)) :: tmp
+      real(rkind), dimension(this%spectE%physdecomp%xsz(1),this%spectE%physdecomp%xsz(2), &
+                             this%spectE%physdecomp%xsz(3)), intent(out) :: wFilt
+      real(rkind), intent(in) :: xshift, yshift
+      integer :: i, j, k
+
+      tmp = what
+      do k = 1,size(tmp,3)
+         do j = 1,size(tmp,2)
+            do i = 1,size(tmp,1)
+               tmp(i,j,k) = what(i,j,k)*exp(-imi*(this%spectE%k1(i,1,1)*xshift + &
+                                                  this%spectE%k2(1,j,1)*yshift))
+            end do
+         end do
+      end do
+      call this%spectE%ifft(tmp, wFilt)
    end subroutine
 
 end module 

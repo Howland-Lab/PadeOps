@@ -2,8 +2,8 @@ module angleControl
    use kind_parameters, only: rkind, clen
    use decomp_2d
    use spectralMod, only: spectral  
-   use exits, only: message
-   use constants, only: pi
+   use exits, only: message, gracefulExit
+   use constants, only: pi, zero, one
    use reductions, only: p_sum
    implicit none
 
@@ -64,6 +64,12 @@ contains
       !real(rkind), intent(out) :: totalAngle
       nx = this%gpC%xsz(1)
       ny = this%gpC%ysz(2)
+      ! Define every output even for dummy controllers and non-triggered steps.
+      phi_n = this%phi_n
+      wFilt_n = this%wFilt_n
+      deltaGalpha = this%deltaGalpha
+      z_hub = this%z_ref
+      trigger = zero
 
       ! Only do the following if it is not a dummy controller
       if (.NOT. dumcntl) then
@@ -102,6 +108,9 @@ contains
             this%phi = phi_n
             ! First order time filter         
             !wFilt_n = (dt*wControl_n + dt*this%wControl + this%wFilt*(2.d0*this%sigma - dt)) / (this%sigma*2.d0 + dt) 
+            if (abs(this%sigma + dt) <= tiny(one)) then
+               call gracefulExit("Controller sigma + dt must be nonzero.", 123)
+            end if
             wFilt_n = (1.d0 - (dt/(this%sigma+dt))) * this%wFilt + dt/(this%sigma + dt) * wControl_n
             this%wFilt = wFilt_n
             this%wFilt_n = this%alpha * wFilt_n + this%beta * (phi_n - this%phi_ref)
@@ -110,7 +119,10 @@ contains
             ! Control geostrophic velocity directly
             wControl_n = (phi_n - this%phi)
             this%phi = phi_n
-            deltaGalpha = (1.d0 - (dt/(this%sigma+dt))) * this%wFilt + dt/(this%sigma + dt) * wControl_n            
+            if (abs(this%sigma + dt) <= tiny(one)) then
+               call gracefulExit("Controller sigma + dt must be nonzero.", 123)
+            end if
+            deltaGalpha = (1.d0 - (dt/(this%sigma+dt))) * this%wFilt + dt/(this%sigma + dt) * wControl_n
             this%wFilt = deltaGalpha 
             deltaGalpha = this%alpha * deltaGalpha + this%beta * (phi_n - this%phi_ref)
             deltaGalpha = deltaGalpha * pi / 180.d0
@@ -131,8 +143,12 @@ contains
          !!!!!!!!!!!!!!!!!!!!!!!
          ! Here I added the factor of 2 to deltaGalpha
          !!!!!!!!!!!!!!!!!!!!!!!
-         deltaGalpha = 2.d0 * this%wFilt_n * dt * 180.d0 / pi
-         this%deltaGalpha = deltaGalpha
+         ! Type 1 returns the frame-angle increment.  Type 2 already computed
+         ! a geostrophic-angle increment above and must not be overwritten.
+         if (this%controlType == 1) then
+            deltaGalpha = 2.d0 * this%wFilt_n * dt * 180.d0 / pi
+            this%deltaGalpha = deltaGalpha
+         end if
    end subroutine
 
 

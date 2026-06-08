@@ -53,7 +53,7 @@ module scalar_igridMod
       type(sgs_igrid), pointer :: sgsmodel
       logical :: useSource, isinviscid, useSGS, usefringe, usedoublefringe
 
-      real(rkind) :: lowbound, highbound 
+      real(rkind) :: lowbound = 0.d0, highbound = 1.d0
       contains
          procedure :: init
          procedure :: destroy
@@ -168,8 +168,16 @@ end subroutine
 subroutine destroy(this)
    class(scalar_igrid), intent(inout) :: this
 
-   deallocate(this%F, this%Fhat, this%dFdxC, this%dFdyC, this%dFdzC, this%dFdzE, this%rhs)
-   deallocate(this%fhat1, this%fhat2, this%fhat3)
+   ! Fhat/rhs/Fhat1:3 are aliases into Sfields/rhs_storage.  Deallocating the
+   ! aliases can free the same owner more than once, so release owners only.
+   nullify(this%Fhat, this%rhs, this%Fhat1, this%Fhat2, this%Fhat3, this%Fhat4)
+   if (allocated(this%F)) deallocate(this%F)
+   if (allocated(this%dFdxC)) deallocate(this%dFdxC)
+   if (allocated(this%dFdyC)) deallocate(this%dFdyC)
+   if (allocated(this%dFdzC)) deallocate(this%dFdzC)
+   if (allocated(this%dFdzE)) deallocate(this%dFdzE)
+   if (allocated(this%Sfields)) deallocate(this%Sfields)
+   if (allocated(this%rhs_storage)) deallocate(this%rhs_storage)
 
    if (allocated(this%source_hat)) deallocate(this%source_hat)
    if (allocated(this%d2Fdz2)) deallocate(this%d2Fdz2)
@@ -204,12 +212,14 @@ subroutine init(this,gpC,gpE,spectC,spectE,sgsmodel,der,inputFile, inputDir,mesh
    integer, intent(in) :: scalar_number, RunID, tid_restart 
    integer :: ierr
    logical :: useSource = .false., RejectScalarRestart = .false. 
-   real(rkind) :: PrandtlNum = 1.d0, TurbPrandtlNum = 1.d0, Cy = 100.d0 
+   real(rkind) :: PrandtlNum = 1.d0, TurbPrandtlNum = 1.d0, Cy = 100.d0
+   real(rkind) :: lowbound = 0.d0, highbound = 1.d0
    integer ::  bc_bottom = 1, bc_top = 1 
    character(len=clen) :: tempname, fname
 
 
-   namelist /SCALAR_INFO/ useSource, PrandtlNum, bc_bottom, bc_top,TurbPrandtlNum, Cy, RejectScalarRestart 
+   namelist /SCALAR_INFO/ useSource, PrandtlNum, bc_bottom, bc_top,TurbPrandtlNum, Cy, &
+                          lowbound, highbound, RejectScalarRestart
 
    
    this%InputDataDir = InputDataDir
@@ -226,6 +236,8 @@ subroutine init(this,gpC,gpE,spectC,spectE,sgsmodel,der,inputFile, inputDir,mesh
    this%TurbPrandtlNum = TurbPrandtlNum
    this%Re = Re
    this%Cy = Cy 
+   this%lowbound = lowbound
+   this%highbound = highbound
 
    this%der => der
 

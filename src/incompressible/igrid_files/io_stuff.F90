@@ -517,6 +517,10 @@
        end if 
        call mpi_barrier(mpi_comm_world, ierr)
        call mpi_bcast(this%tsim,1,mpirkind,0,mpi_comm_world,ierr)
+       if (this%useControl) then
+           ! The angle controller must restart from identical state on every rank.
+           call mpi_bcast(this%restartPhi,1,mpirkind,0,mpi_comm_world,ierr)
+       end if
        call mpi_barrier(mpi_comm_world, ierr)
        call message("================= RESTART FILE USED ======================")
        call message(0, "Simulation Time at restart:", this%tsim)

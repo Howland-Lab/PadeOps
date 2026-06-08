@@ -1179,7 +1179,8 @@
 
        if(this%useWindTurbines) then
           !----Turbine work term in MKE budget-------
-          rbuff1 = ( this%u_mean3D*this%turbfx_mean3D + this%v_mean3D*this%turbfy_mean3D + this%w_mean3D*this%turbfy_mean3D ) / tidSUMreal**2
+          ! Contract each mean velocity component with its matching force component.
+          rbuff1 = ( this%u_mean3D*this%turbfx_mean3D + this%v_mean3D*this%turbfy_mean3D + this%w_mean3D*this%turbfz_mean3D ) / tidSUMreal**2
           call transpose_x_to_y(rbuff1, rbuff2, this%gpC)
           call transpose_y_to_z(rbuff2, rbuff3, this%gpC)
           call this%compute_z_mean(rbuff3, this%mketurbf_mean)
@@ -1190,7 +1191,7 @@
 
           !----Turbine work term in TKE budget-------
           rbuff1 = this%uturbf_mean3D/tidSUMreal -  ( this%u_mean3D*this%turbfx_mean3D + &
-                   this%v_mean3D*this%turbfy_mean3D + this%w_mean3D*this%turbfy_mean3D ) / tidSUMreal**2
+                   this%v_mean3D*this%turbfy_mean3D + this%w_mean3D*this%turbfz_mean3D ) / tidSUMreal**2
           call transpose_x_to_y(rbuff1, rbuff2, this%gpC)
           call transpose_y_to_z(rbuff2, rbuff3, this%gpC)
           call this%compute_z_mean(rbuff3, this%tketurbf_mean)

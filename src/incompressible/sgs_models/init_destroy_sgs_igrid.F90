@@ -4,14 +4,31 @@ subroutine destroy(this)
   nullify(this%cbuffyC, this%cbuffzC, this%rbuffxC, this%Tsurf, this%fyC, this%fzE, this%wTh_surf)
   if (this%isEddyViscosityModel) call this%destroyMemory_EddyViscosity()
   if (this%DynamicProcedureType .ne. 0) call this%destroyMemory_DynamicProcedure()
+  if (this%useWallModel) call this%destroyWallModel()
+  if (this%useScalarBounding) then
+     call this%gaussianX%destroy()
+     call this%gaussianY%destroy()
+     call this%gaussianZ%destroy()
+  end if
   select case (this%mid)
   case (0)
      call this%destroy_smagorinsky()
   case (1)
      call this%destroy_sigma()
+  case (2)
+     call this%destroy_amd()
   end select
-  nullify(this%tau_11, this%tau_12, this%tau_22, this%tau_33)
-  deallocate(this%tau_13, this%tau_23)
+  nullify(this%tau_11, this%tau_12, this%tau_13C, this%tau_22, this%tau_23C, this%tau_33)
+  if (allocated(this%tau_ij)) deallocate(this%tau_ij)
+  if (allocated(this%tau_13)) deallocate(this%tau_13)
+  if (allocated(this%tau_23)) deallocate(this%tau_23)
+  if (allocated(this%q1C)) deallocate(this%q1C)
+  if (allocated(this%q2C)) deallocate(this%q2C)
+  if (allocated(this%q3E)) deallocate(this%q3E)
+  if (allocated(this%kappa_boundingC)) deallocate(this%kappa_boundingC)
+  if (allocated(this%kappa_boundingE)) deallocate(this%kappa_boundingE)
+  if (allocated(this%cmodelC)) deallocate(this%cmodelC)
+  if (allocated(this%cmodelE)) deallocate(this%cmodelE)
 end subroutine
 
 
@@ -29,11 +46,11 @@ subroutine link_pointers(this, nuSGS, tauSGS_ij, tau13, tau23, q1, q2, q3, kappa
 
    tauSGS_ij => this%tau_ij
   
-   if (this%isStratified) then
+   if (this%isStratified .or. this%initSpinUp) then
       q1 => this%q1C
       q2 => this%q2C
       q3 => this%q3E
-      kappaSGS => this%kappa_sgs_C
+      if (this%isStratified) kappaSGS => this%kappa_sgs_C
    end if
 
    if (this%useScalarBounding) then
@@ -169,6 +186,9 @@ subroutine init(this, gpC, gpE, spectC, spectE, dx, dy, dz, inputfile, zMeshE, z
   this%WallModel  = WallModelType
   this%WM_matchingIndex = WM_matchingIndex
   if (this%WallModel .ne. 0) then
+      if ((this%WM_matchingIndex < 1) .or. (this%WM_matchingIndex > gpC%zsz(3))) then
+         call GracefulExit("Wall-model matching index is outside the cell-centered z grid.", 12)
+      end if
       if (this%PadeDer%isPeriodic) then
          call GracefulExit("You cannot use a wall model if the problem is periodic in Z",12)
       else
