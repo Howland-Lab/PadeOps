@@ -557,11 +557,11 @@ module refine_fields_mod
 
   end subroutine refine_z_physical
 
-  subroutine initializeEverything(Lx, Ly, Lz, nx, ny, nz, p_row, p_col, &
+  subroutine initializeEverything(Lx, Ly, Lz, nx, ny, nz, prow, pcol, &
                                   NumericalSchemeVert, botWall, TopWall, botBC_Temp, topBC_Temp)
     implicit none
     real(rkind), intent(in) :: Lx, Ly, Lz
-    integer, intent(in) :: nx, ny, nz, p_row, p_col
+    integer, intent(in) :: nx, ny, nz, prow, pcol
     integer, intent(in) :: NumericalSchemeVert, botWall, TopWall, botBC_Temp, topBC_Temp
     integer :: nx_f, ny_f, nz_f
     real(rkind) :: dx, dy, dz
@@ -578,7 +578,7 @@ module refine_fields_mod
     !-----------------------------------------------------------------------------
     ! Initialize decomp2d for the original (coarse) grid
     !-----------------------------------------------------------------------------
-    call decomp_2d_init(nx, ny, nz, p_row, p_col)
+    call decomp_2d_init(nx, ny, nz, prow, pcol)
 
     ! Get local decomposition info for array allocation
     ! Cell-centered grids
@@ -736,7 +736,7 @@ program refine_fields
 
     ! Grid parameters
     integer :: nx, ny, nz
-    integer :: ierr, ioUnit, p_row=0, p_col=0
+    integer :: ierr, ioUnit, prow=0, pcol=0
     real(rkind) :: Lx, Ly, Lz, dz
     character(len=clen) :: inputfile
     character(len=clen) :: outputdir, inputdir
@@ -746,7 +746,7 @@ program refine_fields
 
     namelist /INPUT/ Lx, Ly, Lz, nx, ny, nz, refine_x, refine_y, refine_z, &
         inputdir, outputdir, inputFile_TID, inputFile_RID, &
-        outputFile_TID, outputFile_RID, isStratified, p_row, p_col, &
+        outputFile_TID, outputFile_RID, isStratified, prow, pcol, &
         NumericalSchemeVert, botWall, TopWall, botBC_Temp, topBC_Temp
 
     call MPI_Init(ierr)               !<-- Begin MPI
@@ -759,7 +759,7 @@ program refine_fields
 
     dz = Lz / real(nz, rkind)
 
-    call initializeEverything(Lx, Ly, Lz, nx, ny, nz, p_row, p_col, &
+    call initializeEverything(Lx, Ly, Lz, nx, ny, nz, prow, pcol, &
                               NumericalSchemeVert, botWall, TopWall, botBC_Temp, topBC_Temp)
 
     !----------------------------------------------------------
