@@ -35,13 +35,14 @@ module constructDeficitBudgets_mod
    integer :: num_profiles
    real(rkind), dimension(:), allocatable :: xstations
    logical :: writeDependentVariables = .false.
-   integer :: budgettype=1 ! 1: x-Momentum, 2: y-Momentum, 3: z-Momentum, 4: TKE
+   integer :: budgettype=1 ! 1: x-Momentum, 2: y-Momentum, 3: z-Momentum, 4: TKE, 5: MKE
    real(rkind), dimension(:,:,:), pointer :: dudx, dudy, dudz
    real(rkind), dimension(:,:,:), pointer :: dvdx, dvdy, dvdz
    real(rkind), dimension(:,:,:), pointer :: dwdx, dwdy, dwdz
    real(rkind), dimension(:,:,:), pointer :: dudx_base, dudy_base, dudz_base
    real(rkind), dimension(:,:,:), pointer :: dvdx_base, dvdy_base, dvdz_base
    real(rkind), dimension(:,:,:), pointer :: dwdx_base, dwdy_base, dwdz_base
+   real(rkind), dimension(:,:,:), pointer :: du, dv, dw, ubase, vbase, wbase
    character(len=:), allocatable :: sorted_keys(:), sorted_stamps(:)
    logical :: do_box_averaging=.true.
 
@@ -70,6 +71,8 @@ module constructDeficitBudgets_mod
          name = 'Z'
       case(4)
          name = 'TKE'
+      case(5)
+         name = 'MKE'
       end select
 
       write(crid, '(I2.2)') RID
@@ -146,6 +149,9 @@ module constructDeficitBudgets_mod
          case(4)
             call compute_TKE_budget_component(idx, buffer)
             additional = '4'
+         case(5)
+            call compute_MKE_budget_component(idx, buffer)
+            additional = '8'
          end select
 
          ! Average this budget term across the box
@@ -173,6 +179,9 @@ module constructDeficitBudgets_mod
       elseif(budgettype == 4)then
          ! TKE equation
          if(idx <= 12) depedent_variable = .true.
+      elseif(budgettype == 5)then
+         ! MKE equation
+         depedent_variable = .true.
       end if
    end function depedent_variable
 
@@ -189,31 +198,31 @@ module constructDeficitBudgets_mod
       select case(idx)
       case(1)
          ! Advection: delta u_1 * partial_1 (delta u_1)
-         buffer = budget0(:,:,:,1) * dudx
+         buffer = du * dudx
       case(2)
          ! Advection: delta u_2 * partial_2 (delta u_1)
-         buffer = budget0(:,:,:,2) * dudy
+         buffer = dv * dudy
       case(3)
          ! Advection: delta u_3 * partial_3 (delta u_1)
-         buffer = budget0(:,:,:,3) * dudz
+         buffer = dw * dudz
       case(4)
          ! Advection: delta u_1 * partial_1 (base u_1)
-         buffer = budget0(:,:,:,1) * dudx_base
+         buffer = du * dudx_base
       case(5)
          ! Advection: delta u_2 * partial_2 (base u_1)
-         buffer = budget0(:,:,:,2) * dudy_base
+         buffer = dv * dudy_base
       case(6)
          ! Advection: delta u_3 * partial_3 (base u_1)
-         buffer = budget0(:,:,:,3) * dudz_base
+         buffer = dw * dudz_base
       case(7)
          ! Advection: base u_1 * partial_1 (delta u_1)
-         buffer = baseBudget0(:,:,:,1) * dudx
+         buffer = ubase * dudx
       case(8)
          ! Advection: base u_2 * partial_2 (delta u_1)
-         buffer = baseBudget0(:,:,:,2) * dudy
+         buffer = vbase * dudy
       case(9)
          ! Advection: base u_3 * partial_3 (delta u_1)
-         buffer = baseBudget0(:,:,:,3) * dudz
+         buffer = wbase * dudz
       case(10)
          ! pressure gradient: partial_1 (delta p)
          buffer = budget0(:,:,:,18)
@@ -278,31 +287,31 @@ module constructDeficitBudgets_mod
       select case(idx)
       case(1)
          ! Advection: delta u_1 * partial_1 (delta u_2)
-         buffer = budget0(:,:,:,1) * dvdx
+         buffer = du * dvdx
       case(2)
          ! Advection: delta u_2 * partial_2 (delta u_2)
-         buffer = budget0(:,:,:,2) * dvdy
+         buffer = dv * dvdy
       case(3)
          ! Advection: delta u_3 * partial_3 (delta u_2)
-         buffer = budget0(:,:,:,3) * dvdz
+         buffer = dw * dvdz
       case(4)
          ! Advection: delta u_1 * partial_1 (base u_2)
-         buffer = budget0(:,:,:,1) * dvdx_base
+         buffer = du * dvdx_base
       case(5)
          ! Advection: delta u_2 * partial_2 (base u_2)
-         buffer = budget0(:,:,:,2) * dvdy_base
+         buffer = dv * dvdy_base
       case(6)
          ! Advection: delta u_3 * partial_3 (base u_2)
-         buffer = budget0(:,:,:,3) * dvdz_base
+         buffer = dw * dvdz_base
       case(7)
          ! Advection: base u_1 * partial_1 (delta u_2)
-         buffer = baseBudget0(:,:,:,1) * dvdx
+         buffer = ubase * dvdx
       case(8)
          ! Advection: base u_2 * partial_2 (delta u_2)
-         buffer = baseBudget0(:,:,:,2) * dvdy
+         buffer = vbase * dvdy
       case(9)
          ! Advection: base u_3 * partial_3 (delta u_2)
-         buffer = baseBudget0(:,:,:,3) * dvdz
+         buffer = wbase * dvdz
       case(10)
          ! pressure gradient: partial_2 (delta p)
          buffer = budget0(:,:,:,19)
@@ -367,31 +376,31 @@ module constructDeficitBudgets_mod
       select case(idx)
       case(1)
          ! Advection: delta u_1 * partial_1 (delta u_3)
-         buffer = budget0(:,:,:,1) * dwdx
+         buffer = du * dwdx
       case(2)
          ! Advection: delta u_2 * partial_2 (delta u_3)
-         buffer = budget0(:,:,:,2) * dwdy
+         buffer = dv * dwdy
       case(3)
          ! Advection: delta u_3 * partial_3 (delta u_3)
-         buffer = budget0(:,:,:,3) * dwdz
+         buffer = dw * dwdz
       case(4)
          ! Advection: delta u_1 * partial_1 (base u_3)
-         buffer = budget0(:,:,:,1) * dwdx_base
+         buffer = du * dwdx_base
       case(5)
          ! Advection: delta u_2 * partial_2 (base u_3)
-         buffer = budget0(:,:,:,2) * dwdy_base
+         buffer = dv * dwdy_base
       case(6)
          ! Advection: delta u_3 * partial_3 (base u_3)
-         buffer = budget0(:,:,:,3) * dwdz_base
+         buffer = dw * dwdz_base
       case(7)
          ! Advection: base u_1 * partial_1 (delta u_3)
-         buffer = baseBudget0(:,:,:,1) * dwdx
+         buffer = ubase * dwdx
       case(8)
          ! Advection: base u_2 * partial_2 (delta u_3)
-         buffer = baseBudget0(:,:,:,2) * dwdy
+         buffer = vbase * dwdy
       case(9)
          ! Advection: base u_3 * partial_3 (delta u_3)
-         buffer = baseBudget0(:,:,:,3) * dwdz
+         buffer = wbase * dwdz
       case(10)
          ! pressure gradient: partial_3 (delta p)
          buffer = budget0(:,:,:,20)
@@ -457,37 +466,37 @@ module constructDeficitBudgets_mod
       case(1)
          ! Advection: delta u_j * partial_j (delta u_i' delta u_i')/2 
          BF1 = half*(budget1(:,:,:,1) + budget1(:,:,:,4) + budget1(:,:,:,6))
-         call ddx_R2R(BF1, BF2); buffer = buffer + BF2*budget0(:,:,:,1)
-         call ddy_R2R(BF1, BF2); buffer = buffer + BF2*budget0(:,:,:,2)
-         call ddz_R2R(BF1, BF2, 1, 1); buffer = buffer + BF2*budget0(:,:,:,3) ! BF1 is even
+         call ddx_R2R(BF1, BF2); buffer = buffer + BF2*du
+         call ddy_R2R(BF1, BF2); buffer = buffer + BF2*dv
+         call ddz_R2R(BF1, BF2, 1, 1); buffer = buffer + BF2*dw ! BF1 is even
       
       case(2)
          ! Advection: delta u_j * partial_j (delta u_i' base u_i') 
          BF1 = (budget1(:,:,:,7) + budget1(:,:,:,12) + budget1(:,:,:,15))
-         call ddx_R2R(BF1, BF2); buffer = buffer + BF2*budget0(:,:,:,1)
-         call ddy_R2R(BF1, BF2); buffer = buffer + BF2*budget0(:,:,:,2)
-         call ddz_R2R(BF1, BF2, 1, 1); buffer = buffer + BF2*budget0(:,:,:,3) ! BF1 is even
+         call ddx_R2R(BF1, BF2); buffer = buffer + BF2*du
+         call ddy_R2R(BF1, BF2); buffer = buffer + BF2*dv
+         call ddz_R2R(BF1, BF2, 1, 1); buffer = buffer + BF2*dw ! BF1 is even
       
       case(3)
          ! Advection: delta u_j * partial_j (base u_i' base u_i')/2 
          BF1 = half*(baseBudget0(:,:,:,4) + baseBudget0(:,:,:,7) + baseBudget0(:,:,:,9))
-         call ddx_R2R(BF1, BF2); buffer = buffer + BF2*budget0(:,:,:,1)
-         call ddy_R2R(BF1, BF2); buffer = buffer + BF2*budget0(:,:,:,2)
-         call ddz_R2R(BF1, BF2, 1, 1); buffer = buffer + BF2*budget0(:,:,:,3) ! BF1 is even
+         call ddx_R2R(BF1, BF2); buffer = buffer + BF2*du
+         call ddy_R2R(BF1, BF2); buffer = buffer + BF2*dv
+         call ddz_R2R(BF1, BF2, 1, 1); buffer = buffer + BF2*dw ! BF1 is even
       
       case(4)
          ! Advection: base u_j * partial_j (delta u_i' delta u_i')/2
          BF1 = half*(budget1(:,:,:,1) + budget1(:,:,:,4) + budget1(:,:,:,6))
-         call ddx_R2R(BF1, BF2); buffer = buffer + BF2*baseBudget0(:,:,:,1)
-         call ddy_R2R(BF1, BF2); buffer = buffer + BF2*baseBudget0(:,:,:,2)
-         call ddz_R2R(BF1, BF2, 1, 1); buffer = buffer + BF2*baseBudget0(:,:,:,3) ! BF1 is even
+         call ddx_R2R(BF1, BF2); buffer = buffer + BF2*ubase
+         call ddy_R2R(BF1, BF2); buffer = buffer + BF2*vbase
+         call ddz_R2R(BF1, BF2, 1, 1); buffer = buffer + BF2*wbase ! BF1 is even
       
       case(5)
          ! Advection: base u_j * partial_j (delta u_i' base u_i') 
          BF1 = (budget1(:,:,:,7) + budget1(:,:,:,12) + budget1(:,:,:,15))
-         call ddx_R2R(BF1, BF2); buffer = buffer + BF2*baseBudget0(:,:,:,1)
-         call ddy_R2R(BF1, BF2); buffer = buffer + BF2*baseBudget0(:,:,:,2)
-         call ddz_R2R(BF1, BF2, 1, 1); buffer = buffer + BF2*baseBudget0(:,:,:,3) ! BF1 is even
+         call ddx_R2R(BF1, BF2); buffer = buffer + BF2*ubase
+         call ddy_R2R(BF1, BF2); buffer = buffer + BF2*vbase
+         call ddz_R2R(BF1, BF2, 1, 1); buffer = buffer + BF2*wbase ! BF1 is even
       
       case(6)
          ! Production: mean(delta u_i' delta u_j') partial_j mean(delta u_i)
@@ -600,6 +609,143 @@ module constructDeficitBudgets_mod
       case(31)
          ! SGS Dissipation: mean(delta tau_ij' partial_j delta u_i')
          buffer = -budget3(:,:,:,9)         
+      end select 
+  
+      nullify(BF1, BF2)
+   end subroutine
+
+   subroutine compute_MKE_budget_component(idx, buffer)
+      implicit none
+      integer, intent(in) :: idx
+      real(rkind), dimension(:,:,:), intent(out) :: buffer
+      real(rkind), dimension(:,:,:), pointer :: BF1, BF2
+
+      BF1 => rbuffxC(:,:,:,1)
+      BF2 => rbuffxC(:,:,:,2)
+      
+      buffer = zero
+      select case(idx)
+      case(1)
+         ! Advection: delta u_i base u_j partial_j base u_i
+         buffer = du * (dudx_base * ubase + dudy_base * vbase + dudz_base * wbase) + &
+                  dv * (dvdx_base * ubase + dvdy_base * vbase + dvdz_base * wbase) + &
+                  dw * (dwdx_base * ubase + dwdy_base * vbase + dwdz_base * wbase)
+      case(2)
+         ! Advection: base u_i base u_j partial_j delta u_i
+         buffer = ubase * (dudx * ubase + dudy * vbase + dudz * wbase) + &
+                  vbase * (dvdx * ubase + dvdy * vbase + dvdz * wbase) + &
+                  wbase * (dwdx * ubase + dwdy * vbase + dwdz * wbase)
+      
+      case(3)
+         ! Advection: delta u_i base u_j partial_j delta u_i
+         buffer = du * (dudx * ubase + dudy * vbase + dudz * wbase) + &
+                  dv * (dvdx * ubase + dvdy * vbase + dvdz * wbase) + &
+                  dw * (dwdx * ubase + dwdy * vbase + dwdz * wbase)
+
+      case(4)
+         ! Advection: base u_i delta u_j partial_j base u_i
+         buffer = ubase * (dudx_base * du + dudy_base * dv + dudz_base * dw) + &
+                  vbase * (dvdx_base * du + dvdy_base * dv + dvdz_base * dw) + &
+                  wbase * (dwdx_base * du + dwdy_base * dv + dwdz_base * dw)
+
+      case(5)
+         ! Advection: delta u_i delta u_j partial_j base u_i
+         buffer = du * (dudx_base * du + dudy_base * dv + dudz_base * dw) + &
+                  dv * (dvdx_base * du + dvdy_base * dv + dvdz_base * dw) + &
+                  dw * (dwdx_base * du + dwdy_base * dv + dwdz_base * dw)
+
+      case(6)
+         ! Advection: base u_i delta u_j partial_j delta u_i
+         buffer = ubase * (dudx * du + dudy * dv + dudz * dw) + &
+                  vbase * (dvdx * du + dvdy * dv + dvdz * dw) + &
+                  wbase * (dwdx * du + dwdy * dv + dwdz * dw)
+
+      case(7)
+         ! Advection: delta u_i delta u_j partial_j delta u_i
+         buffer = du * (dudx * du + dudy * dv + dudz * dw) + &
+                  dv * (dvdx * du + dvdy * dv + dvdz * dw) + &
+                  dw * (dwdx * du + dwdy * dv + dwdz * dw)
+
+      case(8)
+         ! Buoyancy: delta wb * delta w
+         buffer = budget0(:,:,:,17) * dw
+
+      case(9)
+         ! Buoyancy: delta wb * base w
+         buffer = budget0(:,:,:,17) * wbase
+
+      case(10)
+         ! Buoyancy: base wb * delta w
+         ! Make sure that squeeze was .true. in the main simulation
+         ! This is overloading an existing budget term in budget0.
+         buffer = baseBudget0(:,:,:,25) * dw
+
+      case(11)
+         ! Pressure gradient: delta u_i * d_i delta p
+         buffer = du * budget0(:,:,:,18) + dv * budget0(:,:,:,19) + dw * budget0(:,:,:,20)
+
+      case(12)
+         ! Pressure gradient: base u_i * d_i delta p
+         buffer = ubase * budget0(:,:,:,18) + vbase * budget0(:,:,:,19) + wbase * budget0(:,:,:,20)
+      
+      case(13)
+         ! Pressure gradient: delta u_i * d_i base p
+         ! Make sure that squeeze was .true. in the main simulation
+         buffer = du * baseBudget0(:,:,:,17) + dv * baseBudget0(:,:,:,18) + dw * baseBudget0(:,:,:,19)
+
+      case(14)
+         ! SGS stresses: delta u_i * d_j delta tau_ij
+         buffer = du * budget0(:,:,:,12) + dv * budget0(:,:,:,13) + dw * budget0(:,:,:,14)
+
+      case(15)
+         ! SGS stresses: base u_i * d_j delta tau_ij
+         buffer = ubase * budget0(:,:,:,12) + vbase * budget0(:,:,:,13) + wbase * budget0(:,:,:,14)
+
+      case(16)
+         ! SGS stresses: delta u_i * d_j base tau_ij
+         ! Make sure that squeeze was .true. in the main simulation
+         buffer = du * baseBudget0(:,:,:,20) + dv * baseBudget0(:,:,:,21) + dw * baseBudget0(:,:,:,22)
+
+      case(17)
+         ! Production: delta u_i * mean(delta u_j' d_j delta u_i')
+         buffer = du * budget2(:,:,:,1) + dv * budget2(:,:,:,2) + dw * budget2(:,:,:,3)
+
+      case(18)
+         ! Production: delta u_i * mean(delta u_j' d_j base u_i')
+         buffer = du * budget2(:,:,:,4) + dv * budget2(:,:,:,5) + dw * budget2(:,:,:,6)
+
+      case(19)
+         ! Production: delta u_i * mean(base u_j' d_j delta u_i')
+         buffer = du * budget2(:,:,:,7) + dv * budget2(:,:,:,8) + dw * budget2(:,:,:,9)
+
+      case(20)
+         ! Production: delta u_i * mean(base u_j' d_j base u_i')
+         buffer = du * budget2(:,:,:,10) + dv * budget2(:,:,:,11) + dw * budget2(:,:,:,12)
+
+      case(21)
+         ! Production: base u_i * mean(delta u_j' d_j delta u_i')
+         buffer = ubase * budget2(:,:,:,1) + vbase * budget2(:,:,:,2) + wbase * budget2(:,:,:,3)
+
+      case(22)
+         ! Production: base u_i * mean(delta u_j' d_j base u_i')
+         buffer = ubase * budget2(:,:,:,4) + vbase * budget2(:,:,:,5) + wbase * budget2(:,:,:,6)
+
+      case(23)
+         ! Production: base u_i * mean(base u_j' d_j delta u_i')
+         buffer = ubase * budget2(:,:,:,7) + vbase * budget2(:,:,:,8) + wbase * budget2(:,:,:,9)
+
+      case(24)
+         ! Coriolis: delta u_i * delta ucor_i
+         buffer = du * budget0(:,:,:,15) + dv * budget0(:,:,:,16)
+
+      case(25)
+         ! Coriolis: delta u_i * base ucor_i
+         ! Make sure that squeeze was .true. in the main simulation
+         buffer = du * baseBudget0(:,:,:,23) + dv * baseBudget0(:,:,:,24)
+
+      case(26)
+         ! Coriolis: base u_i * delta ucor_i
+         buffer = ubase * budget0(:,:,:,15) + vbase * budget0(:,:,:,16)
       end select 
   
       nullify(BF1, BF2)
@@ -744,25 +890,25 @@ module constructDeficitBudgets_mod
       implicit none
       call message(1, 'Computing velocity gradients ...')
 
-      call ddx_R2R(budget0(:,:,:,1), dudx)
-      call ddy_R2R(budget0(:,:,:,1), dudy)
-      call ddz_R2R(budget0(:,:,:,1), dudz, uBC_bottom, uBC_top)
-      call ddx_R2R(budget0(:,:,:,2), dvdx)
-      call ddy_R2R(budget0(:,:,:,2), dvdy)
-      call ddz_R2R(budget0(:,:,:,2), dvdz, vBC_bottom, vBC_top)
-      call ddx_R2R(budget0(:,:,:,3), dwdx)
-      call ddy_R2R(budget0(:,:,:,3), dwdy)
-      call ddz_R2R(budget0(:,:,:,3), dwdz, wBC_bottom, wBC_top)
+      call ddx_R2R(du, dudx)
+      call ddy_R2R(du, dudy)
+      call ddz_R2R(du, dudz, uBC_bottom, uBC_top)
+      call ddx_R2R(dv, dvdx)
+      call ddy_R2R(dv, dvdy)
+      call ddz_R2R(dv, dvdz, vBC_bottom, vBC_top)
+      call ddx_R2R(dw, dwdx)
+      call ddy_R2R(dw, dwdy)
+      call ddz_R2R(dw, dwdz, wBC_bottom, wBC_top)
 
-      call ddx_R2R(baseBudget0(:,:,:,1), dudx_base)
-      call ddy_R2R(baseBudget0(:,:,:,1), dudy_base)
-      call ddz_R2R(baseBudget0(:,:,:,1), dudz_base, uBC_bottom, uBC_top)
-      call ddx_R2R(baseBudget0(:,:,:,2), dvdx_base)
-      call ddy_R2R(baseBudget0(:,:,:,2), dvdy_base)
-      call ddz_R2R(baseBudget0(:,:,:,2), dvdz_base, vBC_bottom, vBC_top)
-      call ddx_R2R(baseBudget0(:,:,:,3), dwdx_base)
-      call ddy_R2R(baseBudget0(:,:,:,3), dwdy_base)
-      call ddz_R2R(baseBudget0(:,:,:,3), dwdz_base, wBC_bottom, wBC_top)
+      call ddx_R2R(ubase, dudx_base)
+      call ddy_R2R(ubase, dudy_base)
+      call ddz_R2R(ubase, dudz_base, uBC_bottom, uBC_top)
+      call ddx_R2R(vbase, dvdx_base)
+      call ddy_R2R(vbase, dvdy_base)
+      call ddz_R2R(vbase, dvdz_base, vBC_bottom, vBC_top)
+      call ddx_R2R(wbase, dwdx_base)
+      call ddy_R2R(wbase, dwdy_base)
+      call ddz_R2R(wbase, dwdz_base, wBC_bottom, wBC_top)
    end subroutine
 
    subroutine get_boundary_conditions_stencil()
@@ -854,7 +1000,12 @@ module constructDeficitBudgets_mod
    end do
 
    call message(1, 'Reading base flow budget 0')
-   do idx = 1,9
+   do idx = 1,31
+      if((idx <= 26) .or. (idx == 31))then 
+         continue
+      else
+         cycle
+      end if
       pattern  = getPattern(BRID, 0, idx, key=key, stamp=stamp, isBase=.True.)
       filename = trim(inputdir)//'/'//trim(pattern)
       inquire(file=trim(filename), exist=exists)
@@ -1335,7 +1486,7 @@ module constructDeficitBudgets_mod
       allocate(Budget1(gpC%xsz(1),gpC%xsz(2),gpC%xsz(3), 15))
       allocate(Budget2(gpC%xsz(1),gpC%xsz(2),gpC%xsz(3), 15))
       if(budgettype == 4) allocate( Budget3(gpC%xsz(1),gpC%xsz(2),gpC%xsz(3), 19))
-      allocate(baseBudget0(gpC%xsz(1),gpC%xsz(2),gpC%xsz(3), 9))
+      allocate(baseBudget0(gpC%xsz(1),gpC%xsz(2),gpC%xsz(3), 31))
 
       ! Allocate Buffers
       allocate(rbuffxC(gpC%xsz(1),gpC%xsz(2),gpC%xsz(3), 3))
@@ -1381,6 +1532,8 @@ module constructDeficitBudgets_mod
          num_profiles = 24
       case(4)
          num_profiles = 31
+      case(5)
+         num_profiles = 26
       end select
       allocate(profiles(nx_box, num_profiles))
 
@@ -1405,6 +1558,13 @@ module constructDeficitBudgets_mod
       dwdy_base => duidxj_base(:,:,:,8)
       dwdz_base => duidxj_base(:,:,:,9)  
 
+      du => budget0(:,:,:,1)
+      dv => budget0(:,:,:,2)
+      dw => budget0(:,:,:,3)
+      ubase => baseBudget0(:,:,:,1)
+      vbase => baseBudget0(:,:,:,2)
+      wbase => baseBudget0(:,:,:,3)
+
       call resetEverything()
    end subroutine
 
@@ -1421,6 +1581,7 @@ module constructDeficitBudgets_mod
       
       nullify(dudx, dudy, dudz, dvdx, dvdy, dvdz, dwdx, dwdy, dwdz)
       nullify(dudx_base, dudy_base, dudz_base, dvdx_base, dvdy_base, dvdz_base, dwdx_base, dwdy_base, dwdz_base)
+      nullify(du, dv, dw, ubase, vbase, wbase)
 
       call spectC%destroy()
       call spectE%destroy()
