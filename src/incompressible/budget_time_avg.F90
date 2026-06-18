@@ -471,28 +471,28 @@ contains
         class(budgets_time_avg), intent(inout) :: this
         
         ! MKE budget is only assembled before dumping
-        if (this%budgetType>1) call this%AssembleBudget2() 
+        if ((this%budgetType>1) .and. (.not. this%squeeze)) call this%AssembleBudget2() 
        
         ! Budget 0: 
         call this%dumpbudget0()
 
         ! Budget 1: 
-        if (this%budgetType>0) then
+        if ((this%budgetType>0) .and. (.not. this%squeeze)) then
             call this%dumpbudget1()
         end if 
         
         ! Budget 2: 
-        if (this%budgetType>1) then
+        if ((this%budgetType>1) .and. (.not. this%squeeze)) then
             call this%dumpbudget2()
         end if 
 
         ! Budget 3: 
-        if (this%budgetType>2) then
+        if ((this%budgetType>2) .and. (.not. this%squeeze)) then
             call this%dumpbudget3()
         end if 
 
         ! Budget 4: 
-        if (this%budgetType>3) then
+        if ((this%budgetType>3) .and. (.not. this%squeeze)) then
             call this%dumpbudget4_11()
             call this%dumpbudget4_22()
             call this%dumpbudget4_33()
@@ -520,29 +520,31 @@ contains
         this%budget_0(:,:,:,8)  = this%budget_0(:,:,:,8)  - this%budget_0(:,:,:,2)*this%budget_0(:,:,:,3) ! R23
         this%budget_0(:,:,:,9)  = this%budget_0(:,:,:,9)  - this%budget_0(:,:,:,3)*this%budget_0(:,:,:,3) ! R33
        
-        ! Step 3: Pressure transport for TKE budget
-        this%budget_0(:,:,:,17) = this%budget_0(:,:,:,17) - this%budget_0(:,:,:,1)*this%budget_0(:,:,:,10)
-        this%budget_0(:,:,:,18) = this%budget_0(:,:,:,18) - this%budget_0(:,:,:,2)*this%budget_0(:,:,:,10)
-        this%budget_0(:,:,:,19) = this%budget_0(:,:,:,19) - this%budget_0(:,:,:,3)*this%budget_0(:,:,:,10)
- 
-        ! Step 4: Turbulent convective transport for TKE budget
-        this%igrid_sim%rbuffxC(:,:,:,1) = half*(this%budget_0(:,:,:,4) + this%budget_0(:,:,:,7) + this%budget_0(:,:,:,9))
-        this%budget_0(:,:,:,20) = this%budget_0(:,:,:,20) - this%budget_0(:,:,:,1)*this%igrid_sim%rbuffxC(:,:,:,1)
-        this%budget_0(:,:,:,21) = this%budget_0(:,:,:,21) - this%budget_0(:,:,:,2)*this%igrid_sim%rbuffxC(:,:,:,1)
-        this%budget_0(:,:,:,22) = this%budget_0(:,:,:,22) - this%budget_0(:,:,:,3)*this%igrid_sim%rbuffxC(:,:,:,1)
-
-        ! STEP 5: SGS flux for TKE transport
-        this%budget_0(:,:,:,23) = this%budget_0(:,:,:,23) - this%budget_0(:,:,:,11)*this%budget_0(:,:,:,1)
-        this%budget_0(:,:,:,23) = this%budget_0(:,:,:,23) - this%budget_0(:,:,:,12)*this%budget_0(:,:,:,2)
-        this%budget_0(:,:,:,23) = this%budget_0(:,:,:,23) - this%budget_0(:,:,:,13)*this%budget_0(:,:,:,3)
-
-        this%budget_0(:,:,:,24) = this%budget_0(:,:,:,24) - this%budget_0(:,:,:,12)*this%budget_0(:,:,:,1)
-        this%budget_0(:,:,:,24) = this%budget_0(:,:,:,24) - this%budget_0(:,:,:,14)*this%budget_0(:,:,:,2)
-        this%budget_0(:,:,:,24) = this%budget_0(:,:,:,24) - this%budget_0(:,:,:,15)*this%budget_0(:,:,:,3)
-
-        this%budget_0(:,:,:,25) = this%budget_0(:,:,:,25) - this%budget_0(:,:,:,13)*this%budget_0(:,:,:,1)
-        this%budget_0(:,:,:,25) = this%budget_0(:,:,:,25) - this%budget_0(:,:,:,15)*this%budget_0(:,:,:,2)
-        this%budget_0(:,:,:,25) = this%budget_0(:,:,:,25) - this%budget_0(:,:,:,16)*this%budget_0(:,:,:,3)
+        if (.not. this%squeeze) then
+            ! Step 3: Pressure transport for TKE budget
+            this%budget_0(:,:,:,17) = this%budget_0(:,:,:,17) - this%budget_0(:,:,:,1)*this%budget_0(:,:,:,10)
+            this%budget_0(:,:,:,18) = this%budget_0(:,:,:,18) - this%budget_0(:,:,:,2)*this%budget_0(:,:,:,10)
+            this%budget_0(:,:,:,19) = this%budget_0(:,:,:,19) - this%budget_0(:,:,:,3)*this%budget_0(:,:,:,10)
+     
+            ! Step 4: Turbulent convective transport for TKE budget
+            this%igrid_sim%rbuffxC(:,:,:,1) = half*(this%budget_0(:,:,:,4) + this%budget_0(:,:,:,7) + this%budget_0(:,:,:,9))
+            this%budget_0(:,:,:,20) = this%budget_0(:,:,:,20) - this%budget_0(:,:,:,1)*this%igrid_sim%rbuffxC(:,:,:,1)
+            this%budget_0(:,:,:,21) = this%budget_0(:,:,:,21) - this%budget_0(:,:,:,2)*this%igrid_sim%rbuffxC(:,:,:,1)
+            this%budget_0(:,:,:,22) = this%budget_0(:,:,:,22) - this%budget_0(:,:,:,3)*this%igrid_sim%rbuffxC(:,:,:,1)
+    
+            ! STEP 5: SGS flux for TKE transport
+            this%budget_0(:,:,:,23) = this%budget_0(:,:,:,23) - this%budget_0(:,:,:,11)*this%budget_0(:,:,:,1)
+            this%budget_0(:,:,:,23) = this%budget_0(:,:,:,23) - this%budget_0(:,:,:,12)*this%budget_0(:,:,:,2)
+            this%budget_0(:,:,:,23) = this%budget_0(:,:,:,23) - this%budget_0(:,:,:,13)*this%budget_0(:,:,:,3)
+    
+            this%budget_0(:,:,:,24) = this%budget_0(:,:,:,24) - this%budget_0(:,:,:,12)*this%budget_0(:,:,:,1)
+            this%budget_0(:,:,:,24) = this%budget_0(:,:,:,24) - this%budget_0(:,:,:,14)*this%budget_0(:,:,:,2)
+            this%budget_0(:,:,:,24) = this%budget_0(:,:,:,24) - this%budget_0(:,:,:,15)*this%budget_0(:,:,:,3)
+    
+            this%budget_0(:,:,:,25) = this%budget_0(:,:,:,25) - this%budget_0(:,:,:,13)*this%budget_0(:,:,:,1)
+            this%budget_0(:,:,:,25) = this%budget_0(:,:,:,25) - this%budget_0(:,:,:,15)*this%budget_0(:,:,:,2)
+            this%budget_0(:,:,:,25) = this%budget_0(:,:,:,25) - this%budget_0(:,:,:,16)*this%budget_0(:,:,:,3)
+        end if
         
         ! STEP 6a: Potential temperature terms for stratified flow
         if (this%isStratified) then
@@ -564,7 +566,7 @@ contains
         ! Step 7: Dump the full budget 
         do idx = 1,size(this%budget_0,4)
             if(this%squeeze)then
-                if((idx <= 16) .or. (idx == 26) .or. (idx == 31))then 
+                if((idx <= 26) .or. (idx == 31))then 
                     continue
                 else
                     cycle
@@ -574,26 +576,28 @@ contains
         end do 
         
         ! Step 8: Go back to summing
-        this%budget_0(:,:,:,25) = this%budget_0(:,:,:,25) + this%budget_0(:,:,:,13)*this%budget_0(:,:,:,1)
-        this%budget_0(:,:,:,25) = this%budget_0(:,:,:,25) + this%budget_0(:,:,:,15)*this%budget_0(:,:,:,2)
-        this%budget_0(:,:,:,25) = this%budget_0(:,:,:,25) + this%budget_0(:,:,:,16)*this%budget_0(:,:,:,3)
-
-        this%budget_0(:,:,:,24) = this%budget_0(:,:,:,24) + this%budget_0(:,:,:,12)*this%budget_0(:,:,:,1)
-        this%budget_0(:,:,:,24) = this%budget_0(:,:,:,24) + this%budget_0(:,:,:,14)*this%budget_0(:,:,:,2)
-        this%budget_0(:,:,:,24) = this%budget_0(:,:,:,24) + this%budget_0(:,:,:,15)*this%budget_0(:,:,:,3)
-
-        this%budget_0(:,:,:,23) = this%budget_0(:,:,:,23) + this%budget_0(:,:,:,11)*this%budget_0(:,:,:,1)
-        this%budget_0(:,:,:,23) = this%budget_0(:,:,:,23) + this%budget_0(:,:,:,12)*this%budget_0(:,:,:,2)
-        this%budget_0(:,:,:,23) = this%budget_0(:,:,:,23) + this%budget_0(:,:,:,13)*this%budget_0(:,:,:,3)
-
-        this%igrid_sim%rbuffxC(:,:,:,1) = half*(this%budget_0(:,:,:,4) + this%budget_0(:,:,:,7) + this%budget_0(:,:,:,9))
-        this%budget_0(:,:,:,22) = this%budget_0(:,:,:,22) + this%budget_0(:,:,:,3)*this%igrid_sim%rbuffxC(:,:,:,1)
-        this%budget_0(:,:,:,21) = this%budget_0(:,:,:,21) + this%budget_0(:,:,:,2)*this%igrid_sim%rbuffxC(:,:,:,1)
-        this%budget_0(:,:,:,20) = this%budget_0(:,:,:,20) + this%budget_0(:,:,:,1)*this%igrid_sim%rbuffxC(:,:,:,1)
-
-        this%budget_0(:,:,:,19) = this%budget_0(:,:,:,19) + this%budget_0(:,:,:,3)*this%budget_0(:,:,:,10)
-        this%budget_0(:,:,:,18) = this%budget_0(:,:,:,18) + this%budget_0(:,:,:,2)*this%budget_0(:,:,:,10)
-        this%budget_0(:,:,:,17) = this%budget_0(:,:,:,17) + this%budget_0(:,:,:,1)*this%budget_0(:,:,:,10)
+        if (.not. this%squeeze) then
+            this%budget_0(:,:,:,25) = this%budget_0(:,:,:,25) + this%budget_0(:,:,:,13)*this%budget_0(:,:,:,1)
+            this%budget_0(:,:,:,25) = this%budget_0(:,:,:,25) + this%budget_0(:,:,:,15)*this%budget_0(:,:,:,2)
+            this%budget_0(:,:,:,25) = this%budget_0(:,:,:,25) + this%budget_0(:,:,:,16)*this%budget_0(:,:,:,3)
+    
+            this%budget_0(:,:,:,24) = this%budget_0(:,:,:,24) + this%budget_0(:,:,:,12)*this%budget_0(:,:,:,1)
+            this%budget_0(:,:,:,24) = this%budget_0(:,:,:,24) + this%budget_0(:,:,:,14)*this%budget_0(:,:,:,2)
+            this%budget_0(:,:,:,24) = this%budget_0(:,:,:,24) + this%budget_0(:,:,:,15)*this%budget_0(:,:,:,3)
+    
+            this%budget_0(:,:,:,23) = this%budget_0(:,:,:,23) + this%budget_0(:,:,:,11)*this%budget_0(:,:,:,1)
+            this%budget_0(:,:,:,23) = this%budget_0(:,:,:,23) + this%budget_0(:,:,:,12)*this%budget_0(:,:,:,2)
+            this%budget_0(:,:,:,23) = this%budget_0(:,:,:,23) + this%budget_0(:,:,:,13)*this%budget_0(:,:,:,3)
+    
+            this%igrid_sim%rbuffxC(:,:,:,1) = half*(this%budget_0(:,:,:,4) + this%budget_0(:,:,:,7) + this%budget_0(:,:,:,9))
+            this%budget_0(:,:,:,22) = this%budget_0(:,:,:,22) + this%budget_0(:,:,:,3)*this%igrid_sim%rbuffxC(:,:,:,1)
+            this%budget_0(:,:,:,21) = this%budget_0(:,:,:,21) + this%budget_0(:,:,:,2)*this%igrid_sim%rbuffxC(:,:,:,1)
+            this%budget_0(:,:,:,20) = this%budget_0(:,:,:,20) + this%budget_0(:,:,:,1)*this%igrid_sim%rbuffxC(:,:,:,1)
+    
+            this%budget_0(:,:,:,19) = this%budget_0(:,:,:,19) + this%budget_0(:,:,:,3)*this%budget_0(:,:,:,10)
+            this%budget_0(:,:,:,18) = this%budget_0(:,:,:,18) + this%budget_0(:,:,:,2)*this%budget_0(:,:,:,10)
+            this%budget_0(:,:,:,17) = this%budget_0(:,:,:,17) + this%budget_0(:,:,:,1)*this%budget_0(:,:,:,10)
+        end if
  
         ! Step 9: Go back to <ui uj> from <Rij>
         this%budget_0(:,:,:,4)  = this%budget_0(:,:,:,4)  + this%budget_0(:,:,:,1)*this%budget_0(:,:,:,1) ! R11
@@ -657,7 +661,49 @@ contains
         this%budget_0(:,:,:,11:16) = this%budget_0(:,:,:,11:16) + this%igrid_sim%tauSGS_ij 
 
         ! STEP 5: Pressure flux for TKE transport
-        if(.not. this%squeeze)then
+        if(this%squeeze)then
+            call this%igrid_sim%spectC%ifft(this%px,this%igrid_sim%rbuffxC(:,:,:,1))
+            this%budget_0(:,:,:,17) = this%budget_0(:,:,:,17) - this%igrid_sim%rbuffxC(:,:,:,1)  ! px (sign is reversed here)
+            call this%igrid_sim%spectC%ifft(this%py,this%igrid_sim%rbuffxC(:,:,:,1))
+
+            this%budget_0(:,:,:,18) = this%budget_0(:,:,:,18) - this%igrid_sim%rbuffxC(:,:,:,1)  ! py (sign is reversed here)
+            call this%igrid_sim%spectE%ifft(this%pz,this%igrid_sim%rbuffxE(:,:,:,1))
+
+            call this%interp_Edge2Cell(this%igrid_sim%rbuffxE(:,:,:,1), this%igrid_sim%rbuffxC(:,:,:,1))
+            this%budget_0(:,:,:,19) = this%budget_0(:,:,:,19) - this%igrid_sim%rbuffxC(:,:,:,1)  ! pz (sign is reversed here)
+
+            call this%igrid_sim%spectC%ifft(this%usgs,this%igrid_sim%rbuffxC(:,:,:,1))
+            this%budget_0(:,:,:,20) = this%budget_0(:,:,:,20) - this%igrid_sim%rbuffxC(:,:,:,1)   ! usgs (sign is reversed here)
+
+            call this%igrid_sim%spectC%ifft(this%vsgs,this%igrid_sim%rbuffxC(:,:,:,1))
+            this%budget_0(:,:,:,21) = this%budget_0(:,:,:,21) - this%igrid_sim%rbuffxC(:,:,:,1)   ! vsgs (sign is reversed here)
+
+            call this%igrid_sim%spectE%ifft(this%wsgs,this%igrid_sim%rbuffxE(:,:,:,1))
+            call this%interp_Edge2Cell(this%igrid_sim%rbuffxE(:,:,:,1), this%igrid_sim%rbuffxC(:,:,:,1))
+            this%budget_0(:,:,:,22) = this%budget_0(:,:,:,22) - this%igrid_sim%rbuffxC(:,:,:,1)   ! wsgs (sign is reversed here)
+
+            if (this%useCoriolis) then
+                ! Get the geostrophic forcing 
+                call this%igrid_sim%get_geostrophic_forcing(this%igrid_sim%rbuffxC(:,:,:,2), this%igrid_sim%rbuffxC(:,:,:,3))         ! Forcing in x and y directions respectively
+                
+                ! Coriolis term, X       
+                call this%igrid_sim%spectC%ifft(this%ucor,this%igrid_sim%rbuffxC(:,:,:,1))
+                this%budget_0(:,:,:,23) = this%budget_0(:,:,:,23) + this%igrid_sim%rbuffxC(:,:,:,1) - this%igrid_sim%rbuffxC(:,:,:,2) ! Remove the geostrophic forcing term
+                
+                ! Coriolis term, Y       
+                call this%igrid_sim%spectC%ifft(this%vcor,this%igrid_sim%rbuffxC(:,:,:,1))
+                this%budget_0(:,:,:,24) = this%budget_0(:,:,:,24) + this%igrid_sim%rbuffxC(:,:,:,1) - this%igrid_sim%rbuffxC(:,:,:,3) ! Remove the geostrophic forcing term
+                
+            end if 
+
+            ! Buoyancy
+            if (this%isStratified) then
+                call this%igrid_sim%spectE%ifft(this%wb, this%igrid_sim%rbuffxE(:,:,:,1))
+                call this%interp_Edge2Cell(this%igrid_sim%rbuffxE(:,:,:,1), this%igrid_sim%rbuffxC(:,:,:,1))
+                this%budget_0(:,:,:,25) = this%budget_0(:,:,:,25) + this%igrid_sim%rbuffxC(:,:,:,1)
+            end if
+
+        else
             this%budget_0(:,:,:,17) = this%budget_0(:,:,:,17) + this%igrid_sim%pressure*this%igrid_sim%u
             this%budget_0(:,:,:,18) = this%budget_0(:,:,:,18) + this%igrid_sim%pressure*this%igrid_sim%v
             this%budget_0(:,:,:,19) = this%budget_0(:,:,:,19) + this%igrid_sim%pressure*this%igrid_sim%wC
@@ -2192,11 +2238,7 @@ subroutine DumpBudget4_23(this)
         do idx = 1,size(this%budget_0,4)
         !    if (allocated(this%budget_0)) deallocate(this%budget_0)
             if(this%squeeze)then
-                if((idx <= 16) .or. (idx == 26) .or. (idx == 31))then 
-                    continue
-                else
-                    cycle
-                end if
+                if(.not. ((idx <= 26) .or. (idx == 31)))cycle
             end if
            call this%restart_budget_field(this%budget_0(:,:,:,idx), dir, rid, tid, cid, 0, idx)
         end do
@@ -2241,7 +2283,7 @@ subroutine DumpBudget4_23(this)
            this%budget_0(:,:,:,30) = this%budget_0(:,:,:,30) + this%budget_0(:,:,:,26)*this%budget_0(:,:,:,26)
         end if        
         ! Step 10b: Scalar variances
-        if (this%HaveScalars) then
+        if (this%HaveScalars .and. (.not. this%squeeze)) then
            do idx = 1,this%igrid_sim%n_scalars
               this%budget_0(:,:,:,30+this%igrid_sim%n_scalars+idx) = &
                    this%budget_0(:,:,:,30+this%igrid_sim%n_scalars+idx) + & 
