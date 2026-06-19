@@ -2512,15 +2512,15 @@ subroutine DumpBudget4_23(this)
         class(budgets_time_avg), intent(inout) :: this
         
         this%counter = 0
-        this%budget_0 = 0.d0 
-        this%budget_1 = 0.d0 
-        this%budget_2 = 0.d0 
-        this%budget_3 = 0.d0 
-        this%budget_4_11 = 0.d0 
-        this%budget_4_22 = 0.d0 
-        this%budget_4_33 = 0.d0 
-        this%budget_4_13 = 0.d0 
-        this%budget_4_23 = 0.d0 
+        if(allocated(this%budget_0)) this%budget_0 = 0.d0 
+        if(allocated(this%budget_1)) this%budget_1 = 0.d0 
+        if(allocated(this%budget_2)) this%budget_2 = 0.d0 
+        if(allocated(this%budget_3)) this%budget_3 = 0.d0 
+        if(allocated(this%budget_4_11)) this%budget_4_11 = 0.d0 
+        if(allocated(this%budget_4_22)) this%budget_4_22 = 0.d0 
+        if(allocated(this%budget_4_33)) this%budget_4_33 = 0.d0 
+        if(allocated(this%budget_4_13)) this%budget_4_13 = 0.d0 
+        if(allocated(this%budget_4_23)) this%budget_4_23 = 0.d0 
         
     end subroutine 
     
@@ -2535,7 +2535,7 @@ subroutine DumpBudget4_23(this)
                        this%pxdns, this%pydns, this%pzdns, &
                        this%uvisc, this%vvisc, this%wvisc, &
                        this%ucor, this%vcor, this%wcor, this%wb)
-            deallocate(this%budget_0)
+            if(allocated(this%budget_0)) deallocate(this%budget_0)
             if (this%budgetType>0) then
                 deallocate(this%budget_1)
             end if
