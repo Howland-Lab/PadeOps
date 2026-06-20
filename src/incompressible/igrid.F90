@@ -30,7 +30,7 @@ module IncompressibleGrid
 
     implicit none
 
-    external :: MPI_BCAST, MPI_RECV, MPI_SEND, MPI_REDUCE, MPI_GATHER
+    ! external :: MPI_BCAST, MPI_RECV, MPI_SEND, MPI_REDUCE, MPI_GATHER
 
     private
     public :: igrid 

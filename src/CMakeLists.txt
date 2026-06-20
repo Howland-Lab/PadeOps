@@ -12,6 +12,9 @@ file(GLOB incompressible_source_files incompressible/*.F90)
 set(FFTW_LIBRARY_PATH "${FFTW_PATH}/lib")
 set(FFTW_INCLUDE_PATH "${FFTW_PATH}/include")
 
+# LAPACK
+find_package(LAPACK REQUIRED)
+
 # Include directories
 include_directories(${MPI_INCLUDE_PATH} ${FFTW_INCLUDE_PATH} ${DECOMP_INCLUDE_PATH} ${HDF5_INCLUDE_PATH})
 
@@ -22,13 +25,21 @@ link_directories(${FFTW_LIBRARY_PATH} ${DECOMP_LIBRARY_PATH} ${HDF5_LIBRARY_PATH
 add_library(PadeOps STATIC ${utilities_source_files} ${derivatives_source_files} ${filters_source_files} ${io_source_files} )
 
 if ( CMAKE_Fortran_COMPILER_ID MATCHES "Intel" )
-   target_link_libraries(PadeOps fftw3 2decomp_fft ${HDF5_LIBRARY_PATH}/libhdf5hl_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5_hl.a ${HDF5_LIBRARY_PATH}/libhdf5_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5.a ${MPI_LIBRARIES} -lz -ldl -lm -Wl,-rpath -Wl,${HDF5_LIBRARY_PATH})
+   target_link_libraries(PadeOps fftw3 2decomp_fft
+      ${HDF5_LIBRARY_PATH}/libhdf5_hl_fortran.a
+      ${HDF5_LIBRARY_PATH}/libhdf5_hl_f90cstub.a
+      ${HDF5_LIBRARY_PATH}/libhdf5_hl.a
+      ${HDF5_LIBRARY_PATH}/libhdf5_fortran.a
+      ${HDF5_LIBRARY_PATH}/libhdf5_f90cstub.a
+      ${HDF5_LIBRARY_PATH}/libhdf5.a
+      -lz -ldl -lm -Wl,-rpath -Wl,${HDF5_LIBRARY_PATH})
+
 elseif( CMAKE_Fortran_COMPILER_ID MATCHES "Cray" )
    target_link_libraries(PadeOps fftw3 2decomp_fft ${HDF5_LIBRARY_PATH}/libhdf5hl_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5_hl.a ${HDF5_LIBRARY_PATH}/libhdf5_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5.a ${MPI_LIBRARIES} m z dl)
 elseif( CMAKE_Fortran_COMPILER_ID MATCHES "AOCC|AMD" )
    target_link_libraries(PadeOps fftw3 2decomp_fft ${HDF5_LIBRARY_PATH}/libhdf5hl_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5_hl.a ${HDF5_LIBRARY_PATH}/libhdf5_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5.a ${MPI_LIBRARIES} m z dl)
 elseif( CMAKE_Fortran_COMPILER_ID MATCHES "GNU" )
-   target_link_libraries(PadeOps fftw3 2decomp_fft $ENV{CRAY_LIBSCI_PREFIX_DIR}/lib/libsci_gnu_mpi.a ${HDF5_LIBRARY_PATH}/libhdf5hl_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5_hl.a ${HDF5_LIBRARY_PATH}/libhdf5_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5.a ${MPI_LIBRARIES} -lz -ldl -lm -Wl,-rpath -Wl,${HDF5_LIBRARY_PATH})
+   target_link_libraries(PadeOps fftw3 2decomp_fft ${LAPACK_LIBRARIES} ${HDF5_LIBRARY_PATH}/libhdf5hl_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5_hl.a ${HDF5_LIBRARY_PATH}/libhdf5_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5.a ${MPI_LIBRARIES} -lz -ldl -lm -Wl,-rpath -Wl,${HDF5_LIBRARY_PATH})
 elseif ( CMAKE_Fortran_COMPILER_ID MATCHES "GNU_OSX")
    target_link_libraries(PadeOps fftw3 2decomp_fft blas lapack ${HDF5_LIBRARY_PATH}/libhdf5hl_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5_hl.a ${HDF5_LIBRARY_PATH}/libhdf5_fortran.a ${HDF5_LIBRARY_PATH}/libhdf5.a ${MPI_LIBRARIES} -lz -ldl -lm -Wl,-rpath -Wl,${HDF5_LIBRARY_PATH})
 else()
