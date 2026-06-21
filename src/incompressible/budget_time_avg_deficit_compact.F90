@@ -281,8 +281,9 @@ module budgets_time_avg_deficit_compact_mod
         integer :: idx, budgetid, budgetsize
         real(rkind), dimension(:,:,:), pointer :: buffer
         real(rkind), dimension(:,:,:,:), pointer :: budget
-        logical :: doBudget
+        logical :: doBudget, preBudgetSqueezed
 
+        preBudgetSqueezed = this%pre_budget%isSqueezed()
         totalWeight = real(this%counter,rkind) + 1.d-18
 
         ! Cell x-pencil buffers 
@@ -299,7 +300,7 @@ module budgets_time_avg_deficit_compact_mod
         if(this%do_budget3) this%budget_3 = this%budget_3/totalWeight
         if(this%doMCG) this%MCG = this%MCG/totalWeight
         this%pre_budget%budget_0 = this%pre_budget%budget_0/totalWeight
-        this%pre_budget%budget_1 = this%pre_budget%budget_1/totalWeight
+        if(.not. preBudgetSqueezed) this%pre_budget%budget_1 = this%pre_budget%budget_1/totalWeight
 
         ! Budget 0
         if(this%do_budget0)then
@@ -378,7 +379,7 @@ module budgets_time_avg_deficit_compact_mod
         if(this%do_budget3) this%budget_3 = this%budget_3*totalWeight
         if(this%doMCG) this%MCG = this%MCG*totalWeight
         this%pre_budget%budget_0 = this%pre_budget%budget_0*totalWeight
-        this%pre_budget%budget_1 = this%pre_budget%budget_1*totalWeight
+        if(.not. preBudgetSqueezed) this%pre_budget%budget_1 = this%pre_budget%budget_1*totalWeight
     end subroutine
 
     ! ---------------------- Mean Cell Gradients (MCG) ------------------------
@@ -1017,10 +1018,17 @@ module budgets_time_avg_deficit_compact_mod
                          this%pre_budget%budget_0(:,:,:,3)*this%budget_0(:,:,:,20)
 
             case(3) ! delta u_j' d_j(base p')
-                ! px, py, pz signs are reversed in base-flow budget
-                buffer = - this%budget_0(:,:,:,1)*this%pre_budget%budget_1(:,:,:,2) &
-                         - this%budget_0(:,:,:,2)*this%pre_budget%budget_1(:,:,:,6) &
-                         - this%budget_0(:,:,:,3)*this%pre_budget%budget_1(:,:,:,9)
+                if(this%pre_budget%isSqueezed())then
+                    ! Squeezed base-flow budget_0 stores pressure gradients sign-reversed.
+                    buffer = this%budget_0(:,:,:,1)*this%pre_budget%budget_0(:,:,:,17) &
+                           + this%budget_0(:,:,:,2)*this%pre_budget%budget_0(:,:,:,18) &
+                           + this%budget_0(:,:,:,3)*this%pre_budget%budget_0(:,:,:,19)
+                else
+                    ! px, py, pz signs are reversed here to match the squeezed layout.
+                    buffer = - this%budget_0(:,:,:,1)*this%pre_budget%budget_1(:,:,:,2) &
+                             - this%budget_0(:,:,:,2)*this%pre_budget%budget_1(:,:,:,6) &
+                             - this%budget_0(:,:,:,3)*this%pre_budget%budget_1(:,:,:,9)
+                end if
 
             case(4) ! d_j(base u_i' delta tau_ij') [SGS transport]
                 buffer = this%pre_budget%budget_0(:,:,:,1)*this%budget_0(:,:,:,12) + &
@@ -1037,11 +1045,26 @@ module budgets_time_avg_deficit_compact_mod
                          this%MCG(:,:,:,18) * this%budget_0(:,:,:,11)                
 
             case(5) ! d_j(delta u_i' base tau_ij') [SGS transport]                
-                ! The sign of ui_sgs in this%pre_budget%budget_1 is reversed
-                buffer = - this%budget_0(:,:,:,1)*this%pre_budget%budget_1(:,:,:,3)    &
-                         - this%budget_0(:,:,:,2)*this%pre_budget%budget_1(:,:,:,7)    &
-                         - this%budget_0(:,:,:,3)*this%pre_budget%budget_1(:,:,:,10) + &
-                         this%MCG(:,:,:,1) * this%pre_budget%budget_0(:,:,:,11)      + &
+                if(this%pre_budget%isSqueezed())then
+                    ! Squeezed base-flow budget_0 stores SGS gradients sign-reversed.
+                    buffer = this%budget_0(:,:,:,1)*this%pre_budget%budget_0(:,:,:,20)    &
+                           + this%budget_0(:,:,:,2)*this%pre_budget%budget_0(:,:,:,21)    &
+                           + this%budget_0(:,:,:,3)*this%pre_budget%budget_0(:,:,:,22) + &
+                           this%MCG(:,:,:,1) * this%pre_budget%budget_0(:,:,:,11)      + &
+                           this%MCG(:,:,:,2) * this%pre_budget%budget_0(:,:,:,12)      + &
+                           this%MCG(:,:,:,3) * this%pre_budget%budget_0(:,:,:,13)      + &
+                           this%MCG(:,:,:,4) * this%pre_budget%budget_0(:,:,:,12)      + &
+                           this%MCG(:,:,:,5) * this%pre_budget%budget_0(:,:,:,14)      + &
+                           this%MCG(:,:,:,6) * this%pre_budget%budget_0(:,:,:,15)      + &
+                           this%MCG(:,:,:,7) * this%pre_budget%budget_0(:,:,:,13)      + &
+                           this%MCG(:,:,:,8) * this%pre_budget%budget_0(:,:,:,15)      + &
+                           this%MCG(:,:,:,9) * this%pre_budget%budget_0(:,:,:,16)
+                else
+                    ! The sign of ui_sgs in this%pre_budget%budget_1 is reversed here to match the squeezed layout.
+                    buffer = - this%budget_0(:,:,:,1)*this%pre_budget%budget_1(:,:,:,3)    &
+                             - this%budget_0(:,:,:,2)*this%pre_budget%budget_1(:,:,:,7)    &
+                             - this%budget_0(:,:,:,3)*this%pre_budget%budget_1(:,:,:,10) + &
+                             this%MCG(:,:,:,1) * this%pre_budget%budget_0(:,:,:,11)      + &
                          this%MCG(:,:,:,2) * this%pre_budget%budget_0(:,:,:,12)      + &
                          this%MCG(:,:,:,3) * this%pre_budget%budget_0(:,:,:,13)      + &
                          this%MCG(:,:,:,4) * this%pre_budget%budget_0(:,:,:,12)      + &
@@ -1050,6 +1073,7 @@ module budgets_time_avg_deficit_compact_mod
                          this%MCG(:,:,:,7) * this%pre_budget%budget_0(:,:,:,13)      + &
                          this%MCG(:,:,:,8) * this%pre_budget%budget_0(:,:,:,15)      + &
                          this%MCG(:,:,:,9) * this%pre_budget%budget_0(:,:,:,16)
+                end if
      
             case(6) ! d_j(delta u_i' * delta tau_ij')  [SGS transport]
                 buffer = this%budget_0(:,:,:,1)*this%budget_0(:,:,:,12)  + &
@@ -1313,6 +1337,9 @@ module budgets_time_avg_deficit_compact_mod
         integer :: idx
         real(rkind), dimension(:,:,:), pointer :: buffer
         real(rkind) :: totalWeight
+        logical :: preBudgetSqueezed
+
+        preBudgetSqueezed = this%pre_budget%isSqueezed()
 
         ! Cell x-pencil buffers 
         buffer => this%prim_igrid_sim%rbuffxC(:,:,:,4)
@@ -1322,7 +1349,7 @@ module budgets_time_avg_deficit_compact_mod
         ! The precursor budget must already be restarted and in raw-sum mode,
         ! with the same historical sample count as this compact budget.
         this%pre_budget%budget_0 = this%pre_budget%budget_0/totalWeight
-        this%pre_budget%budget_1 = this%pre_budget%budget_1/totalWeight
+        if(.not. preBudgetSqueezed) this%pre_budget%budget_1 = this%pre_budget%budget_1/totalWeight
 
         ! Restart files contain means/fluctuation moments. Keep all fields in
         ! mean mode while rebuilding the raw moments used for accumulation.
@@ -1384,7 +1411,7 @@ module budgets_time_avg_deficit_compact_mod
         if(this%do_budget3) this%budget_3 = this%budget_3*totalWeight
         if(this%doMCG) this%MCG = this%MCG*totalWeight
         this%pre_budget%budget_0 = this%pre_budget%budget_0*totalWeight
-        this%pre_budget%budget_1 = this%pre_budget%budget_1*totalWeight
+        if(.not. preBudgetSqueezed) this%pre_budget%budget_1 = this%pre_budget%budget_1*totalWeight
 
         nullify(buffer)         
     end subroutine

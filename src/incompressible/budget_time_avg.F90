@@ -191,6 +191,7 @@ module budgets_time_avg_mod
         procedure           :: destroy
         procedure           :: ResetBudget
         procedure           :: DoBudgets
+        procedure           :: isSqueezed
         
         procedure, private  :: updateBudget
         procedure, private  :: DumpBudget
@@ -241,6 +242,12 @@ module budgets_time_avg_mod
 
 
 contains 
+
+    logical function isSqueezed(this)
+        class(budgets_time_avg), intent(in) :: this
+
+        isSqueezed = this%squeeze
+    end function
 
     subroutine init(this, inputfile, igrid_sim) 
         class(budgets_time_avg), intent(inout) :: this
