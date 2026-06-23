@@ -44,7 +44,7 @@ module budgets_time_avg_deficit_compact_mod
         logical :: do_budgets
         logical :: forceDump
 
-        ! Avoid allocating a new holder of delta_tauij with every call to AssembleBudget3
+        ! Avoid allocating a new holder of delta_tauij with every budget sample
         real(rkind), dimension(:,:,:,:), allocatable :: delta_tauij
  
      contains
@@ -140,6 +140,13 @@ module budgets_time_avg_deficit_compact_mod
         this%budgets_dir = budgets_dir
 
         if(this%do_budgets) then 
+            if(.not. allocated(this%pre_budget%budget_0)) then
+                call GracefulExit("Compact deficit budgets require initialized precursor budget_0.", 124)
+            end if
+            if(this%do_budget3 .and. (.not. this%pre_budget%isSqueezed()) .and. (.not. allocated(this%pre_budget%budget_1))) then
+                call GracefulExit("Compact deficit budget3 requires precursor budget_1. Use base budgetType > 0.", 125)
+            end if
+
             if((this%tidx_budget_start > 0) .and. (this%time_budget_start > zero)) then
                 call GracefulExit("Both tidx_budget_start and time_budget_start in budget_time_avg are positive. Turn one negative", 100)
             endif
@@ -170,8 +177,9 @@ module budgets_time_avg_deficit_compact_mod
                     this%size_budget_3 = 19
                 end if
                 allocate(this%budget_3(this%nx,this%ny,this%nz,this%size_budget_3))
-                allocate(this%delta_tauij(this%nx,this%ny,this%nz,6))
             end if
+
+            if(this%do_budget0) allocate(this%delta_tauij(this%nx,this%ny,this%nz,6))
 
             if(this%doMCG)allocate(this%MCG(this%nx,this%ny,this%nz,18))
 
@@ -262,7 +270,7 @@ module budgets_time_avg_deficit_compact_mod
         ! Interpolate SGS stresses to cells
         call this%pre_budget%igrid_sim%sgsmodel%populate_tauij_E_to_C()
         call this%prim_igrid_sim%sgsmodel%populate_tauij_E_to_C()
-        this%delta_tauij = this%prim_igrid_sim%tauSGS_ij - this%pre_budget%igrid_sim%tauSGS_ij
+        if(this%do_budget0) this%delta_tauij = this%prim_igrid_sim%tauSGS_ij - this%pre_budget%igrid_sim%tauSGS_ij
 
         ! All arrays remain in raw-sum mode between dumps. Assemble lower-order
         ! moments before higher-order moments so they cover identical samples.
@@ -300,7 +308,7 @@ module budgets_time_avg_deficit_compact_mod
         if(this%do_budget3) this%budget_3 = this%budget_3/totalWeight
         if(this%doMCG) this%MCG = this%MCG/totalWeight
         this%pre_budget%budget_0 = this%pre_budget%budget_0/totalWeight
-        if(.not. preBudgetSqueezed) this%pre_budget%budget_1 = this%pre_budget%budget_1/totalWeight
+        if(this%do_budget3 .and. (.not. preBudgetSqueezed)) this%pre_budget%budget_1 = this%pre_budget%budget_1/totalWeight
 
         ! Budget 0
         if(this%do_budget0)then
@@ -379,7 +387,7 @@ module budgets_time_avg_deficit_compact_mod
         if(this%do_budget3) this%budget_3 = this%budget_3*totalWeight
         if(this%doMCG) this%MCG = this%MCG*totalWeight
         this%pre_budget%budget_0 = this%pre_budget%budget_0*totalWeight
-        if(.not. preBudgetSqueezed) this%pre_budget%budget_1 = this%pre_budget%budget_1*totalWeight
+        if(this%do_budget3 .and. (.not. preBudgetSqueezed)) this%pre_budget%budget_1 = this%pre_budget%budget_1*totalWeight
     end subroutine
 
     ! ---------------------- Mean Cell Gradients (MCG) ------------------------
@@ -956,29 +964,29 @@ module budgets_time_avg_deficit_compact_mod
                          this%budget_0(:,:,:,2)*this%MCG(:,:,:,8) + &
                          this%budget_0(:,:,:,3)*this%MCG(:,:,:,9)
             case(4)
-                buffer = this%pre_budget%budget_0(:,:,:,1)*this%MCG(:,:,:,1) + &
-                         this%pre_budget%budget_0(:,:,:,2)*this%MCG(:,:,:,2) + &
-                         this%pre_budget%budget_0(:,:,:,3)*this%MCG(:,:,:,3)
-            case(5)
-                buffer = this%pre_budget%budget_0(:,:,:,1)*this%MCG(:,:,:,4) + &
-                         this%pre_budget%budget_0(:,:,:,2)*this%MCG(:,:,:,5) + &
-                         this%pre_budget%budget_0(:,:,:,3)*this%MCG(:,:,:,6)
-            case(6)
-                buffer = this%pre_budget%budget_0(:,:,:,1)*this%MCG(:,:,:,7) + &
-                         this%pre_budget%budget_0(:,:,:,2)*this%MCG(:,:,:,8) + &
-                         this%pre_budget%budget_0(:,:,:,3)*this%MCG(:,:,:,9)
-            case(7) 
                 buffer = this%budget_0(:,:,:,1)*this%MCG(:,:,:,10) + &
                          this%budget_0(:,:,:,2)*this%MCG(:,:,:,11) + &
                          this%budget_0(:,:,:,3)*this%MCG(:,:,:,12)
-            case(8)
+            case(5)
                 buffer = this%budget_0(:,:,:,1)*this%MCG(:,:,:,13) + &
                          this%budget_0(:,:,:,2)*this%MCG(:,:,:,14) + &
                          this%budget_0(:,:,:,3)*this%MCG(:,:,:,15)
-            case(9)
+            case(6)
                 buffer = this%budget_0(:,:,:,1)*this%MCG(:,:,:,16) + &
                          this%budget_0(:,:,:,2)*this%MCG(:,:,:,17) + &
                          this%budget_0(:,:,:,3)*this%MCG(:,:,:,18)
+            case(7)
+                buffer = this%pre_budget%budget_0(:,:,:,1)*this%MCG(:,:,:,1) + &
+                         this%pre_budget%budget_0(:,:,:,2)*this%MCG(:,:,:,2) + &
+                         this%pre_budget%budget_0(:,:,:,3)*this%MCG(:,:,:,3)
+            case(8)
+                buffer = this%pre_budget%budget_0(:,:,:,1)*this%MCG(:,:,:,4) + &
+                         this%pre_budget%budget_0(:,:,:,2)*this%MCG(:,:,:,5) + &
+                         this%pre_budget%budget_0(:,:,:,3)*this%MCG(:,:,:,6)
+            case(9)
+                buffer = this%pre_budget%budget_0(:,:,:,1)*this%MCG(:,:,:,7) + &
+                         this%pre_budget%budget_0(:,:,:,2)*this%MCG(:,:,:,8) + &
+                         this%pre_budget%budget_0(:,:,:,3)*this%MCG(:,:,:,9)
             case(10)
                 buffer = this%pre_budget%budget_0(:,:,:,1)*this%MCG(:,:,:,10) + &
                          this%pre_budget%budget_0(:,:,:,2)*this%MCG(:,:,:,11) + &
@@ -1065,14 +1073,14 @@ module budgets_time_avg_deficit_compact_mod
                              - this%budget_0(:,:,:,2)*this%pre_budget%budget_1(:,:,:,7)    &
                              - this%budget_0(:,:,:,3)*this%pre_budget%budget_1(:,:,:,10) + &
                              this%MCG(:,:,:,1) * this%pre_budget%budget_0(:,:,:,11)      + &
-                         this%MCG(:,:,:,2) * this%pre_budget%budget_0(:,:,:,12)      + &
-                         this%MCG(:,:,:,3) * this%pre_budget%budget_0(:,:,:,13)      + &
-                         this%MCG(:,:,:,4) * this%pre_budget%budget_0(:,:,:,12)      + &
-                         this%MCG(:,:,:,5) * this%pre_budget%budget_0(:,:,:,14)      + &
-                         this%MCG(:,:,:,6) * this%pre_budget%budget_0(:,:,:,15)      + &
-                         this%MCG(:,:,:,7) * this%pre_budget%budget_0(:,:,:,13)      + &
-                         this%MCG(:,:,:,8) * this%pre_budget%budget_0(:,:,:,15)      + &
-                         this%MCG(:,:,:,9) * this%pre_budget%budget_0(:,:,:,16)
+                             this%MCG(:,:,:,2) * this%pre_budget%budget_0(:,:,:,12)      + &
+                             this%MCG(:,:,:,3) * this%pre_budget%budget_0(:,:,:,13)      + &
+                             this%MCG(:,:,:,4) * this%pre_budget%budget_0(:,:,:,12)      + &
+                             this%MCG(:,:,:,5) * this%pre_budget%budget_0(:,:,:,14)      + &
+                             this%MCG(:,:,:,6) * this%pre_budget%budget_0(:,:,:,15)      + &
+                             this%MCG(:,:,:,7) * this%pre_budget%budget_0(:,:,:,13)      + &
+                             this%MCG(:,:,:,8) * this%pre_budget%budget_0(:,:,:,15)      + &
+                             this%MCG(:,:,:,9) * this%pre_budget%budget_0(:,:,:,16)
                 end if
      
             case(6) ! d_j(delta u_i' * delta tau_ij')  [SGS transport]
@@ -1346,10 +1354,16 @@ module budgets_time_avg_deficit_compact_mod
         this%counter = cid     
         totalWeight = real(this%counter,rkind) + 1.d-18
 
+        if(allocated(this%budget_0)) this%budget_0 = zero
+        if(allocated(this%budget_1)) this%budget_1 = zero
+        if(allocated(this%budget_2)) this%budget_2 = zero
+        if(allocated(this%budget_3)) this%budget_3 = zero
+        if(allocated(this%MCG)) this%MCG = zero
+
         ! The precursor budget must already be restarted and in raw-sum mode,
         ! with the same historical sample count as this compact budget.
         this%pre_budget%budget_0 = this%pre_budget%budget_0/totalWeight
-        if(.not. preBudgetSqueezed) this%pre_budget%budget_1 = this%pre_budget%budget_1/totalWeight
+        if(this%do_budget3 .and. (.not. preBudgetSqueezed)) this%pre_budget%budget_1 = this%pre_budget%budget_1/totalWeight
 
         ! Restart files contain means/fluctuation moments. Keep all fields in
         ! mean mode while rebuilding the raw moments used for accumulation.
@@ -1411,7 +1425,7 @@ module budgets_time_avg_deficit_compact_mod
         if(this%do_budget3) this%budget_3 = this%budget_3*totalWeight
         if(this%doMCG) this%MCG = this%MCG*totalWeight
         this%pre_budget%budget_0 = this%pre_budget%budget_0*totalWeight
-        if(.not. preBudgetSqueezed) this%pre_budget%budget_1 = this%pre_budget%budget_1*totalWeight
+        if(this%do_budget3 .and. (.not. preBudgetSqueezed)) this%pre_budget%budget_1 = this%pre_budget%budget_1*totalWeight
 
         nullify(buffer)         
     end subroutine

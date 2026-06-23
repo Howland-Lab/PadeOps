@@ -441,31 +441,35 @@ contains
    
         call this%igrid_sim%getMomentumTerms()  
 
-        select case (this%budgetType)
-        case(0)
+        if(this%squeeze) then
             call this%AssembleBudget0()
-        case(1)
-            call this%AssembleBudget0()
-            call this%AssembleBudget1()
-        case(2)
-            call this%AssembleBudget0()
-            call this%AssembleBudget1()
-            ! Budget 2 need not be assembled now; it only needs to be assembled
-            ! before writing to disk 
-        case(3)
-            call this%AssembleBudget0()
-            call this%AssembleBudget1()
-            call this%AssembleBudget3()
-        case(4)
-            call this%AssembleBudget0()
-            call this%AssembleBudget1()
-            call this%AssembleBudget3()
-            call this%AssembleBudget4_11()
-            call this%AssembleBudget4_22()
-            call this%AssembleBudget4_33()
-            call this%AssembleBudget4_13()
-            call this%AssembleBudget4_23()
-        end select
+        else
+            select case (this%budgetType)
+            case(0)
+                call this%AssembleBudget0()
+            case(1)
+                call this%AssembleBudget0()
+                call this%AssembleBudget1()
+            case(2)
+                call this%AssembleBudget0()
+                call this%AssembleBudget1()
+                ! Budget 2 need not be assembled now; it only needs to be assembled
+                ! before writing to disk
+            case(3)
+                call this%AssembleBudget0()
+                call this%AssembleBudget1()
+                call this%AssembleBudget3()
+            case(4)
+                call this%AssembleBudget0()
+                call this%AssembleBudget1()
+                call this%AssembleBudget3()
+                call this%AssembleBudget4_11()
+                call this%AssembleBudget4_22()
+                call this%AssembleBudget4_33()
+                call this%AssembleBudget4_13()
+                call this%AssembleBudget4_23()
+            end select
+        end if
 
         call this%AssembleScalarStats()
 
@@ -2241,6 +2245,16 @@ subroutine DumpBudget4_23(this)
 
         buff => this%igrid_sim%rbuffxC(:,:,:,1)
 
+        if(allocated(this%budget_0)) this%budget_0 = 0.d0
+        if(allocated(this%budget_1)) this%budget_1 = 0.d0
+        if(allocated(this%budget_2)) this%budget_2 = 0.d0
+        if(allocated(this%budget_3)) this%budget_3 = 0.d0
+        if(allocated(this%budget_4_11)) this%budget_4_11 = 0.d0
+        if(allocated(this%budget_4_22)) this%budget_4_22 = 0.d0
+        if(allocated(this%budget_4_33)) this%budget_4_33 = 0.d0
+        if(allocated(this%budget_4_13)) this%budget_4_13 = 0.d0
+        if(allocated(this%budget_4_23)) this%budget_4_23 = 0.d0
+
         ! Budget 0: 
         do idx = 1,size(this%budget_0,4)
         !    if (allocated(this%budget_0)) deallocate(this%budget_0)
@@ -2301,7 +2315,7 @@ subroutine DumpBudget4_23(this)
         ! Step 11: Go back to summing instead of averaging
         this%budget_0 = this%budget_0*(real(cid,rkind) + 1.d-18)
         ! Budget 1: 
-        if (this%budgetType>0) then
+        if ((this%budgetType>0) .and. (.not. this%squeeze)) then
            do idx = 1,size(this%budget_1,4)
               !          if (allocated(this%budget_1)) deallocate(this%budget_1)
               call this%restart_budget_field(this%budget_1(:,:,:,idx), dir, rid, tid, cid, 1, idx)
@@ -2310,7 +2324,7 @@ subroutine DumpBudget4_23(this)
         end if 
 
         ! Budget 2
-        if (this%budgetType>1) then
+        if ((this%budgetType>1) .and. (.not. this%squeeze)) then
            do idx = 1,size(this%budget_2,4)
               call this%restart_budget_field(this%budget_2(:,:,:,idx), dir, rid, tid, cid, 2, idx)   
            end do
@@ -2318,7 +2332,7 @@ subroutine DumpBudget4_23(this)
         end if
         
         ! Budget 3:
-        if (this%budgetType>2) then
+        if ((this%budgetType>2) .and. (.not. this%squeeze)) then
            this%budget_0 = this%budget_0/(real(cid,rkind) + 1.d-18)
            this%budget_1 = this%budget_1/(real(cid,rkind) + 1.d-18)
            do idx = 1,size(this%budget_3,4)
@@ -2339,7 +2353,7 @@ subroutine DumpBudget4_23(this)
         end if
 
         ! Budget 4
-        if (this%budgetType>3) then
+        if ((this%budgetType>3) .and. (.not. this%squeeze)) then
            do idx = 1,size(this%budget_4_11,4)
               !          if (allocated(this%budget_4_11)) deallocate(this%budget_4_11)
               call this%restart_budget_4_field(this%budget_4_11(:,:,:,idx), dir, rid, tid, cid, 4, idx, 11)
