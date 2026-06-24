@@ -35,7 +35,7 @@ module constructDeficitBudgets_mod
    integer :: num_profiles
    real(rkind), dimension(:), allocatable :: xstations
    logical :: writeDependentVariables = .false.
-   integer :: budgettype=1 ! 1: x-Momentum, 2: y-Momentum, 3: z-Momentum, 4: TKE, 5: MKE
+   integer :: budgettype=1 ! 1: x-Momentum, 2: y-Momentum, 3: z-Momentum, 4: TKE, 5: MKE, 6: TMP
    real(rkind), dimension(:,:,:), pointer :: dudx, dudy, dudz
    real(rkind), dimension(:,:,:), pointer :: dvdx, dvdy, dvdz
    real(rkind), dimension(:,:,:), pointer :: dwdx, dwdy, dwdz
@@ -73,6 +73,8 @@ module constructDeficitBudgets_mod
          name = 'TKE'
       case(5)
          name = 'MKE'
+      case(6)
+         name = 'TMP'
       end select
 
       write(crid, '(I2.2)') RID
@@ -152,6 +154,9 @@ module constructDeficitBudgets_mod
          case(5)
             call compute_MKE_budget_component(idx, buffer)
             additional = '8'
+         case(6)
+            call compute_TMP_budget_component(idx, buffer)
+            additional = '9'
          end select
 
          ! Average this budget term across the box
@@ -181,6 +186,9 @@ module constructDeficitBudgets_mod
          if(idx <= 12) depedent_variable = .true.
       elseif(budgettype == 5)then
          ! MKE equation
+         depedent_variable = .true.
+      elseif(budgettype == 6)then
+         ! TMP
          depedent_variable = .true.
       end if
    end function depedent_variable
@@ -460,7 +468,7 @@ module constructDeficitBudgets_mod
 
       BF1 => rbuffxC(:,:,:,1)
       BF2 => rbuffxC(:,:,:,2)
-      
+
       buffer = zero
       select case(idx)
       case(1)
@@ -469,35 +477,35 @@ module constructDeficitBudgets_mod
          call ddx_R2R(BF1, BF2); buffer = buffer + BF2*du
          call ddy_R2R(BF1, BF2); buffer = buffer + BF2*dv
          call ddz_R2R(BF1, BF2, 1, 1); buffer = buffer + BF2*dw ! BF1 is even
-      
+
       case(2)
          ! Advection: delta u_j * partial_j (delta u_i' base u_i') 
          BF1 = (budget1(:,:,:,7) + budget1(:,:,:,12) + budget1(:,:,:,15))
          call ddx_R2R(BF1, BF2); buffer = buffer + BF2*du
          call ddy_R2R(BF1, BF2); buffer = buffer + BF2*dv
          call ddz_R2R(BF1, BF2, 1, 1); buffer = buffer + BF2*dw ! BF1 is even
-      
+
       case(3)
          ! Advection: delta u_j * partial_j (base u_i' base u_i')/2 
          BF1 = half*(baseBudget0(:,:,:,4) + baseBudget0(:,:,:,7) + baseBudget0(:,:,:,9))
          call ddx_R2R(BF1, BF2); buffer = buffer + BF2*du
          call ddy_R2R(BF1, BF2); buffer = buffer + BF2*dv
          call ddz_R2R(BF1, BF2, 1, 1); buffer = buffer + BF2*dw ! BF1 is even
-      
+
       case(4)
          ! Advection: base u_j * partial_j (delta u_i' delta u_i')/2
          BF1 = half*(budget1(:,:,:,1) + budget1(:,:,:,4) + budget1(:,:,:,6))
          call ddx_R2R(BF1, BF2); buffer = buffer + BF2*ubase
          call ddy_R2R(BF1, BF2); buffer = buffer + BF2*vbase
          call ddz_R2R(BF1, BF2, 1, 1); buffer = buffer + BF2*wbase ! BF1 is even
-      
+
       case(5)
          ! Advection: base u_j * partial_j (delta u_i' base u_i') 
          BF1 = (budget1(:,:,:,7) + budget1(:,:,:,12) + budget1(:,:,:,15))
          call ddx_R2R(BF1, BF2); buffer = buffer + BF2*ubase
          call ddy_R2R(BF1, BF2); buffer = buffer + BF2*vbase
          call ddz_R2R(BF1, BF2, 1, 1); buffer = buffer + BF2*wbase ! BF1 is even
-      
+
       case(6)
          ! Production: mean(delta u_i' delta u_j') partial_j mean(delta u_i)
          buffer = dudx * budget1(:,:,:,1) + dudy * budget1(:,:,:,2) + dudz * budget1(:,:,:,3) + &
@@ -537,7 +545,7 @@ module constructDeficitBudgets_mod
       case(13)
          ! Buoyancy: mean(delta w' delta wb')
          buffer = - budget3(:,:,:,10)
-      
+
       case(14)
          ! Buoyancy: mean(delta w' base wb')
          buffer = - budget3(:,:,:,11)
@@ -610,7 +618,100 @@ module constructDeficitBudgets_mod
          ! SGS Dissipation: mean(delta tau_ij' partial_j delta u_i')
          buffer = -budget3(:,:,:,9)         
       end select 
-  
+
+      nullify(BF1, BF2)
+   end subroutine
+
+   subroutine compute_TMP_budget_component(idx, buffer)
+      implicit none
+      integer, intent(in) :: idx
+      real(rkind), dimension(:,:,:), intent(out) :: buffer
+      real(rkind), dimension(:,:,:), pointer :: BF1, BF2
+
+      BF1 => rbuffxC(:,:,:,1)
+      BF2 => rbuffxC(:,:,:,2)
+
+      buffer = zero
+      select case(idx)
+      case(1)
+         ! Turbulent Transport: dj(delta u_i * mean(delta u_i' delta u_j'))
+         BF1 = du * budget1(:,:,:,1) + dv * budget1(:,:,:,2) + dw * budget1(:,:,:,3)
+         call ddx_R2R(BF1, BF2); buffer = buffer + BF2
+
+         BF1 = du * budget1(:,:,:,2) + dv * budget1(:,:,:,4) + dw * budget1(:,:,:,5)
+         call ddy_R2R(BF1, BF2); buffer = buffer + BF2
+
+         BF1 = du * budget1(:,:,:,3) + dv * budget1(:,:,:,5) + dw * budget1(:,:,:,6)
+         call ddz_R2R(BF1, BF2, -1, -1); buffer = buffer + BF2
+
+      case(2)
+         ! Turbulent Transport: dj(delta u_i * mean(delta u_i' base u_j'))
+         BF1 = du * budget1(:,:,:,7) + dv * budget1(:,:,:,9) + dw * budget1(:,:,:,11)
+         call ddx_R2R(BF1, BF2); buffer = buffer + BF2
+
+         BF1 = du * budget1(:,:,:,8) + dv * budget1(:,:,:,12) + dw * budget1(:,:,:,14)
+         call ddy_R2R(BF1, BF2); buffer = buffer + BF2
+
+         BF1 = du * budget1(:,:,:,10) + dv * budget1(:,:,:,13) + dw * budget1(:,:,:,15)
+         call ddz_R2R(BF1, BF2, -1, -1); buffer = buffer + BF2
+
+      case(3)
+         ! Turbulent Transport: dj(delta u_i * mean(base u_i' delta u_j'))
+         BF1 = du * budget1(:,:,:,7) + dv * budget1(:,:,:,8) + dw * budget1(:,:,:,10)
+         call ddx_R2R(BF1, BF2); buffer = buffer + BF2
+
+         BF1 = du * budget1(:,:,:,9) + dv * budget1(:,:,:,12) + dw * budget1(:,:,:,13)
+         call ddy_R2R(BF1, BF2); buffer = buffer + BF2
+
+         BF1 = du * budget1(:,:,:,11) + dv * budget1(:,:,:,14) + dw * budget1(:,:,:,15)
+         call ddz_R2R(BF1, BF2, -1, -1); buffer = buffer + BF2
+
+      case(4)
+         ! Turbulent Transport: dj(delta u_i * mean(base u_i' base u_j'))
+         BF1 = du * baseBudget0(:,:,:,4) + dv * baseBudget0(:,:,:,5) + dw * baseBudget0(:,:,:,6)
+         call ddx_R2R(BF1, BF2); buffer = buffer + BF2
+
+         BF1 = du * baseBudget0(:,:,:,5) + dv * baseBudget0(:,:,:,7) + dw * baseBudget0(:,:,:,8)
+         call ddy_R2R(BF1, BF2); buffer = buffer + BF2
+
+         BF1 = du * baseBudget0(:,:,:,6) + dv * baseBudget0(:,:,:,8) + dw * baseBudget0(:,:,:,9)
+         call ddz_R2R(BF1, BF2, -1, -1); buffer = buffer + BF2
+
+      case(5)
+         ! Turbulent Transport: dj(base u_i * mean(delta u_i' delta u_j'))
+         BF1 = ubase * budget1(:,:,:,1) + vbase * budget1(:,:,:,2) + wbase * budget1(:,:,:,3)
+         call ddx_R2R(BF1, BF2); buffer = buffer + BF2
+
+         BF1 = ubase * budget1(:,:,:,2) + vbase * budget1(:,:,:,4) + wbase * budget1(:,:,:,5)
+         call ddy_R2R(BF1, BF2); buffer = buffer + BF2
+
+         BF1 = ubase * budget1(:,:,:,3) + vbase * budget1(:,:,:,5) + wbase * budget1(:,:,:,6)
+         call ddz_R2R(BF1, BF2, -1, -1); buffer = buffer + BF2
+
+      case(6)
+         ! Turbulent Transport: dj(base u_i * mean(delta u_i' base u_j'))
+         BF1 = ubase * budget1(:,:,:,7) + vbase * budget1(:,:,:,9) + wbase * budget1(:,:,:,11)
+         call ddx_R2R(BF1, BF2); buffer = buffer + BF2
+
+         BF1 = ubase * budget1(:,:,:,8) + vbase * budget1(:,:,:,12) + wbase * budget1(:,:,:,14)
+         call ddy_R2R(BF1, BF2); buffer = buffer + BF2
+
+         BF1 = ubase * budget1(:,:,:,10) + vbase * budget1(:,:,:,13) + wbase * budget1(:,:,:,15)
+         call ddz_R2R(BF1, BF2, -1, -1); buffer = buffer + BF2
+
+      case(7)
+         ! Turbulent Transport: dj(base u_i * mean(base u_i' delta u_j'))
+         BF1 = ubase * budget1(:,:,:,7) + vbase * budget1(:,:,:,8) + wbase * budget1(:,:,:,10)
+         call ddx_R2R(BF1, BF2); buffer = buffer + BF2
+
+         BF1 = ubase * budget1(:,:,:,9) + vbase * budget1(:,:,:,12) + wbase * budget1(:,:,:,13)
+         call ddy_R2R(BF1, BF2); buffer = buffer + BF2
+
+         BF1 = ubase * budget1(:,:,:,11) + vbase * budget1(:,:,:,14) + wbase * budget1(:,:,:,15)
+         call ddz_R2R(BF1, BF2, -1, -1); buffer = buffer + BF2
+
+      end select
+
       nullify(BF1, BF2)
    end subroutine
 
@@ -622,7 +723,7 @@ module constructDeficitBudgets_mod
 
       BF1 => rbuffxC(:,:,:,1)
       BF2 => rbuffxC(:,:,:,2)
-      
+
       buffer = zero
       select case(idx)
       case(1)
@@ -635,7 +736,7 @@ module constructDeficitBudgets_mod
          buffer = ubase * (dudx * ubase + dudy * vbase + dudz * wbase) + &
                   vbase * (dvdx * ubase + dvdy * vbase + dvdz * wbase) + &
                   wbase * (dwdx * ubase + dwdy * vbase + dwdz * wbase)
-      
+
       case(3)
          ! Advection: delta u_i base u_j partial_j delta u_i
          buffer = du * (dudx * ubase + dudy * vbase + dudz * wbase) + &
@@ -687,7 +788,7 @@ module constructDeficitBudgets_mod
       case(12)
          ! Pressure gradient: base u_i * d_i delta p
          buffer = ubase * budget0(:,:,:,18) + vbase * budget0(:,:,:,19) + wbase * budget0(:,:,:,20)
-      
+
       case(13)
          ! Pressure gradient: delta u_i * d_i base p
          ! Make sure that squeeze was .true. in the main simulation
@@ -747,7 +848,7 @@ module constructDeficitBudgets_mod
          ! Coriolis: base u_i * delta ucor_i
          buffer = ubase * budget0(:,:,:,15) + vbase * budget0(:,:,:,16)
       end select 
-  
+
       nullify(BF1, BF2)
    end subroutine
 
@@ -916,7 +1017,7 @@ module constructDeficitBudgets_mod
 
       wBC_bottom = -1
       wBC_top = -1  
-      
+
       !! Bottom wall 
       call message(0,"Bottom Wall Boundary Condition is:")
       select case (botWall)
@@ -938,7 +1039,7 @@ module constructDeficitBudgets_mod
       case default
          call gracefulExit("Invalid choice for BOTTOM WALL BCs",423)
       end select
-      
+
       !! Top wall 
       call message(0,"Top Wall Boundary Condition is:")
       select case (TopWall)
@@ -960,7 +1061,7 @@ module constructDeficitBudgets_mod
       case default
          call gracefulExit("Invalid choice for TOP WALL BCs",13)
       end select
-      
+
    end subroutine
 
    subroutine readBudgets(key, stamp)
@@ -970,8 +1071,10 @@ module constructDeficitBudgets_mod
    character(len=clen) :: pattern, filename
    logical :: exists
    real(rkind), dimension(:,:,:,:), pointer :: budget
-   
+
    do budgetid=0,3
+      if((budgetid == 3) .and. (budgettype /= 4)) cycle ! budget3 is only relevant for TKE budgets
+
       select case(budgetid)
       case(0)
          budget => budget0
@@ -982,8 +1085,6 @@ module constructDeficitBudgets_mod
       case(3)
          budget => budget3
       end select
-
-      if((budgetid == 3) .and. (budgettype /= 4)) cycle ! budget3 is only relevant for TKE budgets
 
       do idx = 1, size(budget, 4)
          pattern  = getPattern(RID, budgetid, idx, key=key, stamp=stamp)
@@ -1117,10 +1218,10 @@ module constructDeficitBudgets_mod
       character(len=:), allocatable :: keys(:), stamps(:)
       character(len=clen) :: pattern
       integer :: k
-      
+
       pattern = getPattern(rid, 0, 1)
       call message(0, 'Extracting time stamps with a pattern: '//trim(pattern))
-      
+
       call list_matching_keys_budget(trim(inputdir), trim(pattern), keys, stamps)
       call sort_keys_and_stamps_numeric(keys, stamps, sorted_keys, sorted_stamps)
 
@@ -1441,7 +1542,7 @@ module constructDeficitBudgets_mod
    subroutine ddx_R2R(f, dfdx)
         real(rkind), dimension(:,:,:), intent(in) :: f
         real(rkind), dimension(:,:,:), intent(out) :: dfdx
-        
+
         call spectC%fft(f, cbuffyC)
         call spectC%mtimes_ik1_ip(cbuffyC)
         call spectC%dealias(cbuffyC)
@@ -1451,18 +1552,18 @@ module constructDeficitBudgets_mod
     subroutine ddy_R2R(f, dfdy)
         real(rkind), dimension(:,:,:), intent(in) :: f
         real(rkind), dimension(:,:,:), intent(out) :: dfdy
-        
+
         call spectC%fft(f, cbuffyC)
         call spectC%mtimes_ik2_ip(cbuffyC)
         call spectC%dealias(cbuffyC)
         call spectC%ifft(cbuffyC, dfdy)
     end subroutine 
-     
+
     subroutine ddz_R2R(f, dfdz, n1, n2)
         real(rkind), dimension(:,:,:), intent(in) :: f
         real(rkind), dimension(:,:,:), intent(out) :: dfdz
         integer, intent(in) :: n1, n2
-        
+
         call spectC%fft(f, cbuffyC)
         call transpose_y_to_z(cbuffyC, cbuffzC(:,:,:,1), sp_gpC)
         call Pade6opZ%ddz_C2C(cbuffzC(:,:,:,1), cbuffzC(:,:,:,2), n1, n2)
@@ -1534,6 +1635,8 @@ module constructDeficitBudgets_mod
          num_profiles = 31
       case(5)
          num_profiles = 26
+      case(6)
+         num_profiles = 7
       end select
       allocate(profiles(nx_box, num_profiles))
 
@@ -1578,7 +1681,7 @@ module constructDeficitBudgets_mod
       if(allocated(cbuffzC)) deallocate(cbuffzC)
       if(allocated(profiles)) deallocate(profiles)
       if(allocated(xstations)) deallocate(xstations)
-      
+
       nullify(dudx, dudy, dudz, dvdx, dvdy, dvdz, dwdx, dwdy, dwdz)
       nullify(dudx_base, dudy_base, dudz_base, dvdx_base, dvdy_base, dvdz_base, dwdx_base, dwdy_base, dwdz_base)
       nullify(du, dv, dw, ubase, vbase, wbase)
@@ -1595,12 +1698,12 @@ end module constructDeficitBudgets_mod
 
 program constructDeficitBudgets
    use constructDeficitBudgets_mod
-   
+
    implicit none
    integer :: ioUnit, ierr, k
    logical :: periodicbcs(3)
    character(len=clen) :: inputfile, ers
-      
+
    namelist /INPUT/ inputdir, outputdir, nx, ny, nz, Lx, Ly, Lz, prow, pcol, RID, &
                     BRID, budgettype, writeDependentVariables, startIDX, endIDX, tag, &
                     do_box_averaging
@@ -1653,7 +1756,7 @@ program constructDeficitBudgets
 
    ! Get file list and sort by time  
    call get_keys_stamps()
-   
+
    ! Loop through time frames
    do k = 1, size(sorted_keys)
       call tic()
