@@ -1,11 +1,5 @@
 file(GLOB sproblems_source_files *.F90)
 
-# Include directories
-include_directories( ${FFTW_INCLUDE_PATH} ${DECOMP_INCLUDE_PATH} ${PadeOps_BINARY_DIR}/src  )
-
-# Link directories
-link_directories( ${FFTW_LIBRARY_PATH} ${DECOMP_LIBRARY_PATH} ${PadeOps_BINARY_DIR}/src )
-
 # Create the solids problem executables
 foreach ( sproblemfile ${sproblems_source_files} )
     string( REPLACE "${PadeOps_SOURCE_DIR}/problems/solids/" "" sproblemfile ${sproblemfile} )
@@ -13,11 +7,7 @@ foreach ( sproblemfile ${sproblems_source_files} )
   
     add_executable( ${sproblemexec} ${sproblemfile} )
     
-    target_link_libraries( ${sproblemexec} SolidOps )
-
-    if (MPI_Fortran_COMPILER_FLAGS)
-        set_target_properties(${sproblemexec} PROPERTIES COMPILE_FLAGS "${CMAKE_Fortran_FLAGS}")
-    endif()
+    target_link_libraries( ${sproblemexec} PRIVATE SolidOps )
 
     file(MAKE_DIRECTORY ${PadeOps_BINARY_DIR}/problems/solids/${sproblemexec}_files)
     file(COPY ${sproblemexec}_files/input.dat DESTINATION ${PadeOps_BINARY_DIR}/problems/solids/${sproblemexec}_files)
