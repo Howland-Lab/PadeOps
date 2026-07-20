@@ -1720,22 +1720,22 @@ program constructDeficitBudgets
    open(unit=ioUnit, file=trim(inputfile), form='FORMATTED', status='old', action='read')
    read(unit=ioUnit, NML=INPUT, IOSTAT=ierr)
    if (ierr/=0)then
-      write(ers,'(I)')ierr
+      write(ers,'(I0)')ierr
       call gracefulExit("Reading failed for INPUT with error "//trim(ers), 101)
    end if
    read(unit=ioUnit, NML=NUMERICS, IOSTAT=ierr)
    if (ierr/=0)then
-      write(ers,'(I)')ierr
+      write(ers,'(I0)')ierr
       call gracefulExit("Reading failed for NUMERICS with error "//trim(ers), 102)
    end if
    read(unit=ioUnit, NML=BCs, IOSTAT=ierr)
    if (ierr/=0)then
-      write(ers,'(I)')ierr
+      write(ers,'(I0)')ierr
       call gracefulExit("Reading failed for BCs with error "//trim(ers), 103)
    end if
    read(unit=ioUnit, NML=BOX, IOSTAT=ierr)
    if (ierr/=0)then
-      write(ers,'(I)')ierr
+      write(ers,'(I0)')ierr
       call gracefulExit("Reading failed for BOX with error "//trim(ers), 104)
    end if
    close(ioUnit)    
