@@ -3,7 +3,7 @@ module purge
 module load gcc
 module load cmake
 module load fftw
-module load mvapich2/2.3.6
+module load openmpi/4.1.6
 module load hdf5
 module load openblas/0.3.17
 module list 
