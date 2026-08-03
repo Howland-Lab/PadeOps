@@ -1,15 +1,15 @@
 #!/bin/bash
 module purge
-module load cmake/3.31.9
 module load gcc
-module load mvapich-plus-cpu/4.0b
+module load cmake/3.31.9
+module load openmpi/5.0.8
 module load mkl
 
 CWD=`pwd`
 export COMPILER_ID=GNU
-export CC="mpicc -fno-lto"
-export CXX="mpicxx -fno-lto"
-export FC="mpif90 -fno-lto"
+export CC=mpicc
+export CXX=mpicxx
+export FC=mpif90
 export CFLAGS="-O3 -fno-lto"
 export CXXFLAGS="-O3 -fno-lto"
 export FFLAGS="-O3 -fno-lto"

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(PadeOps LANGUAGES Fortran)
+project(PadeOps LANGUAGES Fortran C)
 
 list(PREPEND CMAKE_MODULE_PATH "${PadeOps_SOURCE_DIR}/cmake")
 
