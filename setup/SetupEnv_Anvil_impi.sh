@@ -1,10 +1,10 @@
 #!/bin/bash
 module purge 
-module load intel
-module load cmake
-module load fftw
-module load impi
-module load hdf5
+module load intel/19.1.3.304  
+module load impi/2019.9.304
+module load hdf5/1.10.7
+module load fftw/3.3.8
+module load cmake/3.20.0
 module list 
 
 export COMPILER_ID=Intel
