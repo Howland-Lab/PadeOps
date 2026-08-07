@@ -1,9 +1,10 @@
 #!/bin/bash
 module purge
-module load gcc
-module load cmake/3.31.9
+module load gcc/13.2.0
+module load mkl/24.0
+module load cmake/4.1.1
 module load openmpi/5.0.8
-module load mkl
+module load zlib/1.3.2
 
 CWD=`pwd`
 export COMPILER_ID=GNU
