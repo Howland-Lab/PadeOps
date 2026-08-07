@@ -16,4 +16,4 @@ export FFTW_PATH=${FFTW_HOME}
 export HDF5_PATH=${HDF5_HOME}
 export DECOMP_PATH=/anvil/projects/x-atm170028/karim/PadeOps/dependencies/gcc/2decomp_fft
 export FFTPACK_PATH=dummy
-export ARCH_OPT_FLAG="-march=core-avx2"
+export ARCH_OPT_FLAG="-march=znver3"
