@@ -7,7 +7,8 @@ module load PrgEnv-gnu
 module load craype-x86-rome
 module load cray-libsci
 module load cray-fftw
-module load cmake
+module load load-epcc-module
+module load cmake/3.29.4
 module load cray-hdf5-parallel
 module list
 
