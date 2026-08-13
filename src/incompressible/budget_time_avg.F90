@@ -174,6 +174,14 @@ module budgets_time_avg_mod
         integer :: counter
         character(len=clen) :: budgets_dir
 
+        ! Time-averaged wall-model surface stress output (2D wall planes).
+        ! tauWM_avg(:,:,1) = sum of tau_13|wall, tauWM_avg(:,:,2) = sum of tau_23|wall.
+        ! wm_counter is an independent sample counter (reset on (re)start) so the
+        ! average stays self-consistent without touching the budget restart files.
+        real(rkind), dimension(:,:,:), allocatable :: tauWM_avg
+        integer :: wm_counter = 0
+        logical :: wallModelActive = .false.
+
         logical :: useWindTurbines, isStratified, useCoriolis
         real(rkind), allocatable, dimension(:) :: runningSum_sc, runningSum_sc_turb, runningSum_turb
         logical :: HaveScalars
@@ -200,7 +208,11 @@ module budgets_time_avg_mod
         procedure, private  :: dump_budget4_field 
         
         procedure, private  :: AssembleBudget0
-        procedure, private  :: DumpBudget0 
+        procedure, private  :: DumpBudget0
+
+        procedure, private  :: AssembleWallStress
+        procedure, private  :: DumpWallStress
+        procedure, private  :: write_wall_plane
         
         procedure, private  :: AssembleBudget1
         procedure, private  :: DumpBudget1
@@ -294,6 +306,15 @@ contains
             else
                 allocate(this%budget_0(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),31))
             end if
+            ! allocate time-averaged wall-stress surface accumulator (only if a
+            ! wall model is active, since it reads sgsmodel%tauijWM)
+            this%wallModelActive = this%igrid_sim%useSGS .and. this%igrid_sim%sgsmodel%get_useWallModel()
+            if (this%wallModelActive) then
+                allocate(this%tauWM_avg(this%igrid_sim%gpE%xsz(1),this%igrid_sim%gpE%xsz(2),2))
+                this%tauWM_avg = 0.d0
+                this%wm_counter = 0
+            end if
+
             ! allocate budget 1
             if (this%budgetType > 0) then
                 allocate(this%budget_1(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),16))
@@ -459,6 +480,9 @@ contains
 
         call this%AssembleScalarStats()
 
+        ! Accumulate the wall-model surface stress (independent of budgetType)
+        if (this%wallModelActive) call this%AssembleWallStress()
+
         this%counter = this%counter + 1
 
     end subroutine 
@@ -499,7 +523,10 @@ contains
 
         ! Scalar and Turbine Stats
         call this%DumpScalarStats()
-    end subroutine 
+
+        ! Wall-model surface stress / friction velocity (2D wall planes)
+        if (this%wallModelActive) call this%DumpWallStress()
+    end subroutine
 
     ! ---------------------- Budget 0 ------------------------
     subroutine DumpBudget0(this)
@@ -613,7 +640,61 @@ contains
         ! Step 11: Go back to summing instead of averaging
         this%budget_0 = this%budget_0*(real(this%counter,rkind) + 1.d-18)
 
-    end subroutine 
+    end subroutine
+
+    ! ---------------- Wall-model surface stress / friction velocity ----------------
+    ! Accumulate the instantaneous bottom-wall shear stress (tau_13, tau_23) every
+    ! time the budgets are sampled. Only the rank layer owning the wall (xst(3)==1)
+    ! holds physical values; tauWM_avg on other ranks stays zero and is never written.
+    subroutine AssembleWallStress(this)
+        class(budgets_time_avg), intent(inout) :: this
+        real(rkind), dimension(this%igrid_sim%gpE%xsz(1),this%igrid_sim%gpE%xsz(2)) :: tau13, tau23
+
+        call this%igrid_sim%sgsmodel%get_wall_stress(tau13, tau23)
+
+        if (this%igrid_sim%gpE%xst(3) == 1) then
+            this%tauWM_avg(:,:,1) = this%tauWM_avg(:,:,1) + tau13
+            this%tauWM_avg(:,:,2) = this%tauWM_avg(:,:,2) + tau23
+        end if
+        this%wm_counter = this%wm_counter + 1
+    end subroutine
+
+    ! Write one averaged 2D wall plane (nx x ny) into the budgets directory.
+    subroutine write_wall_plane(this, dat2d, label)
+        use decomp_2d_io
+        class(budgets_time_avg), intent(inout) :: this
+        real(rkind), dimension(this%igrid_sim%gpE%xsz(1),this%igrid_sim%gpE%xsz(2)), intent(in) :: dat2d
+        character(len=*), intent(in) :: label
+        real(rkind), dimension(:,:,:), pointer :: buffE
+        character(len=clen) :: fname, tempname
+
+        buffE => this%igrid_sim%rbuffxE(:,:,:,1)
+        buffE = 0.d0
+        if (this%igrid_sim%gpE%xst(3) == 1) buffE(:,:,1) = dat2d
+
+        write(tempname,"(A,I2.2,A,A,A,I6.6,A,I6.6,A)") "Run",this%run_id,"_",trim(label), &
+              "_t",this%igrid_sim%step,"_n",this%wm_counter,".s2D"
+        fname = this%budgets_Dir(:len_trim(this%budgets_Dir))//"/"//trim(tempname)
+
+        ! x-pencil field, write the global z-plane n=1 (the bottom wall)
+        call decomp_2d_write_plane(1, buffE, 3, 1, fname, this%igrid_sim%gpE)
+    end subroutine
+
+    ! Dump time-averaged wall stress components and local friction velocity
+    !   ustar(x,y) = ( <tau_13>^2 + <tau_23>^2 )^(1/4)
+    subroutine DumpWallStress(this)
+        class(budgets_time_avg), intent(inout) :: this
+        real(rkind), dimension(this%igrid_sim%gpE%xsz(1),this%igrid_sim%gpE%xsz(2)) :: tau13, tau23
+        real(rkind) :: inv_count
+
+        inv_count = 1.0d0/(real(this%wm_counter,rkind) + 1.d-18)
+        tau13 = this%tauWM_avg(:,:,1)*inv_count
+        tau23 = this%tauWM_avg(:,:,2)*inv_count
+
+        call this%write_wall_plane(tau13, "wmstress_tau13")
+        call this%write_wall_plane(tau23, "wmstress_tau23")
+        call this%write_wall_plane((tau13**2 + tau23**2)**0.25d0, "ustar_surf")
+    end subroutine
 
     subroutine AssembleBudget0(this)
         class(budgets_time_avg), intent(inout) :: this
@@ -2456,11 +2537,17 @@ subroutine DumpBudget4_23(this)
         this%budget_4_11 = 0.d0 
         this%budget_4_22 = 0.d0 
         this%budget_4_33 = 0.d0 
-        this%budget_4_13 = 0.d0 
-        this%budget_4_23 = 0.d0 
-        
-    end subroutine 
-    
+        this%budget_4_13 = 0.d0
+        this%budget_4_23 = 0.d0
+
+        ! keep the wall-stress average window in sync with the budgets
+        if (allocated(this%tauWM_avg)) then
+            this%tauWM_avg = 0.d0
+            this%wm_counter = 0
+        end if
+
+    end subroutine
+
     subroutine destroy(this)
         class(budgets_time_avg), intent(inout) :: this
         nullify(this%igrid_sim)
@@ -2489,6 +2576,8 @@ subroutine DumpBudget4_23(this)
                 deallocate(this%budget_4_23)
                 deallocate(this%budget_4_33)
             end if
+
+            if (allocated(this%tauWM_avg)) deallocate(this%tauWM_avg)
 
             deallocate(this%runningSum_sc)
             if(this%useWindTurbines) then

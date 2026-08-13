@@ -176,6 +176,8 @@ module sgsmod_igrid
             procedure          :: get_T_surf
             procedure          :: get_uw_surf
             procedure          :: get_vw_surf
+            procedure          :: get_wall_stress
+            procedure          :: get_useWallModel
             procedure          :: getMax_DynSmagConst
             procedure          :: getMax_DynPrandtl
             procedure          :: usingDynProc

@@ -440,6 +440,8 @@ contains
         integer :: buoyancyDirection = 3, yawUpdateInterval = 100000, dealiasType = 0
         logical :: use_z0_field = .FALSE.
         integer :: nrank, ierror
+        integer :: mx, my
+        character(len=1024) :: line
         real(rkind), allocatable :: z0_global(:,:)
 
         real(rkind), dimension(:,:,:), allocatable, target :: tmpzE, tmpzC, tmpyE, tmpyC
@@ -553,25 +555,96 @@ contains
        call decomp_info_init(nx,ny,nz+1,this%gpE)
 
        call MPI_Comm_rank(MPI_COMM_WORLD, nrank, ierror)
+       !if (this%use_z0_field) then
+       !    if (nrank == 0) then
+       !        allocate(z0_global(nx,ny))
+       !        open(unit=125, file=trim(input_z0_dir), form='formatted', status='old', action='read')
+       !        read(125, *, iostat=ierr) z0_global
+       !        close(125)
+       !    else
+       !        allocate(z0_global(nx, ny))
+       !    end if
+       !    call MPI_Bcast(z0_global, nx*ny, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierror)
+       !    if (.not. allocated(this%z0_xy_C)) then
+       !        allocate(this%z0_xy_C(this%gpC%xsz(1), this%gpC%xsz(2)))
+       !    end if
+
+       !    this%z0_xy_C(:,:) = z0_global(this%gpC%xst(1):this%gpC%xen(1), &
+       !                         this%gpC%xst(2):this%gpC%xen(2))
+
+       !    deallocate(z0_global)
+       !end if
+       
+!==================================== z0_field =============================================== 
+
        if (this%use_z0_field) then
            if (nrank == 0) then
-               allocate(z0_global(nx,ny))
-               open(unit=125, file=trim(input_z0_dir), form='formatted', status='old', action='read')
-               read(125, *, iostat=ierr) z0_global
+
+           open(unit=125, file=trim(input_z0_dir), form='formatted', status='old', action='read', iostat=ierr)
+           if (ierr /= 0) then
+               write(*,*) 'Error: cannot open z0 file: ', trim(input_z0_dir)
+               call MPI_Abort(MPI_COMM_WORLD, 1, ierror)
+           end if
+
+           read(125, *, iostat=ierr) mx, my
+           if (ierr /= 0) then
+               write(*,*) 'Error: cannot read z0 field dimensions from file: ', trim(input_z0_dir)
                close(125)
-           else
-               allocate(z0_global(nx, ny))
-           end if
-           call MPI_Bcast(z0_global, nx*ny, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierror)
-           if (.not. allocated(this%z0_xy_C)) then
-               allocate(this%z0_xy_C(this%gpC%xsz(1), this%gpC%xsz(2)))
+               call MPI_Abort(MPI_COMM_WORLD, 1, ierror)
            end if
 
-           this%z0_xy_C(:,:) = z0_global(this%gpC%xst(1):this%gpC%xen(1), &
-                                this%gpC%xst(2):this%gpC%xen(2))
+           if (mx /= nx .or. my /= ny) then
+               write(*,*) 'Error: z0 field size mismatch.'
+               write(*,*) 'Expected: ', nx, ny
+               write(*,*) 'Found   : ', mx, my
+               close(125)
+               call MPI_Abort(MPI_COMM_WORLD, 1, ierror)
+           end if
 
-           deallocate(z0_global)
+           allocate(z0_global(nx, ny))
+
+           read(125, *, iostat=ierr) z0_global
+           if (ierr /= 0) then
+               write(*,*) 'Error: failed to read z0 field data from file: ', trim(input_z0_dir)
+               close(125)
+               call MPI_Abort(MPI_COMM_WORLD, 1, ierror)
+           end if
+
+           !read(125, *, iostat=ierr)
+           !if (ierr == 0) then
+           !    write(*,*) 'Error: z0 file contains extra data beyond expected ', nx*ny, ' values.'
+           !    close(125)
+           !    call MPI_Abort(MPI_COMM_WORLD, 1, ierror)
+           !end if
+
+           do
+              read(125, '(A)', iostat=ierr) line
+              if (ierr /= 0) exit
+              if (len_trim(line) > 0) then
+                 write(*,*) 'Error: z0 file contains extra nonblank data beyond expected ', nx*ny, ' values.'
+                 close(125)
+                 call MPI_Abort(MPI_COMM_WORLD, 1, ierror)
+              end if
+           end do
+
+           close(125)
+       else
+           allocate(z0_global(nx, ny))
        end if
+
+       call MPI_Bcast(z0_global, nx*ny, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierror)
+
+       if (.not. allocated(this%z0_xy_C)) then
+           allocate(this%z0_xy_C(this%gpC%xsz(1), this%gpC%xsz(2)))
+       end if
+
+       this%z0_xy_C(:,:) = z0_global(this%gpC%xst(1):this%gpC%xen(1), &
+                                    this%gpC%xst(2):this%gpC%xen(2))
+
+       deallocate(z0_global)
+       end if
+
+!========================================================================================================
        
        if (this%useSystemInteractions) then
            if ((trim(controlDir) .eq. "null") .or.(trim(ControlDir) .eq. "NULL")) then

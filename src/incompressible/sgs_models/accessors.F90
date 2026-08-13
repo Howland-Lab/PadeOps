@@ -90,6 +90,24 @@ function get_vw_surf(this) result(val)
    val = this%vw_surf
 end function
 
+! Return the instantaneous wall-model shear stress at the bottom wall plane
+! (x-pencil, local z-index 1). tau13/tau23 are the two horizontal components.
+! On ranks that do not own the bottom wall (gpE%xst(3) /= 1) the values are the
+! local first-z-level entries and should be ignored by the caller.
+subroutine get_wall_stress(this, tau13, tau23)
+   class(sgs_igrid), intent(in) :: this
+   real(rkind), dimension(this%gpE%xsz(1),this%gpE%xsz(2)), intent(out) :: tau13, tau23
+
+   tau13 = this%tauijWM(:,:,1,1)
+   tau23 = this%tauijWM(:,:,1,2)
+end subroutine
+
+pure function get_useWallModel(this) result(val)
+   class(sgs_igrid), intent(in) :: this
+   logical                      :: val
+
+   val = this%useWallModel
+end function
 
 pure function getMax_DynSmagConst(this) result(val)
    class(sgs_igrid), intent(in) :: this
