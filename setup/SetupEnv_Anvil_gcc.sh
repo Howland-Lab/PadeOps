@@ -1,9 +1,9 @@
 #!/bin/bash
 module purge 
-module load gcc/11.2.0 
-module load openmpi/4.1.6
+module load gcc/14.2.0
+module load openmpi/5.0.5
+module load openblas/0.3.27
 module load fftw/3.3.8 
-module load openblas/0.3.17
 module load hdf5/1.10.7
 module load cmake/3.20.0
 module list 
