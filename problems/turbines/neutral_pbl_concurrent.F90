@@ -154,6 +154,7 @@ program neutral_pbl_concurrent
 
     call budg_tavg%destroy()           !<-- release memory taken by the budget class
     call pre_budg_tavg%destroy()
+    if (do_deficit_budgets) call budg_tavg_deficit%destroy()
 
     call precursor%finalize_io()
     call primary%finalize_io()

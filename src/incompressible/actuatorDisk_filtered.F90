@@ -21,7 +21,7 @@ module actuatorDisk_FilteredMod
         integer :: xLoc_idx, ActutorDisk_T2ID, tInd = 1
         real(rkind) :: yaw, tilt, ut, powerBaseline, hubDirection
         real(rkind) :: xLoc, yLoc, zLoc, dx, dy, dz, dV
-        real(rkind) :: diam, cT, pfactor, normfactor, OneBydelSq, Cp, thick, npts
+        real(rkind) :: diam, cT, pfactor, normfactor, OneBydelSq, Cp, thick, npts, upsample_fact
         real(rkind) :: uface = zero, vface = zero, wface = zero  ! LES velocity, disk-averaged
         real(rkind) :: uturb, vturb, wturb  ! turbine motion vector
 
@@ -30,7 +30,7 @@ module actuatorDisk_FilteredMod
         logical :: useDynamicYaw, quickDecomp
 
         ! Grid Info
-        integer :: nxLoc, nyLoc, nzLoc 
+        integer :: nxLoc, nyLoc, nzLoc
         real(rkind) :: delta, M  ! Shapiro smearing size, corr. factor M<1
         real(rkind), dimension(:), allocatable :: xline, yline, zline
         real(rkind), dimension(:,:,:), pointer :: xG, yG, zG
@@ -77,11 +77,19 @@ subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG, dx, dy, dz)
     character(len=*), intent(in) :: inputDir
     character(len=clen) :: tempname, fname
     integer :: ioUnit, ierr
-    real(rkind) :: xLoc=1.d0, yLoc=1.d0, zLoc=0.1d0
+    real(rkind) :: xLoc=1.d0, yLoc=1.d0, zLoc=0.1d0, upsample_fact=two
     real(rkind) :: diam=0.08d0, cT=0.65d0, yaw=0.d0, tilt=0.d0, h  !, Cp = 0.3
     real(rkind) :: thickness=1.5d0, filterWidth=0.5, time2initialize=0.d0
     logical :: useCorrection=.true., useDynamicYaw=.false., quickDecomp=.false., use_h=.false.
-
+    real(rkind) :: rcutSqr
+    integer :: i, j, k
+    real(rkind) :: dxp, dyp, dzp
+    integer :: world_rank, is_active, nact
+    integer, allocatable :: actives(:)
+    character(len=4) :: turbindex
+    character(len=2048) :: active_ranks
+    character(len=16) :: tmp
+    
     ! Read input file for this turbine    
     namelist /ACTUATOR_DISK/ xLoc, yLoc, zLoc, diam, cT, yaw, tilt, filterWidth, useCorrection, &
                              useDynamicYaw, thickness, quickDecomp, use_h
@@ -93,7 +101,8 @@ subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG, dx, dy, dz)
     open(unit=ioUnit, file=trim(fname), form='FORMATTED', action="read")
     read(unit=ioUnit, NML=ACTUATOR_DISK)
     close(ioUnit)
-    
+
+    call MPI_COMM_RANK(MPI_COMM_WORLD, world_rank, ierr)
     call message(0, "Initializing Actuator Disk (ADM Type=5) number", ActuatorDisk_ID)
     call tic()
     
@@ -105,6 +114,7 @@ subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG, dx, dy, dz)
     this%xLoc = xLoc; this%yLoc = yLoc; this%zLoc = zLoc
     this%cT = cT; this%diam = diam; this%yaw = yaw; this%tilt = tilt
     this%ut = 1.d0!; this%Cp = Cp
+    this%upsample_fact = upsample_fact
 
     this%uturb = zero; this%vturb = zero; this%wturb = zero
     
@@ -117,28 +127,6 @@ subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG, dx, dy, dz)
     
     this%xG => xG; this%yG => yG; this%zG => zG
     this%xLine = xG(:,1,1); this%yLine = yG(1,:,1); this%zLine = zG(1,1,:)
-
-    ! allocate memory buffers
-    allocate(this%rbuff(this%nxLoc, this%nyLoc, this%nzLoc))
-    allocate(this%blanks(this%nxLoc, this%nyLoc, this%nzLoc))
-    allocate(this%speed(this%nxLoc, this%nyLoc, this%nzLoc))
-    allocate(this%scalarsource(this%nxLoc, this%nyLoc, this%nzLoc))
-    
-    ! copied from ADM T2
-    this%Am_I_Split = .TRUE. ! TODO: Fix me later by flagging where the turbine is
-    if (this%Am_I_Split) then
-        call MPI_COMM_SPLIT(mpi_comm_world, this%color, nrank, this%mycomm, ierr)
-        call MPI_COMM_RANK(this%mycomm, this%myComm_nrank, ierr) 
-        call MPI_COMM_SIZE(this%mycomm, this%myComm_nproc, ierr)
-    end if 
-    
-    ! this ensures that only ONE turbine is keeping track of power and writing to disk
-    if((this%Am_I_Split .and. this%myComm_nrank==0) .or. (.not. this%Am_I_Split)) then
-!        write(*,*) "Only one allocated? YES/NO"
-        allocate(this%powerTime(1000000))  
-        allocate(this%uTime(1000000))  
-        allocate(this%vTime(1000000))
-    end if
 
     ! Set thickness
     this%thick = thickness*this%dx
@@ -158,8 +146,90 @@ subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG, dx, dy, dz)
         call message(1, "ADM: using full kernel integration")
     end if
 
+    ! Decide if the turbine is active on the current rank
+    ! If any point is within rcut from the turbine, this turbine is active on current rank
+    rcutSqr = (this%diam/2) + 3.0d0*this%delta + 0.5d0*max(this%dx, this%dy, this%dz)
+    rcutSqr = rcutSqr*rcutSqr
+    this%Am_I_Active = .false.
+    do k = 1, this%nzLoc
+        do j = 1, this%nyLoc
+            do i = 1, this%nxLoc
+                dxp = this%xG(i,j,k) - this%xLoc
+                dyp = this%yG(i,j,k) - this%yLoc
+                dzp = this%zG(i,j,k) - this%zLoc
+                if (dxp*dxp + dyp*dyp + dzp*dzp <= rcutSqr) then
+                    this%Am_I_Active = .true.
+                    exit
+                end if
+            end do
+            if (this%Am_I_Active) exit
+        end do
+        if (this%Am_I_Active) exit
+    end do
+    
+    ! Set the color. Now the split holds ranks that have Am_I_Active = .true.
+    ! Need to pass the local comm to p_sum later (was missing and was summing over MPI_COMM_WORLD instead)
+    if(this%Am_I_Active) then
+        this%color = ActuatorDisk_ID
+    else
+        this%color = MPI_UNDEFINED
+        this%myComm = MPI_COMM_NULL
+    end if
+
+    ! Gather the indices of ranks where current turbine is active
+    is_active = merge(1, 0, this%Am_I_Active)
+    call gather_active_ranks_all(is_active, actives, nact, MPI_COMM_WORLD)
+    write(turbindex,'(I4.4)') ActuatorDisk_ID
+    active_ranks=''
+    if(nact>0)then
+        do i = 1, nact
+            write(tmp, '(I0)') actives(i)
+            active_ranks = trim(active_ranks)//trim(tmp)//'-'
+        end do    
+        call message(1, 'Active ranks of turbine '//trim(turbindex)//' are '//trim(active_ranks))
+    else
+        call message(1, 'No active ranks for turbine '//trim(turbindex))
+    end if
+    if(allocated(actives)) deallocate(actives)
+
+    ! If the turbine is active on a single rank, no need for MPI_COMM_SPLIT
+    this%Am_I_Split = nact > 1
+    this%myComm = MPI_COMM_NULL
+    this%myComm_nrank = -1
+    this%myComm_nproc = 0
+    if (this%Am_I_Split) then
+        call MPI_COMM_SPLIT(MPI_COMM_WORLD, this%color, world_rank, this%mycomm, ierr)
+        if (this%color /= MPI_UNDEFINED) then
+            call MPI_COMM_RANK(this%mycomm, this%myComm_nrank, ierr)
+            call MPI_COMM_SIZE(this%mycomm, this%myComm_nproc, ierr)
+        end if
+    end if 
+
+    ! Safe guard only
+    if (.not. this%Am_I_Split .and. this%Am_I_Active) then
+        this%myComm = MPI_COMM_SELF
+        this%myComm_nrank = 0
+        this%myComm_nproc = 1
+    end if
+
+    ! allocate memory buffers
+    if(this%Am_I_Active)then
+        allocate(this%rbuff(this%nxLoc, this%nyLoc, this%nzLoc))
+        !allocate(this%blanks(this%nxLoc, this%nyLoc, this%nzLoc))
+        !allocate(this%speed(this%nxLoc, this%nyLoc, this%nzLoc))
+        allocate(this%scalarsource(this%nxLoc, this%nyLoc, this%nzLoc))    
+        this%scalarsource = zero
+        
+        ! this ensures that only ONE turbine is keeping track of power and writing to disk
+        if((this%Am_I_Split .and. this%myComm_nrank==0) .or. (.not. this%Am_I_Split)) then
+            allocate(this%powerTime(10000))  
+            allocate(this%uTime(10000))  
+            allocate(this%vTime(10000))
+        end if
+    end if
+
     ! Get (unrotated) turbine location points
-    call sample_on_circle(this%diam, this%yLoc, this%zLoc, this%ys, this%zs, this%dy, this%dz)
+    call sample_on_circle(this%diam, this%yLoc, this%zLoc, this%ys, this%zs, this%dy, this%dz, this%upsample_fact)
     this%npts = size(this%ys,1)
     call message(1, "NUMBER OF POINTS: ", this%npts)
     allocate(this%xs(size(this%ys)))
@@ -177,7 +247,7 @@ subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG, dx, dy, dz)
         call message(2, "Using Dynamic Yaw")
     else
         call message(2, "Using static turbine.")
-        call this%redraw()  ! get_weights(this) 
+        if(this%Am_I_Active) call this%get_weights()
     end if
     
     call message(2, "Smearing grid parameter, Delta", this%delta)
@@ -186,16 +256,84 @@ subroutine init(this, inputDir, ActuatorDisk_ID, xG, yG, zG, dx, dy, dz)
     call message(3, "x = ", this%xLoc)
     call message(3, "y = ", this%yLoc)
     call message(3, "z = ", this%zLoc)
-    call toc(mpi_comm_world, time2initialize)
+    if(.not. this%Am_I_Active)then
+        ! Deallocate
+        if(allocated(this%xs)) deallocate(this%xs)
+        if(allocated(this%ys)) deallocate(this%ys)
+        if(allocated(this%zs)) deallocate(this%zs)
+        if(allocated(this%xline)) deallocate(this%xline)
+        if(allocated(this%yline)) deallocate(this%yline)
+        if(allocated(this%zline)) deallocate(this%zline)
+        nullify(this%xG, this%yG, this%zG)
+    end if
+    call toc(MPI_COMM_WORLD, time2initialize)
     call message(2, "Time (seconds) to initialize", time2initialize)
 end subroutine 
 
+subroutine gather_active_ranks_all(is_active, active_ranks, nactive, comm)
+    use mpi
+    implicit none
+    integer, intent(in) :: is_active                 ! 0 or 1 on each rank
+    integer, intent(in) :: comm                      ! typically MPI_COMM_WORLD
+    integer, allocatable, intent(out) :: active_ranks(:)  ! allocated on ALL ranks
+    integer, intent(out) :: nactive                  ! valid on ALL ranks
+    integer :: ierr, rank, nproc, i
+    integer, allocatable :: flags(:)
+
+    call MPI_Comm_rank(comm, rank, ierr)
+    call MPI_Comm_size(comm, nproc, ierr)
+    allocate(flags(nproc))
+
+    ! Everyone gets the activity flag from everyone
+    call MPI_Allgather(is_active, 1, MPI_INTEGER, flags, 1, MPI_INTEGER, comm, ierr)
+
+    ! Count and build the list (world ranks are 0-based)
+    nactive = 0
+    do i = 1, nproc
+        if (flags(i) /= 0) nactive = nactive + 1
+    end do
+
+    if(nactive > 0)then
+        allocate(active_ranks(nactive))
+        nactive = 0
+        do i = 1, nproc
+            if (flags(i) /= 0) then
+                nactive = nactive + 1
+                active_ranks(nactive) = i - 1
+            end if
+        end do
+    end if
+    deallocate(flags)
+end subroutine gather_active_ranks_all
+
 subroutine destroy(this)
     class(actuatordisk_filtered), intent(inout) :: this
+    integer :: ierr
 
-    deallocate(this%rbuff, this%blanks, this%speed, this%scalarSource) 
+    if(allocated(this%rbuff)) deallocate(this%rbuff)
+    if(allocated(this%blanks)) deallocate(this%blanks)
+    if(allocated(this%speed)) deallocate(this%speed)
+    if(allocated(this%scalarSource)) deallocate(this%scalarSource)
+    if(allocated(this%powerTime)) deallocate(this%powerTime)
+    if(allocated(this%uTime))     deallocate(this%uTime)
+    if(allocated(this%vTime))     deallocate(this%vTime)
+    if(allocated(this%xs)) deallocate(this%xs)
+    if(allocated(this%ys)) deallocate(this%ys)
+    if(allocated(this%zs)) deallocate(this%zs)
+    if(allocated(this%xLine)) deallocate(this%xLine)
+    if(allocated(this%yLine)) deallocate(this%yLine)
+    if(allocated(this%zLine)) deallocate(this%zLine)
+
+    ! Free communicator
+    if (this%myComm /= MPI_COMM_NULL .and. &
+        this%myComm /= MPI_COMM_WORLD .and. &
+        this%myComm /= MPI_COMM_SELF) then
+        call MPI_COMM_FREE(this%myComm, ierr)
+        this%myComm = MPI_COMM_NULL
+    end if
+
     nullify(this%xG, this%yG, this%zG)
-end subroutine 
+end subroutine
 
 ! Convolution in x (streamwise) direction
 subroutine get_R1(this, R1) 
@@ -300,8 +438,8 @@ subroutine get_R(this)
             do j = j1, j2
                 do i = i1, i2
                     rsq = (this%xG(i,j,l) - xi(k))**2 + &
-                                        (this%yG(i,j,l) - yi(k))**2 + &
-                                        (this%zG(i,j,l) - zi(k))**2
+                          (this%yG(i,j,l) - yi(k))**2 + &
+                          (this%zG(i,j,l) - zi(k))**2
                     this%scalarsource(i,j,l) = this%scalarsource(i,j,l) + C1 * exp(coef * rsq)
                 end do
             end do
@@ -316,7 +454,9 @@ subroutine get_weights(this)
     real(rkind), dimension(this%nyLoc, this%nzLoc) :: R2
     real(rkind), dimension(this%nxLoc) :: R1
     real(rkind), dimension(this%nxLoc, this%nyLoc, this%nzLoc) :: R
-        
+    real(rkind) :: smax
+
+    this%scalarsource = zero        
     if ((abs(this%yaw) < 1e-3) .and. (abs(this%tilt) < 1e-3)) then
         if (this%quickDecomp) then
             !aligned with the x-direction, use the "quick" kernel creation
@@ -339,27 +479,37 @@ subroutine get_weights(this)
     end if
      
     ! minimum threshold tolerance
-    where (this%scalarsource < 1.d-10)
+    if(this%Am_I_Split)then
+        smax = p_maxval(this%scalarsource, this%mycomm)
+    else
+        smax = MAXVAL(this%scalarsource)
+    end if
+    where (this%scalarsource < 1.d-12 * smax)
         this%scalarsource = 0
     end where
 
     ! normalize so R integrates to 1 exactly
-    this%scalarsource = this%scalarsource / (p_sum(this%scalarsource)*this%dV) 
+    if(this%Am_I_Split)then
+        this%scalarsource = this%scalarsource / (p_sum(this%scalarsource, this%mycomm)*this%dV)
+    else
+        this%scalarsource = this%scalarsource / (SUM(this%scalarsource)*this%dV)
+    end if 
 end subroutine
 
 ! sample a circle with points spaced dx, dy apart and centered at xcen, ycen
-subroutine sample_on_circle(diam, xcen, ycen, xloc, yloc, dx, dy)
+subroutine sample_on_circle(diam, xcen, ycen, xloc, yloc, dx, dy, upsample_fact)
     use gridtools, only: linspace
-    real(rkind), intent(in) :: diam, xcen, ycen, dx, dy
-    real(rkind) :: R
+    real(rkind), intent(in) :: diam, xcen, ycen, dx, dy, upsample_fact
+    real(rkind) :: R, dxi
     integer, dimension(:), allocatable :: tag
     real(rkind), dimension(:), allocatable :: xline, yline
     real(rkind), dimension(:), allocatable, intent(out) :: xloc, yloc
     real(rkind), dimension(:), allocatable :: xtmp, ytmp, rtmp
-    integer :: idx, i, j, nsz, iidx, nx_per_R, ny_per_R, nx, ny, np
+    integer :: idx, i, nsz, iidx, nx_per_R, ny_per_R, nx, ny, np
     
     R = diam/two
-    nx_per_R = ceiling(R/dx); ny_per_R = ceiling(R/dy)
+    dxi = min(dx, dy) / upsample_fact  ! upsample the resolution of the LES grid
+    nx_per_R = ceiling(R/dxi); ny_per_R = ceiling(R/dxi)
     nx = nx_per_R*2 + 1
     ny = ny_per_R*2 + 1
     np = nx*ny  ! total number of points
@@ -370,19 +520,12 @@ subroutine sample_on_circle(diam, xcen, ycen, xloc, yloc, dx, dy)
     ! initialize linearly-spaced arrays 
     ! this is necessary to do independently of the grid xG, yG, zG 
     ! because parallelization splits the grid up
-    xline = (/(i, i=-nx_per_R, nx_per_R)/) * dx
-    yline = (/(i, i=-ny_per_R, ny_per_R)/) * dy
+    xline = (/(i, i=-nx_per_R, nx_per_R)/) * dxi
+    yline = (/(i, i=-ny_per_R, ny_per_R)/) * dxi
     
     ! reshapes xline, yline: 
-!    xtmp = reshape(spread(xline, 1, ny), [np])
-!    ytmp = reshape(spread(yline, 2, nx), [np])  ! why doesn't reshape() work? 
-    idx = 1
-    do j = 1,ny
-        do i = 1,nx
-            xtmp(idx) = xline(i); ytmp(idx) = yline(j)
-            idx = idx + 1
-        end do 
-    end do
+    xtmp = reshape(spread(xline, 2, ny), [np])  ! Spread along dim 2, then flatten
+    ytmp = reshape(spread(yline, 1, nx), [np])  ! Spread along dim 1, then flatten
     rtmp = sqrt(xtmp**2 + ytmp**2) 
     tag = 0
     where (rtmp < R) 
@@ -402,6 +545,7 @@ subroutine sample_on_circle(diam, xcen, ycen, xloc, yloc, dx, dy)
 
     xloc = xloc + xcen; yloc = yloc + ycen 
     deallocate(xtmp, ytmp, rtmp, tag)  ! deallocate temporary variables
+    deallocate(xline, yline)
 end subroutine
 
 ! Right hand side forcing term for the ADM
@@ -417,11 +561,12 @@ subroutine get_RHS(this, u, v, w, rhsxvals, rhsyvals, rhszvals, budgetCall)
     real(rkind), dimension(3,3) :: R, T
     logical :: writeTurbineVals
 
-    ! update yaw and tilt of the turbine
-    if (.not. this%useDynamicYaw .and. (this%yaw - yaw*180.d0/pi)>1.d-8) then
-        call GracefulExit("Turbine prescribed yaw changed, but useDynamicYaw is OFF", 423)
-    end if
+    ! MOVED to DynamicTurbine module - can remove this
+    ! if (.not. this%useDynamicYaw .and. (this%yaw - yaw*180.d0/pi)>1.d-8) then
+    !     call GracefulExit("Turbine prescribed yaw changed, but useDynamicYaw is OFF", 423)
+    ! end if
 
+    if (.not. this%Am_I_Active) return
     yaw = this%yaw * pi/180.d0
     tilt = this%tilt * pi/180.d0
 
@@ -443,18 +588,20 @@ subroutine get_RHS(this, u, v, w, rhsxvals, rhsyvals, rhszvals, budgetCall)
     ! vface = p_sum(this%scalarSource*(u*tau(1,1) + v*tau(2,1) + w*tau(3,1)))*this%dV
 
     ! NEW method -- requires more p_sum but results in a vector
-    this%uface = p_sum(this%scalarSource * u) * this%dV
-    this%vface = p_sum(this%scalarSource * v) * this%dV
-    this%wface = p_sum(this%scalarSource * w) * this%dV
+    ! Need to pass the local comm to p_sum
+    ! Also avoid forcing the compiler to create temperorary arrays
+    if(this%Am_I_Split)then
+        this%rbuff = this%scalarSource*u; this%uface = p_sum(this%rbuff, this%mycomm) * this%dV
+        this%rbuff = this%scalarSource*v; this%vface = p_sum(this%rbuff, this%mycomm) * this%dV
+        this%rbuff = this%scalarSource*w; this%wface = p_sum(this%rbuff, this%mycomm) * this%dV
+    else
+        this%rbuff = this%scalarSource*u; this%uface = SUM(this%rbuff) * this%dV
+        this%rbuff = this%scalarSource*v; this%vface = SUM(this%rbuff) * this%dV
+        this%rbuff = this%scalarSource*w; this%wface = SUM(this%rbuff) * this%dV
+    end if
     this%ut = this%M * ((this%uface - this%uturb) * n(1,1) + (this%vface - this%vturb) * n(2,1) + (this%wface - this%wturb) * n(3,1))
     vface = ((this%uface - this%uturb) * tau(1,1) + (this%vface - this%vturb) * tau(2,1) + (this%wface - this%wturb) * tau(3,1))
     
-    ! call message(1, 'DEBUG ActuatorDisk: this%ut', this%ut)
-    ! TODO: May need to update yaw before calling get_weights()
-    ! if (this%useDynamicYaw) then
-    !     call this%get_weights() 
-    ! end if
-
     ! Mean speed at the turbine, corrected with factor M
     usp_sq = (this%ut)**2
     force = -0.5d0*this%cT*(pi*(this%diam**2)/4.d0)*usp_sq
@@ -561,7 +708,7 @@ subroutine redraw(this)
     class(actuatordisk_filtered), intent(inout) :: this
 
     ! (re)sample points, this is quick
-    call sample_on_circle(this%diam, this%yloc, this%zloc, this%ys, this%zs, this%dy, this%dz)
+    call sample_on_circle(this%diam, this%yloc, this%zloc, this%ys, this%zs, this%dy, this%dz, this%upsample_fact)
     this%npts = size(this%ys, 1)  
     this%xs = this%xloc
     
