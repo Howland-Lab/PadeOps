@@ -7,7 +7,6 @@ module dynamicTurbineMod
     use actuatorDisk_filteredMod, only : actuatorDisk_filtered
     
     implicit none
-
     private
     public :: dynamicTurbine
     
@@ -29,7 +28,13 @@ module dynamicTurbineMod
         real(rkind) :: static_tilt ! mean tilt value -> tilt can vary sinusoidally around
 
         ! methods to implement motion: 
-        logical :: use_dynamic_turbine, use_simple_periodic, verbose 
+        logical :: use_dynamic_turbine, use_simple_periodic, use_timeseries, verbose
+
+        ! Time series storage
+        integer :: n_timeseries = 0
+        real(rkind), allocatable :: ts_time(:), ts_surge(:), ts_pitch(:), ts_uturb(:)
+        integer :: ts_index = 1  ! current index in time series
+        character(len=clen) :: timeseries_file
 
         logical :: do_redraw = .false.  ! redraw turbine this timestep? 
         
@@ -40,6 +45,8 @@ module dynamicTurbineMod
         procedure :: destroy
         procedure :: time_advance 
         procedure :: sinusoid_update
+        procedure :: timeseries_update
+        procedure :: read_timeseries
         
     end type
 
@@ -49,12 +56,15 @@ subroutine init(this, turbine)
     class(dynamicTurbine), intent(inout)   :: this
     class(actuatorDisk_filtered), intent(in), target :: turbine  ! TODO make generic turbine
     
-    logical :: use_dynamic_turbine = .true., use_simple_periodic = .true., verbose = .false.
-    character(len=clen) :: fname
+    logical :: use_dynamic_turbine = .true., use_simple_periodic = .true., use_timeseries = .false.
+    logical :: verbose = .false.
+    character(len=clen) :: fname, timeseries_file
     real(rkind) :: surge_freq = zero, surge_amplitude = zero, pitch_amplitude = zero
 
     ! read namelist
-    namelist /DYNAMICTURBINE/ use_simple_periodic, surge_freq, surge_amplitude, verbose, pitch_amplitude
+    namelist /DYNAMICTURBINE/ use_simple_periodic, use_timeseries, timeseries_file, &
+                              surge_freq, surge_amplitude, pitch_amplitude, &
+                              verbose
 
     ioUnit = 55
     call turbine%get_fname(fname)  ! get inputfile name from turbine
@@ -72,9 +82,21 @@ subroutine init(this, turbine)
     ! save namelist variables
     this%use_dynamic_turbine = use_dynamic_turbine
     this%use_simple_periodic = use_simple_periodic  ! simple periodic motion given by sinusoid_update
+    this%use_timeseries = use_timeseries ! motion defined by time-series
+    this%timeseries_file = timeseries_file ! time-series read in if use_timeseries is true
     this%surge_freq = surge_freq            ! surge frequency, non-dimensionalized
     this%surge_amplitude = surge_amplitude  ! surge amplitude =  u_d,max/U
     this%pitch_amplitude = pitch_amplitude  ! pitch amplitude, in degrees
+
+    ! Validate flags
+    if (this%use_simple_periodic .and. this%use_timeseries) then
+        call gracefulExit("Cannot specify both use_simple_periodic and use_timeseries", 424)
+    endif
+
+    ! Read time series if specified
+    if (this%use_timeseries) then
+        call this%read_timeseries()
+    endif
 
     call message(1, 'Initialized dynamicTurbine module')
 
@@ -97,6 +119,8 @@ subroutine time_advance(this, dt)
     ! STEP 2: first, update the position & velocity of the turbine (if not needed, skip time_advance)
     if (this%use_simple_periodic) then
         call this%sinusoid_update(dt)
+    else if (this%use_timeseries) then
+        call this%timeseries_update()
     else
         call gracefulExit("Unknown or missing time advance type in DYNAMICTURBINE module", 423)
     endif
@@ -125,7 +149,9 @@ subroutine time_advance(this, dt)
         if (this%pitch_amplitude > zero) then
             call message(1, 'dynamicTurbine: turbine tilt (deg.)', this%tilt)
         endif
-        call message(1, 'dynamicTurbine: normalized turbine phase', this%phase_turbine)
+        if (this%use_simple_periodic) then
+            call message(1, 'dynamicTurbine: normalized turbine phase', this%phase_turbine)
+        endif
     endif
 
 end subroutine
@@ -155,6 +181,109 @@ subroutine sinusoid_update(this, dt)
         this%tilt = this%pitch_amplitude * sin(omega_t) + this%static_tilt
     endif
 
+end subroutine
+
+subroutine read_timeseries(this)
+    class(dynamicTurbine), intent(inout) :: this
+    integer :: unit_ts, ios, n
+    real(rkind) :: t, surge, pitch, uturb
+    
+    unit_ts = 56
+    n = 0
+    
+    ! First pass: count lines
+    open(unit=unit_ts, file=trim(this%timeseries_file), form='FORMATTED', action="read", iostat=ios)
+    if (ios /= 0) then
+        call gracefulExit("Failed to open timeseries file: " // trim(this%timeseries_file), 425)
+    endif
+    
+    do
+        read(unit_ts, *, iostat=ios) t, surge, pitch, uturb
+        if (ios /= 0) exit
+        n = n + 1
+    enddo
+    
+    this%n_timeseries = n
+    if (this%n_timeseries < 2) call gracefulExit("Timeseries_file needs at least 2 rows", 430)
+
+    allocate(this%ts_time(n))
+    allocate(this%ts_surge(n))
+    allocate(this%ts_pitch(n))
+    allocate(this%ts_uturb(n))
+    
+    ! Second pass: read data
+    rewind(unit_ts)
+    do n = 1, this%n_timeseries
+        read(unit_ts, *, iostat=ios) t, surge, pitch, uturb
+        if (ios /= 0) exit
+        this%ts_time(n) = t
+        this%ts_surge(n) = surge
+        this%ts_pitch(n) = pitch
+        this%ts_uturb(n) = uturb
+    enddo
+    close(unit_ts)
+
+    do n = 2, this%n_timeseries
+        if (this%ts_time(n) <= this%ts_time(n-1)) then
+            call gracefulExit("Timeseries_file time must be strictly increasing", 431)
+        end if
+    end do
+    
+    if (this%verbose) then
+        call message(1, 'Done reading timeseries!')
+    endif
+    ! initialize time series index
+    this%ts_index = 1
+end subroutine
+
+subroutine timeseries_update(this)
+    class(dynamicTurbine), intent(inout) :: this
+    integer :: i
+    real(rkind) :: t0, t1, a
+    real(rkind), parameter :: eps = 1.0e-12_rkind
+
+    ! Clamp outside range
+    if (this%time <= this%ts_time(1)) then
+        this%ts_index = 1
+        this%delx = this%ts_surge(1)
+        this%tilt = this%ts_pitch(1) + this%static_tilt
+        this%ut   = zero
+        this%do_redraw = .true.
+        return
+    else if (this%time >= this%ts_time(this%n_timeseries)) then
+        this%ts_index = this%n_timeseries - 1
+        this%delx = this%ts_surge(this%n_timeseries)
+        this%tilt = this%ts_pitch(this%n_timeseries) + this%static_tilt
+        this%ut   = zero
+        this%do_redraw = .true.
+        return
+    end if
+
+    ! Move index forward (time is monotone increasing)
+    do while (this%ts_index < this%n_timeseries - 1 .and. &
+              this%time > this%ts_time(this%ts_index + 1))
+        this%ts_index = this%ts_index + 1
+    end do
+
+    i  = this%ts_index
+    t0 = this%ts_time(i)
+    t1 = this%ts_time(i+1)
+
+    ! Exact hit on upper node: advance index and snap
+    if (abs(this%time - t1) <= eps .and. i < this%n_timeseries - 1) then
+        this%ts_index = i + 1
+        i = this%ts_index
+        this%delx = this%ts_surge(i)
+        this%tilt = this%ts_pitch(i) + this%static_tilt
+        this%ut   = this%ts_uturb(i)
+    else
+        a = (this%time - t0) / (t1 - t0)
+        this%delx = this%ts_surge(i) + a * (this%ts_surge(i+1) - this%ts_surge(i))
+        this%tilt = this%ts_pitch(i) + a * (this%ts_pitch(i+1) - this%ts_pitch(i)) + this%static_tilt
+        this%ut   = this%ts_uturb(i) + a * (this%ts_uturb(i+1) - this%ts_uturb(i))
+    end if
+
+    this%do_redraw = .true.
 end subroutine
 
 end module
