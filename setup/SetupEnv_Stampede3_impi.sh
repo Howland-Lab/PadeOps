@@ -1,9 +1,10 @@
 #!/bin/bash
 module purge
-module load cmake/3.31.9
-module load intel impi
+module load intel/26.0
+module load impi/21.18
 module load fftw3/3.3.10
-module load phdf5/2.0.0
+module load phdf5/1.14.6
+module load cmake/4.1.1
 
 CWD=`pwd`
 export COMPILER_ID=Intel
