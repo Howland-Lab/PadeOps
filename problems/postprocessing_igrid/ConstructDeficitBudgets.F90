@@ -11,74 +11,71 @@ module constructDeficitBudgets_mod
 
    implicit none
 
-   external :: mpi_allreduce
-
-   character(len=clen) :: inputdir, outputdir, tag='notag' 
+   character(len=clen) :: inputdir, outputdir
    real(rkind) :: Lx = one, Ly = one, Lz = one
    integer :: botWall=3, topWall=2, botBC_temp=0
    logical :: PeriodicInZ=.false.
+   integer :: prow=0, pcol=0, nx, ny, nz, RID, BRID, NumericalSchemeVert=1
+   integer :: startIDX=-1, endIDX=999999
+   logical :: writeDependentVariables = .false.
+   logical :: do_box_averaging=.true.
+   logical :: do_x_budget=.true.
+   logical :: do_y_budget=.false.
+   logical :: do_z_budget=.false.
+   logical :: do_TKE_budget=.false.
+   logical :: do_MKE_budget=.false.
+   logical :: do_TMP_budget=.false.
+   real(rkind) :: x1=zero, x2=zero, y1=zero, y2=zero, z1=zero, z2=zero
+   ! ------------------------------------------------------------------ !
+   
    type(spectral), target  :: spectE, spectC
    type(decomp_info) :: gpC, gpE
    type(decomp_info), pointer :: sp_gpC, sp_gpE
    type(Pade6stagg) :: Pade6opZ
    real(rkind) :: dx, dy, dz
-   real(rkind), dimension(:,:), allocatable, target :: profiles
-   real(rkind), dimension(:,:,:,:), allocatable, target :: mesh, Budget0, Budget1, Budget2, Budget3, duidxj, baseBudget0, duidxj_base
-   real(rkind), dimension(:,:,:,:), allocatable, target :: rbuffxC
-   complex(rkind), dimension(:,:,:), allocatable :: cbuffyC
-   complex(rkind), dimension(:,:,:,:), allocatable, target :: cbuffzC
-   integer :: prow=0, pcol=0, nx, ny, nz, RID, BRID, NumericalSchemeVert=1
-   integer :: startIDX=-1, endIDX=999999
+   real(rkind), dimension(:,:,:,:), allocatable, target :: mesh
    integer :: uBC_bottom, uBC_top, vBC_bottom, vBC_top, wBC_bottom, wBC_top
    integer :: nx_box, ix1g, ix2g
-   real(rkind) :: x1=zero, x2=zero, y1=zero, y2=zero, z1=zero, z2=zero
-   integer :: num_profiles
    real(rkind), dimension(:), allocatable :: xstations
-   logical :: writeDependentVariables = .false.
-   integer :: budgettype=1 ! 1: x-Momentum, 2: y-Momentum, 3: z-Momentum, 4: TKE, 5: MKE, 6: TMP
-   real(rkind), dimension(:,:,:), pointer :: dudx, dudy, dudz
-   real(rkind), dimension(:,:,:), pointer :: dvdx, dvdy, dvdz
-   real(rkind), dimension(:,:,:), pointer :: dwdx, dwdy, dwdz
-   real(rkind), dimension(:,:,:), pointer :: dudx_base, dudy_base, dudz_base
-   real(rkind), dimension(:,:,:), pointer :: dvdx_base, dvdy_base, dvdz_base
-   real(rkind), dimension(:,:,:), pointer :: dwdx_base, dwdy_base, dwdz_base
-   real(rkind), dimension(:,:,:), pointer :: du, dv, dw, ubase, vbase, wbase
    character(len=:), allocatable :: sorted_keys(:), sorted_stamps(:)
-   logical :: do_box_averaging=.true.
-
+   integer :: num_profiles
+   real(rkind), dimension(:,:), allocatable :: xprofiles
+   real(rkind), dimension(:,:), allocatable :: yprofiles
+   real(rkind), dimension(:,:), allocatable :: zprofiles
+   real(rkind), dimension(:,:), allocatable :: TKEprofiles
+   real(rkind), dimension(:,:), allocatable :: MKEprofiles
+   real(rkind), dimension(:,:), allocatable :: TMPprofiles
+   real(rkind), dimension(:,:,:,:), allocatable, target :: rbuffxC
+   real(rkind), dimension(:,:,:), pointer :: du, dv, dw
+   real(rkind), dimension(:,:,:), pointer :: ubase, vbase, wbase
+   real(rkind), dimension(:,:,:), pointer :: buffer, bf
+   complex(rkind), dimension(:,:,:), allocatable :: cbuffyC
+   complex(rkind), dimension(:,:,:,:), allocatable :: cbuffzC
+   
    contains
 
-   subroutine export_csv(key, stamp)
+   function csv_file_name(key, stamp, name) result(filename)
       implicit none
-      character(len=*), intent(in) :: key, stamp
-      character(clen) :: filename
-      character(len=3) :: crid, tid
+      character(len=*), intent(in) :: key, stamp, name
+      character(len=clen) :: filename
+      character(len=3) :: crid
+
+      write(crid, '(I2.2)') RID
+      filename = trim(outputdir)//'/Run'//trim(crid)//'_t'//trim(key)//'_n'//trim(stamp)//'_'//trim(name)//'_Budgets_XProfile_'//'.csv'
+   end function
+
+   subroutine export_csv(filename, profiles)
+      implicit none
+      character(len=*), intent(in) :: filename
+      real(rkind), dimension(:,:), intent(in) :: profiles
+      character(len=3) :: tid
       integer :: i, j
       integer :: nx, ny
       integer :: unit
-      character(len=3) :: name
 
       nx = size(profiles, 1)
       ny = size(profiles, 2)
       unit =1045
-
-      select case(budgettype)
-      case(1)
-         name = 'X'
-      case(2)
-         name = 'Y'
-      case(3)
-         name = 'Z'
-      case(4)
-         name = 'TKE'
-      case(5)
-         name = 'MKE'
-      case(6)
-         name = 'TMP'
-      end select
-
-      write(crid, '(I2.2)') RID
-      filename = trim(outputdir)//'/Run'//trim(crid)//'_t'//trim(key)//'_n'//trim(stamp)//'_'//trim(name)//'_Budgets_XProfile_'//trim(tag)//'.csv'
 
       call message(1, 'Exporting profiles to '//trim(filename))
 
@@ -122,748 +119,28 @@ module constructDeficitBudgets_mod
 
         call message(2, 'Writing a budget field to '//trim(fname))
         call decomp_2d_write_one(1,field, trim(fname), gpC)
-    end subroutine
-
-   subroutine compute_budgets(key, stamp)
-      implicit none
-      character(len=*), intent(in) :: key, stamp
-      integer :: idx
-      real(rkind), dimension(:,:,:), pointer :: buffer
-      character(len=2) :: idx_str
-      character(1) :: additional
-
-      buffer => rbuffxC(:,:,:,3)
-
-      do idx=1,num_profiles
-
-         call message(1, 'Computing budget profile with index ', idx)
-
-         select case(budgettype)
-         case(1)
-            call compute_X_budget_component(idx, buffer)
-            additional = '5'
-         case(2)
-            call compute_Y_budget_component(idx, buffer)
-            additional = '6'
-         case(3)
-            call compute_Z_budget_component(idx, buffer)
-            additional = '7'
-         case(4)
-            call compute_TKE_budget_component(idx, buffer)
-            additional = '4'
-         case(5)
-            call compute_MKE_budget_component(idx, buffer)
-            additional = '8'
-         case(6)
-            call compute_TMP_budget_component(idx, buffer)
-            additional = '9'
-         end select
-
-         ! Average this budget term across the box
-         if(do_box_averaging) call integrate_box_yz(buffer, profiles(:,idx))
-
-         ! Write to file calculated dependent variables if requested
-         if(writeDependentVariables .and. depedent_variable(idx))then
-            write(idx_str, '(I2.2)') idx
-            call dump_budget_field(buffer, idx_str, additional, trim(key), trim(stamp))
-         end if
-      end do
-
-      nullify(buffer)
    end subroutine
 
-   function depedent_variable(idx)
+   function depedent_variable(budgetType, idx)
       implicit none
-      integer, intent(in) :: idx
+      integer, intent(in) :: idx, budgetType
       logical :: depedent_variable
 
       depedent_variable = .false.
-      if((budgettype == 1) .or. (budgettype == 2) .or. (budgettype == 3))then
+      if((budgetType == 1) .or. (budgetType == 2) .or. (budgetType == 3))then
          ! X, Y, or Z momentum equation
          if((idx < 10) .or. (idx > 15)) depedent_variable = .true.
-      elseif(budgettype == 4)then
+      elseif(budgetType == 4)then
          ! TKE equation
          if(idx <= 12) depedent_variable = .true.
-      elseif(budgettype == 5)then
+      elseif(budgetType == 5)then
          ! MKE equation
          depedent_variable = .true.
-      elseif(budgettype == 6)then
+      elseif(budgetType == 6)then
          ! TMP
          depedent_variable = .true.
       end if
    end function depedent_variable
-
-   subroutine compute_X_budget_component(idx, buffer)
-      implicit none
-      integer, intent(in) :: idx
-      real(rkind), dimension(:,:,:), intent(out) :: buffer
-      real(rkind), dimension(:,:,:), pointer :: BF1, BF2
-
-      BF1 => rbuffxC(:,:,:,1)
-      BF2 => rbuffxC(:,:,:,2)
-
-      buffer = zero
-      select case(idx)
-      case(1)
-         ! Advection: delta u_1 * partial_1 (delta u_1)
-         buffer = du * dudx
-      case(2)
-         ! Advection: delta u_2 * partial_2 (delta u_1)
-         buffer = dv * dudy
-      case(3)
-         ! Advection: delta u_3 * partial_3 (delta u_1)
-         buffer = dw * dudz
-      case(4)
-         ! Advection: delta u_1 * partial_1 (base u_1)
-         buffer = du * dudx_base
-      case(5)
-         ! Advection: delta u_2 * partial_2 (base u_1)
-         buffer = dv * dudy_base
-      case(6)
-         ! Advection: delta u_3 * partial_3 (base u_1)
-         buffer = dw * dudz_base
-      case(7)
-         ! Advection: base u_1 * partial_1 (delta u_1)
-         buffer = ubase * dudx
-      case(8)
-         ! Advection: base u_2 * partial_2 (delta u_1)
-         buffer = vbase * dudy
-      case(9)
-         ! Advection: base u_3 * partial_3 (delta u_1)
-         buffer = wbase * dudz
-      case(10)
-         ! pressure gradient: partial_1 (delta p)
-         buffer = budget0(:,:,:,18)
-      case(11)
-         ! Divergence of Reynolds stresses: partial_j mean(delta u_1' delta u_j')
-         ! partial_j mean(delta u_1' delta u_j') = mean(delta u_j' partial_j delta u_1')
-         buffer = budget2(:,:,:,1)
-      case(12)
-         ! Divergence of Reynolds stresses: partial_j mean(delta u_1' base u_j')
-         ! partial_j mean(delta u_1' base u_j') = mean(base u_j' partial_j delta u_1')
-         buffer = budget2(:,:,:,7)
-      case(13)
-         ! Divergence of Reynolds stresses: partial_j mean(base u_1' delta u_j')
-         ! partial_j mean(base u_1' delta u_j') = mean(delta u_j' partial_j base u_1')
-         buffer = budget2(:,:,:,4)
-      case(14)
-         ! u_sgs
-         buffer = budget0(:,:,:,12)
-      case(15)
-         ! u_cor
-         buffer = budget0(:,:,:,15)
-      case(16)
-         ! Divergence of Reynolds stresses: partial_1 mean(delta u_1' delta u_1')
-         call ddx_R2R(budget1(:,:,:,1), buffer)
-      case(17)
-         ! Divergence of Reynolds stresses: partial_2 mean(delta u_1' delta u_2')
-         call ddy_R2R(budget1(:,:,:,2), buffer)
-      case(18)
-         ! Divergence of Reynolds stresses: partial_3 mean(delta u_1' delta u_3')
-         call ddz_R2R(budget1(:,:,:,3), buffer, -1, -1) ! budget1(:,:,:,3) is odd
-      case(19)
-         ! Divergence of Reynolds stresses: partial_1 mean(delta u_1' base u_1')
-         call ddx_R2R(budget1(:,:,:,7), buffer)
-      case(20)
-         ! Divergence of Reynolds stresses: partial_2 mean(delta u_1' base u_2')
-         call ddy_R2R(budget1(:,:,:,8), buffer)
-      case(21)
-         ! Divergence of Reynolds stresses: partial_3 mean(delta u_1' base u_3')
-         call ddz_R2R(budget1(:,:,:,10), buffer, -1, -1)
-      case(22)
-         ! Divergence of Reynolds stresses: partial_1 mean(base u_1' delta u_1')
-         call ddx_R2R(budget1(:,:,:,7), buffer)
-      case(23)
-         ! Divergence of Reynolds stresses: partial_2 mean(base u_1' delta u_2')
-         call ddy_R2R(budget1(:,:,:,9), buffer)
-      case(24)
-         ! Divergence of Reynolds stresses: partial_3 mean(base u_1' delta u_3')
-         call ddz_R2R(budget1(:,:,:,11), buffer, -1, -1)
-      end select
-   end subroutine
-
-   subroutine compute_Y_budget_component(idx, buffer)
-      implicit none
-      integer, intent(in) :: idx
-      real(rkind), dimension(:,:,:), intent(out) :: buffer
-      real(rkind), dimension(:,:,:), pointer :: BF1, BF2
-
-      BF1 => rbuffxC(:,:,:,1)
-      BF2 => rbuffxC(:,:,:,2)
-
-      buffer = zero
-      select case(idx)
-      case(1)
-         ! Advection: delta u_1 * partial_1 (delta u_2)
-         buffer = du * dvdx
-      case(2)
-         ! Advection: delta u_2 * partial_2 (delta u_2)
-         buffer = dv * dvdy
-      case(3)
-         ! Advection: delta u_3 * partial_3 (delta u_2)
-         buffer = dw * dvdz
-      case(4)
-         ! Advection: delta u_1 * partial_1 (base u_2)
-         buffer = du * dvdx_base
-      case(5)
-         ! Advection: delta u_2 * partial_2 (base u_2)
-         buffer = dv * dvdy_base
-      case(6)
-         ! Advection: delta u_3 * partial_3 (base u_2)
-         buffer = dw * dvdz_base
-      case(7)
-         ! Advection: base u_1 * partial_1 (delta u_2)
-         buffer = ubase * dvdx
-      case(8)
-         ! Advection: base u_2 * partial_2 (delta u_2)
-         buffer = vbase * dvdy
-      case(9)
-         ! Advection: base u_3 * partial_3 (delta u_2)
-         buffer = wbase * dvdz
-      case(10)
-         ! pressure gradient: partial_2 (delta p)
-         buffer = budget0(:,:,:,19)
-      case(11)
-         ! Divergence of Reynolds stresses: partial_j mean(delta u_2' delta u_j')
-         ! partial_j mean(delta u_2' delta u_j') = mean(delta u_j' partial_j delta u_2')
-         buffer = budget2(:,:,:,2)
-      case(12)
-         ! Divergence of Reynolds stresses: partial_j mean(delta u_2' base u_j')
-         ! partial_j mean(delta u_2' base u_j') = mean(base u_j' partial_j delta u_2')
-         buffer = budget2(:,:,:,8)
-      case(13)
-         ! Divergence of Reynolds stresses: partial_j mean(base u_2' delta u_j')
-         ! partial_j mean(base u_2' delta u_j') = mean(delta u_j' partial_j base u_2')
-         buffer = budget2(:,:,:,5)
-      case(14)
-         ! v_sgs
-         buffer = budget0(:,:,:,13)
-      case(15)
-         ! v_cor
-         buffer = budget0(:,:,:,16)
-      case(16)
-         ! Divergence of Reynolds stresses: partial_1 mean(delta u_2' delta u_1')
-         call ddx_R2R(budget1(:,:,:,2), buffer)
-      case(17)
-         ! Divergence of Reynolds stresses: partial_2 mean(delta u_2' delta u_2')
-         call ddy_R2R(budget1(:,:,:,4), buffer)
-      case(18)
-         ! Divergence of Reynolds stresses: partial_3 mean(delta u_2' delta u_3')
-         call ddz_R2R(budget1(:,:,:,5), buffer, -1, -1) ! budget1(:,:,:,5) is odd
-      case(19)
-         ! Divergence of Reynolds stresses: partial_1 mean(delta u_2' base u_1')
-         call ddx_R2R(budget1(:,:,:,9), buffer)
-      case(20)
-         ! Divergence of Reynolds stresses: partial_2 mean(delta u_2' base u_2')
-         call ddy_R2R(budget1(:,:,:,12), buffer)
-      case(21)
-         ! Divergence of Reynolds stresses: partial_3 mean(delta u_2' base u_3')
-         call ddz_R2R(budget1(:,:,:,13), buffer, -1, -1)
-      case(22)
-         ! Divergence of Reynolds stresses: partial_1 mean(base u_2' delta u_1')
-         call ddx_R2R(budget1(:,:,:,8), buffer)
-      case(23)
-         ! Divergence of Reynolds stresses: partial_2 mean(base u_2' delta u_2')
-         call ddy_R2R(budget1(:,:,:,12), buffer)
-      case(24)
-         ! Divergence of Reynolds stresses: partial_3 mean(base u_2' delta u_3')
-         call ddz_R2R(budget1(:,:,:,14), buffer, -1, -1)
-      end select
-   end subroutine
-
-   subroutine compute_Z_budget_component(idx, buffer)
-      implicit none
-      integer, intent(in) :: idx
-      real(rkind), dimension(:,:,:), intent(out) :: buffer
-      real(rkind), dimension(:,:,:), pointer :: BF1, BF2
-
-      BF1 => rbuffxC(:,:,:,1)
-      BF2 => rbuffxC(:,:,:,2)
-
-      buffer = zero
-      select case(idx)
-      case(1)
-         ! Advection: delta u_1 * partial_1 (delta u_3)
-         buffer = du * dwdx
-      case(2)
-         ! Advection: delta u_2 * partial_2 (delta u_3)
-         buffer = dv * dwdy
-      case(3)
-         ! Advection: delta u_3 * partial_3 (delta u_3)
-         buffer = dw * dwdz
-      case(4)
-         ! Advection: delta u_1 * partial_1 (base u_3)
-         buffer = du * dwdx_base
-      case(5)
-         ! Advection: delta u_2 * partial_2 (base u_3)
-         buffer = dv * dwdy_base
-      case(6)
-         ! Advection: delta u_3 * partial_3 (base u_3)
-         buffer = dw * dwdz_base
-      case(7)
-         ! Advection: base u_1 * partial_1 (delta u_3)
-         buffer = ubase * dwdx
-      case(8)
-         ! Advection: base u_2 * partial_2 (delta u_3)
-         buffer = vbase * dwdy
-      case(9)
-         ! Advection: base u_3 * partial_3 (delta u_3)
-         buffer = wbase * dwdz
-      case(10)
-         ! pressure gradient: partial_3 (delta p)
-         buffer = budget0(:,:,:,20)
-      case(11)
-         ! Divergence of Reynolds stresses: partial_j mean(delta u_3' delta u_j')
-         ! partial_j mean(delta u_3' delta u_j') = mean(delta u_j' partial_j delta u_3')
-         buffer = budget2(:,:,:,3)
-      case(12)
-         ! Divergence of Reynolds stresses: partial_j mean(delta u_3' base u_j')
-         ! partial_j mean(delta u_3' base u_j') = mean(base u_j' partial_j delta u_3')
-         buffer = budget2(:,:,:,9)
-      case(13)
-         ! Divergence of Reynolds stresses: partial_j mean(base u_2' delta u_j')
-         ! partial_j mean(base u_2' delta u_j') = mean(delta u_j' partial_j base u_2')
-         buffer = budget2(:,:,:,6)
-      case(14)
-         ! w_sgs
-         buffer = budget0(:,:,:,14)
-      case(15)
-         ! wb
-         buffer = budget0(:,:,:,17)
-      case(16)
-         ! Divergence of Reynolds stresses: partial_1 mean(delta u_3' delta u_1')
-         call ddx_R2R(budget1(:,:,:,3), buffer)
-      case(17)
-         ! Divergence of Reynolds stresses: partial_2 mean(delta u_3' delta u_2')
-         call ddy_R2R(budget1(:,:,:,5), buffer)
-      case(18)
-         ! Divergence of Reynolds stresses: partial_3 mean(delta u_3' delta u_3')
-         call ddz_R2R(budget1(:,:,:,6), buffer, -1, -1) ! budget1(:,:,:,6) is odd
-      case(19)
-         ! Divergence of Reynolds stresses: partial_1 mean(delta u_3' base u_1')
-         call ddx_R2R(budget1(:,:,:,11), buffer)
-      case(20)
-         ! Divergence of Reynolds stresses: partial_2 mean(delta u_3' base u_2')
-         call ddy_R2R(budget1(:,:,:,14), buffer)
-      case(21)
-         ! Divergence of Reynolds stresses: partial_3 mean(delta u_3' base u_3')
-         call ddz_R2R(budget1(:,:,:,15), buffer, -1, -1)
-      case(22)
-         ! Divergence of Reynolds stresses: partial_1 mean(base u_3' delta u_1')
-         call ddx_R2R(budget1(:,:,:,10), buffer)
-      case(23)
-         ! Divergence of Reynolds stresses: partial_2 mean(base u_3' delta u_2')
-         call ddy_R2R(budget1(:,:,:,13), buffer)
-      case(24)
-         ! Divergence of Reynolds stresses: partial_3 mean(base u_3' delta u_3')
-         call ddz_R2R(budget1(:,:,:,15), buffer, -1, -1)
-      end select
-   end subroutine
-
-   subroutine compute_TKE_budget_component(idx, buffer)
-      implicit none
-      integer, intent(in) :: idx
-      real(rkind), dimension(:,:,:), intent(out) :: buffer
-      real(rkind), dimension(:,:,:), pointer :: BF1, BF2
-
-      BF1 => rbuffxC(:,:,:,1)
-      BF2 => rbuffxC(:,:,:,2)
-
-      buffer = zero
-      select case(idx)
-      case(1)
-         ! Advection: delta u_j * partial_j (delta u_i' delta u_i')/2 
-         BF1 = half*(budget1(:,:,:,1) + budget1(:,:,:,4) + budget1(:,:,:,6))
-         call ddx_R2R(BF1, BF2); buffer = buffer + BF2*du
-         call ddy_R2R(BF1, BF2); buffer = buffer + BF2*dv
-         call ddz_R2R(BF1, BF2, 1, 1); buffer = buffer + BF2*dw ! BF1 is even
-
-      case(2)
-         ! Advection: delta u_j * partial_j (delta u_i' base u_i') 
-         BF1 = (budget1(:,:,:,7) + budget1(:,:,:,12) + budget1(:,:,:,15))
-         call ddx_R2R(BF1, BF2); buffer = buffer + BF2*du
-         call ddy_R2R(BF1, BF2); buffer = buffer + BF2*dv
-         call ddz_R2R(BF1, BF2, 1, 1); buffer = buffer + BF2*dw ! BF1 is even
-
-      case(3)
-         ! Advection: delta u_j * partial_j (base u_i' base u_i')/2 
-         BF1 = half*(baseBudget0(:,:,:,4) + baseBudget0(:,:,:,7) + baseBudget0(:,:,:,9))
-         call ddx_R2R(BF1, BF2); buffer = buffer + BF2*du
-         call ddy_R2R(BF1, BF2); buffer = buffer + BF2*dv
-         call ddz_R2R(BF1, BF2, 1, 1); buffer = buffer + BF2*dw ! BF1 is even
-
-      case(4)
-         ! Advection: base u_j * partial_j (delta u_i' delta u_i')/2
-         BF1 = half*(budget1(:,:,:,1) + budget1(:,:,:,4) + budget1(:,:,:,6))
-         call ddx_R2R(BF1, BF2); buffer = buffer + BF2*ubase
-         call ddy_R2R(BF1, BF2); buffer = buffer + BF2*vbase
-         call ddz_R2R(BF1, BF2, 1, 1); buffer = buffer + BF2*wbase ! BF1 is even
-
-      case(5)
-         ! Advection: base u_j * partial_j (delta u_i' base u_i') 
-         BF1 = (budget1(:,:,:,7) + budget1(:,:,:,12) + budget1(:,:,:,15))
-         call ddx_R2R(BF1, BF2); buffer = buffer + BF2*ubase
-         call ddy_R2R(BF1, BF2); buffer = buffer + BF2*vbase
-         call ddz_R2R(BF1, BF2, 1, 1); buffer = buffer + BF2*wbase ! BF1 is even
-
-      case(6)
-         ! Production: mean(delta u_i' delta u_j') partial_j mean(delta u_i)
-         buffer = dudx * budget1(:,:,:,1) + dudy * budget1(:,:,:,2) + dudz * budget1(:,:,:,3) + &
-                  dvdx * budget1(:,:,:,2) + dvdy * budget1(:,:,:,4) + dvdz * budget1(:,:,:,5) + &
-                  dwdx * budget1(:,:,:,3) + dwdy * budget1(:,:,:,5) + dwdz * budget1(:,:,:,6)
-      case(7)
-         ! Production: mean(delta u_i' base u_j') partial_j mean(delta u_i)
-         buffer = dudx * budget1(:,:,:,7) + dudy * budget1(:,:,:,8)  + dudz * budget1(:,:,:,10) + &
-                  dvdx * budget1(:,:,:,9) + dvdy * budget1(:,:,:,12) + dvdz * budget1(:,:,:,13) + &
-                  dwdx * budget1(:,:,:,11)+ dwdy * budget1(:,:,:,14) + dwdz * budget1(:,:,:,15)
-      case(8)
-         ! Production: mean(base u_i' delta u_j') partial_j mean(delta u_i)
-         buffer = dudx * budget1(:,:,:,7) + dudy * budget1(:,:,:,9)  + dudz * budget1(:,:,:,11) + &
-                  dvdx * budget1(:,:,:,8) + dvdy * budget1(:,:,:,12) + dvdz * budget1(:,:,:,14) + &
-                  dwdx * budget1(:,:,:,10)+ dwdy * budget1(:,:,:,13) + dwdz * budget1(:,:,:,15)
-      case(9)
-         ! Production: mean(base u_i' base u_j') partial_j mean(delta u_i)
-         buffer = dudx * baseBudget0(:,:,:,4) + dudy * baseBudget0(:,:,:,5) + dudz * baseBudget0(:,:,:,6) + &
-                  dvdx * baseBudget0(:,:,:,5) + dvdy * baseBudget0(:,:,:,7) + dvdz * baseBudget0(:,:,:,8) + &
-                  dwdx * baseBudget0(:,:,:,6) + dwdy * baseBudget0(:,:,:,8) + dwdz * baseBudget0(:,:,:,9)
-      case(10)
-         ! Production: mean(delta u_i' delta u_j') partial_j mean(base u_i)
-         buffer = dudx_base * budget1(:,:,:,1) + dudy_base * budget1(:,:,:,2) + dudz_base * budget1(:,:,:,3) + &
-                  dvdx_base * budget1(:,:,:,2) + dvdy_base * budget1(:,:,:,4) + dvdz_base * budget1(:,:,:,5) + &
-                  dwdx_base * budget1(:,:,:,3) + dwdy_base * budget1(:,:,:,5) + dwdz_base * budget1(:,:,:,6)
-      case(11)
-         ! Production: mean(delta u_i' base u_j') partial_j mean(base u_i)
-         buffer = dudx_base * budget1(:,:,:,7) + dudy_base * budget1(:,:,:,8)  + dudz_base * budget1(:,:,:,10) + &
-                  dvdx_base * budget1(:,:,:,9) + dvdy_base * budget1(:,:,:,12) + dvdz_base * budget1(:,:,:,13) + &
-                  dwdx_base * budget1(:,:,:,11)+ dwdy_base * budget1(:,:,:,14) + dwdz_base * budget1(:,:,:,15)
-      case(12)
-         ! Production: mean(base u_i' delta u_j') partial_j mean(base u_i)
-         buffer = dudx_base * budget1(:,:,:,7) + dudy_base * budget1(:,:,:,9)  + dudz_base * budget1(:,:,:,11) + &
-                  dvdx_base * budget1(:,:,:,8) + dvdy_base * budget1(:,:,:,12) + dvdz_base * budget1(:,:,:,14) + &
-                  dwdx_base * budget1(:,:,:,10)+ dwdy_base * budget1(:,:,:,13) + dwdz_base * budget1(:,:,:,15)
-
-      case(13)
-         ! Buoyancy: mean(delta w' delta wb')
-         buffer = - budget3(:,:,:,10)
-
-      case(14)
-         ! Buoyancy: mean(delta w' base wb')
-         buffer = - budget3(:,:,:,11)
-
-      case(15)
-         ! Buoyancy covariance: mean(base w' delta wb')
-         buffer = - budget3(:,:,:,12)
-
-      case(16)
-         ! Pressure covariance: mean(delta u_j' partial_j delta p')
-         buffer = budget3(:,:,:,1)
-
-      case(17)
-         ! Pressure covariance: mean(base u_j' partial_j delta p')
-         buffer = budget3(:,:,:,2)
-
-      case(18)
-         ! Pressure covariance: mean(delta u_j' partial_j base p')
-         buffer = budget3(:,:,:,3)
-
-      case(19)
-         ! Transport: mean(delta u_i' delta u_j' partial_j delta u_i')
-         buffer = budget3(:,:,:,19)
-
-      case(20)
-         ! Transport: mean(delta u_i' base u_j' partial_j delta u_i')
-         buffer = budget3(:,:,:,18)
-
-      case(21)
-         ! Transport: mean(delta u_i' delta u_j' partial_j base u_i')
-         buffer = budget3(:,:,:,17)
-
-      case(22)
-         ! Transport: mean(base u_i' delta u_j' partial_j delta u_i')
-         buffer = budget3(:,:,:,16)
-
-      case(23)
-         ! Transport: mean(delta u_i' base u_j' partial_j base u_i')
-         buffer = budget3(:,:,:,15)
-
-      case(24)
-         ! Transport: mean(base u_i' base u_j' partial_j delta u_i')
-         buffer = budget3(:,:,:,14)
-
-      case(25)
-         ! Transport: mean(base u_i' delta u_j' partial_j base u_i')
-         buffer = budget3(:,:,:,13)
-
-      case(26)
-         ! SGS transport: partial_j mean(base u_i' delta tau_ij')
-         buffer = budget3(:,:,:,4)
-
-      case(27)
-         ! SGS transport: partial_j mean(delta u_i' base tau_ij')
-         buffer = budget3(:,:,:,5)
-
-      case(28)
-         ! SGS transport: partial_j mean(delta u_i' delta tau_ij')
-         buffer = budget3(:,:,:,6)
-
-      case(29)
-         ! SGS Dissipation: mean(delta tau_ij' partial_j base u_i')
-         buffer = -budget3(:,:,:,7)
-
-      case(30)
-         ! SGS Dissipation: mean(base tau_ij' partial_j delta u_i')
-         buffer = -budget3(:,:,:,8)
-
-      case(31)
-         ! SGS Dissipation: mean(delta tau_ij' partial_j delta u_i')
-         buffer = -budget3(:,:,:,9)         
-      end select 
-
-      nullify(BF1, BF2)
-   end subroutine
-
-   subroutine compute_TMP_budget_component(idx, buffer)
-      implicit none
-      integer, intent(in) :: idx
-      real(rkind), dimension(:,:,:), intent(out) :: buffer
-      real(rkind), dimension(:,:,:), pointer :: BF1, BF2
-
-      BF1 => rbuffxC(:,:,:,1)
-      BF2 => rbuffxC(:,:,:,2)
-
-      buffer = zero
-      select case(idx)
-      case(1)
-         ! Turbulent Transport: dj(delta u_i * mean(delta u_i' delta u_j'))
-         BF1 = du * budget1(:,:,:,1) + dv * budget1(:,:,:,2) + dw * budget1(:,:,:,3)
-         call ddx_R2R(BF1, BF2); buffer = buffer + BF2
-
-         BF1 = du * budget1(:,:,:,2) + dv * budget1(:,:,:,4) + dw * budget1(:,:,:,5)
-         call ddy_R2R(BF1, BF2); buffer = buffer + BF2
-
-         BF1 = du * budget1(:,:,:,3) + dv * budget1(:,:,:,5) + dw * budget1(:,:,:,6)
-         call ddz_R2R(BF1, BF2, -1, -1); buffer = buffer + BF2
-
-      case(2)
-         ! Turbulent Transport: dj(delta u_i * mean(delta u_i' base u_j'))
-         BF1 = du * budget1(:,:,:,7) + dv * budget1(:,:,:,9) + dw * budget1(:,:,:,11)
-         call ddx_R2R(BF1, BF2); buffer = buffer + BF2
-
-         BF1 = du * budget1(:,:,:,8) + dv * budget1(:,:,:,12) + dw * budget1(:,:,:,14)
-         call ddy_R2R(BF1, BF2); buffer = buffer + BF2
-
-         BF1 = du * budget1(:,:,:,10) + dv * budget1(:,:,:,13) + dw * budget1(:,:,:,15)
-         call ddz_R2R(BF1, BF2, -1, -1); buffer = buffer + BF2
-
-      case(3)
-         ! Turbulent Transport: dj(delta u_i * mean(base u_i' delta u_j'))
-         BF1 = du * budget1(:,:,:,7) + dv * budget1(:,:,:,8) + dw * budget1(:,:,:,10)
-         call ddx_R2R(BF1, BF2); buffer = buffer + BF2
-
-         BF1 = du * budget1(:,:,:,9) + dv * budget1(:,:,:,12) + dw * budget1(:,:,:,13)
-         call ddy_R2R(BF1, BF2); buffer = buffer + BF2
-
-         BF1 = du * budget1(:,:,:,11) + dv * budget1(:,:,:,14) + dw * budget1(:,:,:,15)
-         call ddz_R2R(BF1, BF2, -1, -1); buffer = buffer + BF2
-
-      case(4)
-         ! Turbulent Transport: dj(delta u_i * mean(base u_i' base u_j'))
-         BF1 = du * baseBudget0(:,:,:,4) + dv * baseBudget0(:,:,:,5) + dw * baseBudget0(:,:,:,6)
-         call ddx_R2R(BF1, BF2); buffer = buffer + BF2
-
-         BF1 = du * baseBudget0(:,:,:,5) + dv * baseBudget0(:,:,:,7) + dw * baseBudget0(:,:,:,8)
-         call ddy_R2R(BF1, BF2); buffer = buffer + BF2
-
-         BF1 = du * baseBudget0(:,:,:,6) + dv * baseBudget0(:,:,:,8) + dw * baseBudget0(:,:,:,9)
-         call ddz_R2R(BF1, BF2, -1, -1); buffer = buffer + BF2
-
-      case(5)
-         ! Turbulent Transport: dj(base u_i * mean(delta u_i' delta u_j'))
-         BF1 = ubase * budget1(:,:,:,1) + vbase * budget1(:,:,:,2) + wbase * budget1(:,:,:,3)
-         call ddx_R2R(BF1, BF2); buffer = buffer + BF2
-
-         BF1 = ubase * budget1(:,:,:,2) + vbase * budget1(:,:,:,4) + wbase * budget1(:,:,:,5)
-         call ddy_R2R(BF1, BF2); buffer = buffer + BF2
-
-         BF1 = ubase * budget1(:,:,:,3) + vbase * budget1(:,:,:,5) + wbase * budget1(:,:,:,6)
-         call ddz_R2R(BF1, BF2, -1, -1); buffer = buffer + BF2
-
-      case(6)
-         ! Turbulent Transport: dj(base u_i * mean(delta u_i' base u_j'))
-         BF1 = ubase * budget1(:,:,:,7) + vbase * budget1(:,:,:,9) + wbase * budget1(:,:,:,11)
-         call ddx_R2R(BF1, BF2); buffer = buffer + BF2
-
-         BF1 = ubase * budget1(:,:,:,8) + vbase * budget1(:,:,:,12) + wbase * budget1(:,:,:,14)
-         call ddy_R2R(BF1, BF2); buffer = buffer + BF2
-
-         BF1 = ubase * budget1(:,:,:,10) + vbase * budget1(:,:,:,13) + wbase * budget1(:,:,:,15)
-         call ddz_R2R(BF1, BF2, -1, -1); buffer = buffer + BF2
-
-      case(7)
-         ! Turbulent Transport: dj(base u_i * mean(base u_i' delta u_j'))
-         BF1 = ubase * budget1(:,:,:,7) + vbase * budget1(:,:,:,8) + wbase * budget1(:,:,:,10)
-         call ddx_R2R(BF1, BF2); buffer = buffer + BF2
-
-         BF1 = ubase * budget1(:,:,:,9) + vbase * budget1(:,:,:,12) + wbase * budget1(:,:,:,13)
-         call ddy_R2R(BF1, BF2); buffer = buffer + BF2
-
-         BF1 = ubase * budget1(:,:,:,11) + vbase * budget1(:,:,:,14) + wbase * budget1(:,:,:,15)
-         call ddz_R2R(BF1, BF2, -1, -1); buffer = buffer + BF2
-
-      end select
-
-      nullify(BF1, BF2)
-   end subroutine
-
-   subroutine compute_MKE_budget_component(idx, buffer)
-      implicit none
-      integer, intent(in) :: idx
-      real(rkind), dimension(:,:,:), intent(out) :: buffer
-      real(rkind), dimension(:,:,:), pointer :: BF1, BF2
-
-      BF1 => rbuffxC(:,:,:,1)
-      BF2 => rbuffxC(:,:,:,2)
-
-      buffer = zero
-      select case(idx)
-      case(1)
-         ! Advection: delta u_i base u_j partial_j base u_i
-         buffer = du * (dudx_base * ubase + dudy_base * vbase + dudz_base * wbase) + &
-                  dv * (dvdx_base * ubase + dvdy_base * vbase + dvdz_base * wbase) + &
-                  dw * (dwdx_base * ubase + dwdy_base * vbase + dwdz_base * wbase)
-      case(2)
-         ! Advection: base u_i base u_j partial_j delta u_i
-         buffer = ubase * (dudx * ubase + dudy * vbase + dudz * wbase) + &
-                  vbase * (dvdx * ubase + dvdy * vbase + dvdz * wbase) + &
-                  wbase * (dwdx * ubase + dwdy * vbase + dwdz * wbase)
-
-      case(3)
-         ! Advection: delta u_i base u_j partial_j delta u_i
-         buffer = du * (dudx * ubase + dudy * vbase + dudz * wbase) + &
-                  dv * (dvdx * ubase + dvdy * vbase + dvdz * wbase) + &
-                  dw * (dwdx * ubase + dwdy * vbase + dwdz * wbase)
-
-      case(4)
-         ! Advection: base u_i delta u_j partial_j base u_i
-         buffer = ubase * (dudx_base * du + dudy_base * dv + dudz_base * dw) + &
-                  vbase * (dvdx_base * du + dvdy_base * dv + dvdz_base * dw) + &
-                  wbase * (dwdx_base * du + dwdy_base * dv + dwdz_base * dw)
-
-      case(5)
-         ! Advection: delta u_i delta u_j partial_j base u_i
-         buffer = du * (dudx_base * du + dudy_base * dv + dudz_base * dw) + &
-                  dv * (dvdx_base * du + dvdy_base * dv + dvdz_base * dw) + &
-                  dw * (dwdx_base * du + dwdy_base * dv + dwdz_base * dw)
-
-      case(6)
-         ! Advection: base u_i delta u_j partial_j delta u_i
-         buffer = ubase * (dudx * du + dudy * dv + dudz * dw) + &
-                  vbase * (dvdx * du + dvdy * dv + dvdz * dw) + &
-                  wbase * (dwdx * du + dwdy * dv + dwdz * dw)
-
-      case(7)
-         ! Advection: delta u_i delta u_j partial_j delta u_i
-         buffer = du * (dudx * du + dudy * dv + dudz * dw) + &
-                  dv * (dvdx * du + dvdy * dv + dvdz * dw) + &
-                  dw * (dwdx * du + dwdy * dv + dwdz * dw)
-
-      case(8)
-         ! Buoyancy: delta wb * delta w
-         buffer = budget0(:,:,:,17) * dw
-
-      case(9)
-         ! Buoyancy: delta wb * base w
-         buffer = budget0(:,:,:,17) * wbase
-
-      case(10)
-         ! Buoyancy: base wb * delta w
-         ! Make sure that squeeze was .true. in the main simulation
-         ! This is overloading an existing budget term in budget0.
-         buffer = baseBudget0(:,:,:,25) * dw
-
-      case(11)
-         ! Pressure gradient: delta u_i * d_i delta p
-         buffer = du * budget0(:,:,:,18) + dv * budget0(:,:,:,19) + dw * budget0(:,:,:,20)
-
-      case(12)
-         ! Pressure gradient: base u_i * d_i delta p
-         buffer = ubase * budget0(:,:,:,18) + vbase * budget0(:,:,:,19) + wbase * budget0(:,:,:,20)
-
-      case(13)
-         ! Pressure gradient: delta u_i * d_i base p
-         ! Make sure that squeeze was .true. in the main simulation
-         buffer = du * baseBudget0(:,:,:,17) + dv * baseBudget0(:,:,:,18) + dw * baseBudget0(:,:,:,19)
-
-      case(14)
-         ! SGS stresses: delta u_i * d_j delta tau_ij
-         buffer = du * budget0(:,:,:,12) + dv * budget0(:,:,:,13) + dw * budget0(:,:,:,14)
-
-      case(15)
-         ! SGS stresses: base u_i * d_j delta tau_ij
-         buffer = ubase * budget0(:,:,:,12) + vbase * budget0(:,:,:,13) + wbase * budget0(:,:,:,14)
-
-      case(16)
-         ! SGS stresses: delta u_i * d_j base tau_ij
-         ! Make sure that squeeze was .true. in the main simulation
-         buffer = du * baseBudget0(:,:,:,20) + dv * baseBudget0(:,:,:,21) + dw * baseBudget0(:,:,:,22)
-
-      case(17)
-         ! Production: delta u_i * mean(delta u_j' d_j delta u_i')
-         buffer = du * budget2(:,:,:,1) + dv * budget2(:,:,:,2) + dw * budget2(:,:,:,3)
-
-      case(18)
-         ! Production: delta u_i * mean(delta u_j' d_j base u_i')
-         buffer = du * budget2(:,:,:,4) + dv * budget2(:,:,:,5) + dw * budget2(:,:,:,6)
-
-      case(19)
-         ! Production: delta u_i * mean(base u_j' d_j delta u_i')
-         buffer = du * budget2(:,:,:,7) + dv * budget2(:,:,:,8) + dw * budget2(:,:,:,9)
-
-      case(20)
-         ! Production: delta u_i * mean(base u_j' d_j base u_i')
-         buffer = du * budget2(:,:,:,10) + dv * budget2(:,:,:,11) + dw * budget2(:,:,:,12)
-
-      case(21)
-         ! Production: base u_i * mean(delta u_j' d_j delta u_i')
-         buffer = ubase * budget2(:,:,:,1) + vbase * budget2(:,:,:,2) + wbase * budget2(:,:,:,3)
-
-      case(22)
-         ! Production: base u_i * mean(delta u_j' d_j base u_i')
-         buffer = ubase * budget2(:,:,:,4) + vbase * budget2(:,:,:,5) + wbase * budget2(:,:,:,6)
-
-      case(23)
-         ! Production: base u_i * mean(base u_j' d_j delta u_i')
-         buffer = ubase * budget2(:,:,:,7) + vbase * budget2(:,:,:,8) + wbase * budget2(:,:,:,9)
-
-      case(24)
-         ! Coriolis: delta u_i * delta ucor_i
-         buffer = du * budget0(:,:,:,15) + dv * budget0(:,:,:,16)
-
-      case(25)
-         ! Coriolis: delta u_i * base ucor_i
-         ! Make sure that squeeze was .true. in the main simulation
-         buffer = du * baseBudget0(:,:,:,23) + dv * baseBudget0(:,:,:,24)
-
-      case(26)
-         ! Coriolis: base u_i * delta ucor_i
-         buffer = ubase * budget0(:,:,:,15) + vbase * budget0(:,:,:,16)
-      end select 
-
-      nullify(BF1, BF2)
-   end subroutine
-
-   subroutine resetEverything()
-      implicit none
-
-      if(allocated(budget0)) budget0 = zero
-      if(allocated(budget1)) budget1 = zero
-      if(allocated(budget2)) budget2 = zero
-      if(allocated(budget3)) budget3 = zero
-      if(allocated(baseBudget0)) baseBudget0 = zero
-      if(allocated(duidxj)) duidxj = zero
-      if(allocated(duidxj_base)) duidxj_base = zero
-      if(allocated(profiles)) profiles = zero
-   end subroutine
 
    subroutine intersectBoxAndMesh()
       implicit none
@@ -928,8 +205,7 @@ module constructDeficitBudgets_mod
       real(rkind) :: xmin, xmax, ymin, ymax, zmin, zmax, xplane
       real(rkind), allocatable :: prof_local(:)
       logical, allocatable :: mask_yz(:,:)
-      integer, parameter :: HUGE_I = huge(1)
-
+      
       prof = zero
       allocate(prof_local(nx_box))
       prof_local = zero
@@ -987,31 +263,6 @@ module constructDeficitBudgets_mod
       TimeWithinRange = (itime >= istart .and. itime <= iend)
    end function TimeWithinRange
 
-   subroutine compute_duidxj()
-      implicit none
-      call message(1, 'Computing velocity gradients ...')
-
-      call ddx_R2R(du, dudx)
-      call ddy_R2R(du, dudy)
-      call ddz_R2R(du, dudz, uBC_bottom, uBC_top)
-      call ddx_R2R(dv, dvdx)
-      call ddy_R2R(dv, dvdy)
-      call ddz_R2R(dv, dvdz, vBC_bottom, vBC_top)
-      call ddx_R2R(dw, dwdx)
-      call ddy_R2R(dw, dwdy)
-      call ddz_R2R(dw, dwdz, wBC_bottom, wBC_top)
-
-      call ddx_R2R(ubase, dudx_base)
-      call ddy_R2R(ubase, dudy_base)
-      call ddz_R2R(ubase, dudz_base, uBC_bottom, uBC_top)
-      call ddx_R2R(vbase, dvdx_base)
-      call ddy_R2R(vbase, dvdy_base)
-      call ddz_R2R(vbase, dvdz_base, vBC_bottom, vBC_top)
-      call ddx_R2R(wbase, dwdx_base)
-      call ddy_R2R(wbase, dwdy_base)
-      call ddz_R2R(wbase, dwdz_base, wBC_bottom, wBC_top)
-   end subroutine
-
    subroutine get_boundary_conditions_stencil()
       implicit none
 
@@ -1064,61 +315,21 @@ module constructDeficitBudgets_mod
 
    end subroutine
 
-   subroutine readBudgets(key, stamp)
-   implicit none
-   character(*), intent(in) :: key, stamp
-   integer :: idx, budgetid
-   character(len=clen) :: pattern, filename
-   logical :: exists
-   real(rkind), dimension(:,:,:,:), pointer :: budget
+   subroutine read_file(filename, field)
+      implicit none
+      character(*), intent(in) :: filename
+      real(rkind), dimension(:,:,:), intent(out) :: field
+      logical :: exists
+      character(len=clen) :: file
 
-   do budgetid=0,3
-      if((budgetid == 3) .and. (budgettype /= 4)) cycle ! budget3 is only relevant for TKE budgets
-
-      select case(budgetid)
-      case(0)
-         budget => budget0
-      case(1)
-         budget => budget1
-      case(2)
-         budget => budget2
-      case(3)
-         budget => budget3
-      end select
-
-      do idx = 1, size(budget, 4)
-         pattern  = getPattern(RID, budgetid, idx, key=key, stamp=stamp)
-         filename = trim(inputdir)//'/'//trim(pattern)
-         inquire(file=trim(filename), exist=exists)
-         if(exists)then
-            call message(1, 'Reading '//trim(filename))
-            call decomp_2d_read_one(1, budget(:,:,:,idx), trim(filename), gpC)
-         else
-            call message(1, 'Not found: '//trim(filename)//' ... skipping')
-            cycle
-         end if
-      end do
-   end do
-
-   call message(1, 'Reading base flow budget 0')
-   do idx = 1,31
-      if((idx <= 26) .or. (idx == 31))then 
-         continue
-      else
-         cycle
-      end if
-      pattern  = getPattern(BRID, 0, idx, key=key, stamp=stamp, isBase=.True.)
-      filename = trim(inputdir)//'/'//trim(pattern)
-      inquire(file=trim(filename), exist=exists)
+      file = trim(inputdir)//'/'//trim(filename)
+      inquire(file=trim(file), exist=exists)
       if(exists)then
-         call message(1, 'Reading '//trim(filename))
-         call decomp_2d_read_one(1, baseBudget0(:,:,:,idx), trim(filename), gpC)
+         call message(1, 'Reading '//trim(file))
+         call decomp_2d_read_one(1, field, trim(file), gpC)
       else
-         call message(1, 'Not found: '//trim(filename)//' ... skipping')
-         cycle
+         call gracefulExit('Not found: '//trim(file), 915)
       end if
-   end do
-
    end subroutine
 
    function getPattern(rid, budgetid, termid, key, stamp, isBase)
@@ -1581,16 +792,18 @@ module constructDeficitBudgets_mod
       ! Allocate memory
       call message(0,'Allocating memory ...')
       allocate(mesh(gpC%xsz(1),gpC%xsz(2),gpC%xsz(3), 3))
-      allocate(duidxj(gpC%xsz(1),gpC%xsz(2),gpC%xsz(3), 9))
-      allocate(duidxj_base(gpC%xsz(1),gpC%xsz(2),gpC%xsz(3), 9))
-      allocate(Budget0(gpC%xsz(1),gpC%xsz(2),gpC%xsz(3), 20))
-      allocate(Budget1(gpC%xsz(1),gpC%xsz(2),gpC%xsz(3), 15))
-      allocate(Budget2(gpC%xsz(1),gpC%xsz(2),gpC%xsz(3), 15))
-      if(budgettype == 4) allocate( Budget3(gpC%xsz(1),gpC%xsz(2),gpC%xsz(3), 19))
-      allocate(baseBudget0(gpC%xsz(1),gpC%xsz(2),gpC%xsz(3), 31))
 
-      ! Allocate Buffers
-      allocate(rbuffxC(gpC%xsz(1),gpC%xsz(2),gpC%xsz(3), 3))
+      if(allocated(rbuffxC))deallocate(rbuffxC)
+      allocate(rbuffxC(gpC%xsz(1),gpC%xsz(2),gpC%xsz(3), 8))
+      du => rbuffxC(:,:,:,1)
+      dv => rbuffxC(:,:,:,2)
+      dw => rbuffxC(:,:,:,3)
+      ubase => rbuffxC(:,:,:,4)
+      vbase => rbuffxC(:,:,:,5)
+      wbase => rbuffxC(:,:,:,6)
+      bf => rbuffxC(:,:,:,7)
+      buffer => rbuffxC(:,:,:,8)
+      
       allocate(cbuffyC(sp_gpC%ysz(1),sp_gpC%ysz(2),sp_gpC%ysz(3)))
       allocate(cbuffzC(sp_gpC%zsz(1),sp_gpC%zsz(2),sp_gpC%zsz(3),2)) 
 
@@ -1607,10 +820,10 @@ module constructDeficitBudgets_mod
           end do
       end do
       mesh(:,:,:,1) = mesh(:,:,:,1) - dx; mesh(:,:,:,2) = mesh(:,:,:,2) - dy; mesh(:,:,:,3) = mesh(:,:,:,3) - dz 
-      call message(0,'All memory allocated.')
+      call message(0,'Created mesh.')
 
       ! Initialize Padeder
-      call Pade6opz%init(gpC, sp_gpC, gpE, sp_gpE, dz, NumericalSchemeVert,PeriodicInZ,spectC)
+      call Pade6opz%init(gpC, sp_gpC, gpE, sp_gpE, dz, NumericalSchemeVert, PeriodicInZ, spectC)
       call message(0,'Pade operations initialized')
 
       ! BCs for ddz
@@ -1622,76 +835,1062 @@ module constructDeficitBudgets_mod
          call intersectBoxAndMesh()
          call message(0,'Control volume box intersected with the mesh')
       end if
-
-      ! Allocate holder of x-profiles
-      select case (budgettype)
-      case(1)
-         num_profiles = 24
-      case(2)
-         num_profiles = 24
-      case(3)
-         num_profiles = 24
-      case(4)
-         num_profiles = 31
-      case(5)
-         num_profiles = 26
-      case(6)
-         num_profiles = 7
-      end select
-      allocate(profiles(nx_box, num_profiles))
-
-      ! Associate pointer
-      dudx => duidxj(:,:,:,1)
-      dudy => duidxj(:,:,:,2)
-      dudz => duidxj(:,:,:,3)
-      dvdx => duidxj(:,:,:,4)
-      dvdy => duidxj(:,:,:,5)
-      dvdz => duidxj(:,:,:,6)
-      dwdx => duidxj(:,:,:,7)
-      dwdy => duidxj(:,:,:,8)
-      dwdz => duidxj(:,:,:,9)  
-
-      dudx_base => duidxj_base(:,:,:,1)
-      dudy_base => duidxj_base(:,:,:,2)
-      dudz_base => duidxj_base(:,:,:,3)
-      dvdx_base => duidxj_base(:,:,:,4)
-      dvdy_base => duidxj_base(:,:,:,5)
-      dvdz_base => duidxj_base(:,:,:,6)
-      dwdx_base => duidxj_base(:,:,:,7)
-      dwdy_base => duidxj_base(:,:,:,8)
-      dwdz_base => duidxj_base(:,:,:,9)  
-
-      du => budget0(:,:,:,1)
-      dv => budget0(:,:,:,2)
-      dw => budget0(:,:,:,3)
-      ubase => baseBudget0(:,:,:,1)
-      vbase => baseBudget0(:,:,:,2)
-      wbase => baseBudget0(:,:,:,3)
-
-      call resetEverything()
+      
+      if(do_box_averaging) then
+         if(do_x_budget)allocate(xprofiles(nx_box, 24))
+         if(do_y_budget)allocate(yprofiles(nx_box, 24))
+         if(do_z_budget)allocate(zprofiles(nx_box, 24))
+         if(do_TKE_budget)allocate(TKEprofiles(nx_box, 31))
+         if(do_MKE_budget)allocate(MKEprofiles(nx_box, 26))
+         if(do_TMP_budget)allocate(TMPprofiles(nx_box, 3))
+      end if
    end subroutine
 
    subroutine release_memory()
     implicit none
 
-      deallocate(mesh, duidxj, duidxj_base, Budget0, Budget1, Budget2, baseBudget0)
-      if(allocated(Budget3)) deallocate(Budget3)
-      if(allocated(rbuffxC)) deallocate(rbuffxC)
-      if(allocated(cbuffyC)) deallocate(cbuffyC)
-      if(allocated(cbuffzC)) deallocate(cbuffzC)
-      if(allocated(profiles)) deallocate(profiles)
+      if(allocated(mesh)) deallocate(mesh)
+      if(allocated(xprofiles)) deallocate(xprofiles)
+      if(allocated(yprofiles)) deallocate(yprofiles)
+      if(allocated(zprofiles)) deallocate(zprofiles)
+      if(allocated(TKEprofiles)) deallocate(TKEprofiles)
+      if(allocated(MKEprofiles)) deallocate(MKEprofiles)
+      if(allocated(TMPprofiles)) deallocate(TMPprofiles)
       if(allocated(xstations)) deallocate(xstations)
-
-      nullify(dudx, dudy, dudz, dvdx, dvdy, dvdz, dwdx, dwdy, dwdz)
-      nullify(dudx_base, dudy_base, dudz_base, dvdx_base, dvdy_base, dvdz_base, dwdx_base, dwdy_base, dwdz_base)
-      nullify(du, dv, dw, ubase, vbase, wbase)
-
+      if(allocated(rbuffxC)) deallocate(rbuffxC)
+      nullify(du, dv, dw, ubase, vbase, wbase, bf, buffer)
+      
       call spectC%destroy()
       call spectE%destroy()
       call Pade6opZ%destroy()
       call decomp_info_finalize(gpC)
       call decomp_info_finalize(gpE)
       call decomp_2d_finalize()
+  end subroutine
+
+  subroutine read_velocity(crid, cbrid, key, stamp)
+   implicit none
+   character(len=*), intent(in) :: crid, cbrid, key, stamp
+   
+   call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term01_t'//trim(key)//'_n'//trim(stamp)//'.s3D', du) !du
+   call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term02_t'//trim(key)//'_n'//trim(stamp)//'.s3D', dv) !dv
+   call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term03_t'//trim(key)//'_n'//trim(stamp)//'.s3D', dw) !dw
+   call read_file('Run'//trim(cbrid)//'_budget0_term01_t'//trim(key)//'_n'//trim(stamp)//'.s3D', ubase) !ubase
+   call read_file('Run'//trim(cbrid)//'_budget0_term02_t'//trim(key)//'_n'//trim(stamp)//'.s3D', vbase) !vbase
+   call read_file('Run'//trim(cbrid)//'_budget0_term03_t'//trim(key)//'_n'//trim(stamp)//'.s3D', wbase) !wbase
+  end subroutine
+
+  subroutine zbudget(crid, key, stamp)
+   implicit none
+   character(len=*), intent(in) :: crid, key, stamp
+   character(len=2) :: idx_str
+   integer :: idx
+
+   do idx = 1, 24
+      select case(idx)
+      case(1)
+         ! Advection: delta u_1 * partial_1 (delta u_3)
+         call ddx_R2R(dw, bf); buffer = du * bf
+      case(2)
+         ! Advection: delta u_2 * partial_2 (delta u_3)
+         call ddy_R2R(dw, bf); buffer = dv * bf
+      case(3)
+         ! Advection: delta u_3 * partial_3 (delta u_3)
+         call ddz_R2R(dw, bf, wBC_bottom, wBC_top); buffer = dw * bf
+      case(4)
+         ! Advection: delta u_1 * partial_1 (base u_3)
+         call ddx_R2R(wbase, bf); buffer = du * bf
+      case(5)
+         ! Advection: delta u_2 * partial_2 (base u_3)
+         call ddy_R2R(wbase, bf); buffer = dv * bf
+      case(6)
+         ! Advection: delta u_3 * partial_3 (base u_3)
+         call ddz_R2R(wbase, bf, wBC_bottom, wBC_top); buffer = dw * bf
+      case(7)
+         ! Advection: base u_1 * partial_1 (delta u_3)
+         call ddx_R2R(dw, bf); buffer = ubase * bf
+      case(8)
+         ! Advection: base u_2 * partial_2 (delta u_3)
+         call ddy_R2R(dw, bf); buffer = vbase * bf
+      case(9)
+         ! Advection: base u_3 * partial_3 (delta u_3)
+         call ddz_R2R(dw, bf, wBC_bottom, wBC_top); buffer = wbase * bf
+      case(10)
+         ! pressure gradient: partial_2 (delta p)
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term20_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+       case(11)
+         ! Divergence of Reynolds stresses: partial_j mean(delta u_3' delta u_j')
+         ! partial_j mean(delta u_3' delta u_j') = mean(delta u_j' partial_j delta u_3')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget2_term03_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+      case(12)
+         ! Divergence of Reynolds stresses: partial_j mean(delta u_3' base u_j')
+         ! partial_j mean(delta u_3' base u_j') = mean(base u_j' partial_j delta u_3')
+        call read_file('Run'//trim(crid)//'_comp_deficit_budget2_term09_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+      case(13)
+         ! Divergence of Reynolds stresses: partial_j mean(base u_3' delta u_j')
+         ! partial_j mean(base u_3' delta u_j') = mean(delta u_j' partial_j base u_3')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget2_term06_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+      case(14)
+         ! w_sgs
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term14_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+      case(15)
+         ! wbuoyancy
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term17_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+         buffer = - buffer ! Put it on the LHS
+      case(16)
+         ! Divergence of Reynolds stresses: partial_1 mean(delta u_3' delta u_1')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term03_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddx_R2R(bf, buffer)
+      case(17)
+         ! Divergence of Reynolds stresses: partial_2 mean(delta u_3' delta u_2')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term05_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddy_R2R(bf, buffer)
+      case(18)
+         ! Divergence of Reynolds stresses: partial_3 mean(delta u_3' delta u_3')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term06_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddz_R2R(bf, buffer, 1, 1)
+      case(19)
+         ! Divergence of Reynolds stresses: partial_1 mean(delta u_3' base u_1')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term11_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddx_R2R(bf, buffer)
+      case(20)
+         ! Divergence of Reynolds stresses: partial_2 mean(delta u_3' base u_2')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term14_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddy_R2R(bf, buffer)
+      case(21)
+         ! Divergence of Reynolds stresses: partial_3 mean(delta u_3' base u_3')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term15_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddz_R2R(bf, buffer, 1, 1)
+      case(22)
+         ! Divergence of Reynolds stresses: partial_1 mean(base u_3' delta u_1')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term10_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddx_R2R(bf, buffer)
+      case(23)
+         ! Divergence of Reynolds stresses: partial_2 mean(base u_3' delta u_2')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term13_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddy_R2R(bf, buffer)
+      case(24)
+         ! Divergence of Reynolds stresses: partial_3 mean(base u_3' delta u_3')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term15_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddz_R2R(bf, buffer, 1, 1)
+      end select
+
+      ! Average this budget term across the box
+      if(do_box_averaging) call integrate_box_yz(buffer, zprofiles(:,idx))
+
+      ! Write to file calculated dependent variables if requested
+      if(writeDependentVariables .and. depedent_variable(3, idx))then
+         write(idx_str, '(I2.2)') idx
+         call dump_budget_field(buffer, idx_str, '7', trim(key), trim(stamp))
+      end if
+   end do
+
+  end subroutine
+
+  subroutine ybudget(crid, key, stamp)
+   implicit none
+   character(len=*), intent(in) :: crid, key, stamp
+   character(len=2) :: idx_str
+   integer :: idx
+
+   do idx = 1, 24
+      select case(idx)
+      case(1)
+         ! Advection: delta u_1 * partial_1 (delta u_2)
+         call ddx_R2R(dv, bf); buffer = du * bf
+      case(2)
+         ! Advection: delta u_2 * partial_2 (delta u_2)
+         call ddy_R2R(dv, bf); buffer = dv * bf
+      case(3)
+         ! Advection: delta u_3 * partial_3 (delta u_2)
+         call ddz_R2R(dv, bf, vBC_bottom, vBC_top); buffer = dw * bf
+      case(4)
+         ! Advection: delta u_1 * partial_1 (base u_2)
+         call ddx_R2R(vbase, bf); buffer = du * bf
+      case(5)
+         ! Advection: delta u_2 * partial_2 (base u_2)
+         call ddy_R2R(vbase, bf); buffer = dv * bf
+      case(6)
+         ! Advection: delta u_3 * partial_3 (base u_2)
+         call ddz_R2R(vbase, bf, vBC_bottom, vBC_top); buffer = dw * bf
+      case(7)
+         ! Advection: base u_1 * partial_1 (delta u_2)
+         call ddx_R2R(dv, bf); buffer = ubase * bf
+      case(8)
+         ! Advection: base u_2 * partial_2 (delta u_2)
+         call ddy_R2R(dv, bf); buffer = vbase * bf
+      case(9)
+         ! Advection: base u_3 * partial_3 (delta u_2)
+         call ddz_R2R(dv, bf, vBC_bottom, vBC_top); buffer = wbase * bf
+      case(10)
+         ! pressure gradient: partial_2 (delta p)
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term19_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+       case(11)
+         ! Divergence of Reynolds stresses: partial_j mean(delta u_2' delta u_j')
+         ! partial_j mean(delta u_2' delta u_j') = mean(delta u_j' partial_j delta u_2')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget2_term02_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+      case(12)
+         ! Divergence of Reynolds stresses: partial_j mean(delta u_2' base u_j')
+         ! partial_j mean(delta u_2' base u_j') = mean(base u_j' partial_j delta u_2')
+        call read_file('Run'//trim(crid)//'_comp_deficit_budget2_term08_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+      case(13)
+         ! Divergence of Reynolds stresses: partial_j mean(base u_2' delta u_j')
+         ! partial_j mean(base u_2' delta u_j') = mean(delta u_j' partial_j base u_2')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget2_term05_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+      case(14)
+         ! v_sgs
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term13_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+      case(15)
+         ! v_cor
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term16_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+         buffer = - buffer ! Put it on the LHS
+      case(16)
+         ! Divergence of Reynolds stresses: partial_1 mean(delta u_2' delta u_1')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term02_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddx_R2R(bf, buffer)
+      case(17)
+         ! Divergence of Reynolds stresses: partial_2 mean(delta u_2' delta u_2')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term04_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddy_R2R(bf, buffer)
+      case(18)
+         ! Divergence of Reynolds stresses: partial_3 mean(delta u_2' delta u_3')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term05_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddz_R2R(bf, buffer, -1, -1)
+      case(19)
+         ! Divergence of Reynolds stresses: partial_1 mean(delta u_2' base u_1')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term09_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddx_R2R(bf, buffer)
+      case(20)
+         ! Divergence of Reynolds stresses: partial_2 mean(delta u_2' base u_2')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term12_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddy_R2R(bf, buffer)
+      case(21)
+         ! Divergence of Reynolds stresses: partial_3 mean(delta u_2' base u_3')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term13_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddz_R2R(bf, buffer, -1, -1)
+      case(22)
+         ! Divergence of Reynolds stresses: partial_1 mean(base u_2' delta u_1')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term08_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddx_R2R(bf, buffer)
+      case(23)
+         ! Divergence of Reynolds stresses: partial_2 mean(base u_2' delta u_2')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term12_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddy_R2R(bf, buffer)
+      case(24)
+         ! Divergence of Reynolds stresses: partial_3 mean(base u_2' delta u_3')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term14_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddz_R2R(bf, buffer, -1, -1)
+      end select
+
+      ! Average this budget term across the box
+      if(do_box_averaging) call integrate_box_yz(buffer, yprofiles(:,idx))
+
+      ! Write to file calculated dependent variables if requested
+      if(writeDependentVariables .and. depedent_variable(2, idx))then
+         write(idx_str, '(I2.2)') idx
+         call dump_budget_field(buffer, idx_str, '6', trim(key), trim(stamp))
+      end if
+   end do
+
+  end subroutine
+
+  subroutine xbudget(crid, key, stamp)
+   implicit none
+   character(len=*), intent(in) :: crid, key, stamp
+   character(len=2) :: idx_str
+   integer :: idx
+
+   do idx = 1, 24
+      select case(idx)
+      case(1)
+         ! Advection: delta u_1 * partial_1 (delta u_1)
+         call ddx_R2R(du, bf); buffer = du * bf
+      case(2)
+         ! Advection: delta u_2 * partial_2 (delta u_1)
+         call ddy_R2R(du, bf); buffer = dv * bf
+      case(3)
+         ! Advection: delta u_3 * partial_3 (delta u_1)
+         call ddz_R2R(du, bf, uBC_bottom, uBC_top); buffer = dw * bf
+      case(4)
+         ! Advection: delta u_1 * partial_1 (base u_1)
+         call ddx_R2R(ubase, bf); buffer = du * bf
+      case(5)
+         ! Advection: delta u_2 * partial_2 (base u_1)
+         call ddy_R2R(ubase, bf); buffer = dv * bf
+      case(6)
+         ! Advection: delta u_3 * partial_3 (base u_1)
+         call ddz_R2R(ubase, bf, uBC_bottom, uBC_top); buffer = dw * bf
+      case(7)
+         ! Advection: base u_1 * partial_1 (delta u_1)
+         call ddx_R2R(du, bf); buffer = ubase * bf
+      case(8)
+         ! Advection: base u_2 * partial_2 (delta u_1)
+         call ddy_R2R(du, bf); buffer = vbase * bf
+      case(9)
+         ! Advection: base u_3 * partial_3 (delta u_1)
+         call ddz_R2R(du, bf, uBC_bottom, uBC_top); buffer = wbase * bf
+      case(10)
+         ! pressure gradient: partial_1 (delta p)
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term18_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+       case(11)
+         ! Divergence of Reynolds stresses: partial_j mean(delta u_1' delta u_j')
+         ! partial_j mean(delta u_1' delta u_j') = mean(delta u_j' partial_j delta u_1')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget2_term01_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+      case(12)
+         ! Divergence of Reynolds stresses: partial_j mean(delta u_1' base u_j')
+         ! partial_j mean(delta u_1' base u_j') = mean(base u_j' partial_j delta u_1')
+        call read_file('Run'//trim(crid)//'_comp_deficit_budget2_term07_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+      case(13)
+         ! Divergence of Reynolds stresses: partial_j mean(base u_1' delta u_j')
+         ! partial_j mean(base u_1' delta u_j') = mean(delta u_j' partial_j base u_1')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget2_term04_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+      case(14)
+         ! u_sgs
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term12_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+      case(15)
+         ! u_cor
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term15_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+         buffer = - buffer ! Put it on the LHS
+      case(16)
+         ! Divergence of Reynolds stresses: partial_1 mean(delta u_1' delta u_1')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term01_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddx_R2R(bf, buffer)
+      case(17)
+         ! Divergence of Reynolds stresses: partial_2 mean(delta u_1' delta u_2')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term02_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddy_R2R(bf, buffer)
+      case(18)
+         ! Divergence of Reynolds stresses: partial_3 mean(delta u_1' delta u_3')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term03_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddz_R2R(bf, buffer, -1, -1)
+      case(19)
+         ! Divergence of Reynolds stresses: partial_1 mean(delta u_1' base u_1')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term07_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddx_R2R(bf, buffer)
+      case(20)
+         ! Divergence of Reynolds stresses: partial_2 mean(delta u_1' base u_2')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term08_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddy_R2R(bf, buffer)
+      case(21)
+         ! Divergence of Reynolds stresses: partial_3 mean(delta u_1' base u_3')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term10_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddz_R2R(bf, buffer, -1, -1)
+      case(22)
+         ! Divergence of Reynolds stresses: partial_1 mean(base u_1' delta u_1')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term07_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddx_R2R(bf, buffer)
+      case(23)
+         ! Divergence of Reynolds stresses: partial_2 mean(base u_1' delta u_2')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term09_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddy_R2R(bf, buffer)
+      case(24)
+         ! Divergence of Reynolds stresses: partial_3 mean(base u_1' delta u_3')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term11_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddz_R2R(bf, buffer, -1, -1)
+      end select
+
+      ! Average this budget term across the box
+      if(do_box_averaging) call integrate_box_yz(buffer, xprofiles(:,idx))
+
+      ! Write to file calculated dependent variables if requested
+      if(writeDependentVariables .and. depedent_variable(1, idx))then
+         write(idx_str, '(I2.2)') idx
+         call dump_budget_field(buffer, idx_str, '5', trim(key), trim(stamp))
+      end if
+   end do
+
+  end subroutine
+
+  subroutine TKEbudget(crid, cbrid, key, stamp)
+   implicit none
+   character(len=*), intent(in) :: crid, cbrid, key, stamp
+   character(len=2) :: idx_str
+   integer :: idx
+   real(rkind), dimension(:,:,:), allocatable :: bf1
+
+   allocate(bf1(gpC%xsz(1),gpC%xsz(2),gpC%xsz(3)))
+   do idx = 1, 31
+      select case(idx)
+      case(1)
+         ! Advection: delta u_j * partial_j (delta u_i' delta u_i')/2 
+         buffer=zero
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term01_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); buffer=buffer+bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term04_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); buffer=buffer+bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term06_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); buffer=buffer+bf
+         bf = half*buffer; buffer=zero
+         call ddx_R2R(bf, bf1); buffer = buffer + bf1*du
+         call ddy_R2R(bf, bf1); buffer = buffer + bf1*dv
+         call ddz_R2R(bf, bf1, 1, 1); buffer = buffer + bf1*dw ! even
+
+      case(2)
+         ! Advection: delta u_j * partial_j (delta u_i' base u_i') 
+         bf1=zero
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term07_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); bf1=bf1+bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term12_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); bf1=bf1+bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term15_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); bf1=bf1+bf
+         buffer=zero
+         call ddx_R2R(bf1, bf); buffer = buffer + bf*du
+         call ddy_R2R(bf1, bf); buffer = buffer + bf*dv
+         call ddz_R2R(bf1, bf, 1, 1); buffer = buffer + bf*dw ! even
+
+      case(3)
+         ! Advection: delta u_j * partial_j (base u_i' base u_i')/2 
+         buffer=zero
+         call read_file('Run'//trim(cbrid)//'_budget0_term04_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); buffer=buffer+bf
+         call read_file('Run'//trim(cbrid)//'_budget0_term07_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); buffer=buffer+bf
+         call read_file('Run'//trim(cbrid)//'_budget0_term09_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); buffer=buffer+bf
+         bf = half*buffer; buffer=zero
+         call ddx_R2R(bf, bf1); buffer = buffer + bf1*du
+         call ddy_R2R(bf, bf1); buffer = buffer + bf1*dv
+         call ddz_R2R(bf, bf1, 1, 1); buffer = buffer + bf1*dw ! even
+
+      case(4)
+         ! Advection: base u_j * partial_j (delta u_i' delta u_i')/2
+         buffer=zero
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term01_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); buffer=buffer+bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term04_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); buffer=buffer+bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term06_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); buffer=buffer+bf
+         bf = half*buffer; buffer=zero
+         call ddx_R2R(bf, bf1); buffer = buffer + bf1*ubase
+         call ddy_R2R(bf, bf1); buffer = buffer + bf1*vbase
+         call ddz_R2R(bf, bf1, 1, 1); buffer = buffer + bf1*wbase ! even
+
+      case(5)
+         ! Advection: base u_j * partial_j (delta u_i' base u_i') 
+         bf1=zero
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term07_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); bf1=bf1+bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term12_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); bf1=bf1+bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term15_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); bf1=bf1+bf
+         buffer=zero
+         call ddx_R2R(bf1, bf); buffer = buffer + bf*ubase
+         call ddy_R2R(bf1, bf); buffer = buffer + bf*vbase
+         call ddz_R2R(bf1, bf, 1, 1); buffer = buffer + bf*wbase ! even
+
+      case(6)
+         ! Production: mean(delta u_i' delta u_j') partial_j mean(delta u_i)
+         buffer=zero
+
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term01_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddx_R2R(du, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term02_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddy_R2R(du, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term03_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddz_R2R(du, bf1, uBC_bottom, uBC_top); buffer = buffer + bf * bf1
+
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term02_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddx_R2R(dv, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term04_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddy_R2R(dv, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term05_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddz_R2R(dv, bf1, vBC_bottom, vBC_top); buffer = buffer + bf * bf1
+
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term03_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddx_R2R(dw, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term05_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddy_R2R(dw, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term06_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddz_R2R(dw, bf1, wBC_bottom, wBC_top); buffer = buffer + bf * bf1
+         
+      case(7)
+         ! Production: mean(delta u_i' base u_j') partial_j mean(delta u_i)
+         buffer=zero
+
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term07_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddx_R2R(du, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term08_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddy_R2R(du, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term10_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddz_R2R(du, bf1, uBC_bottom, uBC_top); buffer = buffer + bf * bf1
+
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term09_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddx_R2R(dv, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term12_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddy_R2R(dv, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term13_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddz_R2R(dv, bf1, vBC_bottom, vBC_top); buffer = buffer + bf * bf1
+
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term11_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddx_R2R(dw, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term14_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddy_R2R(dw, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term15_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddz_R2R(dw, bf1, wBC_bottom, wBC_top); buffer = buffer + bf * bf1
+
+      case(8)
+         ! Production: mean(base u_i' delta u_j') partial_j mean(delta u_i)
+         buffer=zero
+
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term07_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddx_R2R(du, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term09_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddy_R2R(du, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term11_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddz_R2R(du, bf1, uBC_bottom, uBC_top); buffer = buffer + bf * bf1
+
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term08_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddx_R2R(dv, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term12_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddy_R2R(dv, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term14_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddz_R2R(dv, bf1, vBC_bottom, vBC_top); buffer = buffer + bf * bf1
+
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term10_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddx_R2R(dw, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term13_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddy_R2R(dw, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term15_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddz_R2R(dw, bf1, wBC_bottom, wBC_top); buffer = buffer + bf * bf1
+
+      case(9)
+         ! Production: mean(base u_i' base u_j') partial_j mean(delta u_i)
+         buffer=zero
+
+         call read_file('Run'//trim(cbrid)//'_budget0_term04_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddx_R2R(du, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(cbrid)//'_budget0_term05_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddy_R2R(du, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(cbrid)//'_budget0_term06_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddz_R2R(du, bf1, uBC_bottom, uBC_top); buffer = buffer + bf * bf1
+
+         call read_file('Run'//trim(cbrid)//'_budget0_term05_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddx_R2R(dv, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(cbrid)//'_budget0_term07_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddy_R2R(dv, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(cbrid)//'_budget0_term08_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddz_R2R(dv, bf1, vBC_bottom, vBC_top); buffer = buffer + bf * bf1
+
+         call read_file('Run'//trim(cbrid)//'_budget0_term06_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddx_R2R(dw, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(cbrid)//'_budget0_term08_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddy_R2R(dw, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(cbrid)//'_budget0_term09_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddz_R2R(dw, bf1, wBC_bottom, wBC_top); buffer = buffer + bf * bf1
+
+      case(10)
+         ! Production: mean(delta u_i' delta u_j') partial_j mean(base u_i)
+         buffer=zero
+
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term01_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddx_R2R(ubase, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term02_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddy_R2R(ubase, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term03_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddz_R2R(ubase, bf1, uBC_bottom, uBC_top); buffer = buffer + bf * bf1
+
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term02_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddx_R2R(vbase, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term04_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddy_R2R(vbase, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term05_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddz_R2R(vbase, bf1, vBC_bottom, vBC_top); buffer = buffer + bf * bf1
+
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term03_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddx_R2R(wbase, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term05_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddy_R2R(wbase, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term06_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddz_R2R(wbase, bf1, wBC_bottom, wBC_top); buffer = buffer + bf * bf1
+
+      case(11)
+         ! Production: mean(delta u_i' base u_j') partial_j mean(base u_i)
+         buffer=zero
+
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term07_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddx_R2R(ubase, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term08_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddy_R2R(ubase, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term10_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddz_R2R(ubase, bf1, uBC_bottom, uBC_top); buffer = buffer + bf * bf1
+
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term09_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddx_R2R(vbase, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term12_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddy_R2R(vbase, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term13_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddz_R2R(vbase, bf1, vBC_bottom, vBC_top); buffer = buffer + bf * bf1
+
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term11_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddx_R2R(wbase, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term14_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddy_R2R(wbase, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term15_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddz_R2R(wbase, bf1, wBC_bottom, wBC_top); buffer = buffer + bf * bf1
+
+      case(12)
+         ! Production: mean(base u_i' delta u_j') partial_j mean(base u_i)
+         buffer=zero
+
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term07_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddx_R2R(ubase, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term09_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddy_R2R(ubase, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term11_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddz_R2R(ubase, bf1, uBC_bottom, uBC_top); buffer = buffer + bf * bf1
+
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term08_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddx_R2R(vbase, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term12_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddy_R2R(vbase, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term14_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddz_R2R(vbase, bf1, vBC_bottom, vBC_top); buffer = buffer + bf * bf1
+
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term10_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddx_R2R(wbase, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term13_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddy_R2R(wbase, bf1); buffer = buffer + bf * bf1
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term15_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         call ddz_R2R(wbase, bf1, wBC_bottom, wBC_top); buffer = buffer + bf * bf1
+
+      case(13)
+         ! Buoyancy: mean(delta w' delta wb')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget3_term10_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer = - bf
+
+      case(14)
+         ! Buoyancy: mean(delta w' base wb')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget3_term11_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer = - bf
+
+      case(15)
+         ! Buoyancy covariance: mean(base w' delta wb')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget3_term12_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer = - bf
+
+      case(16)
+         ! Pressure covariance: mean(delta u_j' partial_j delta p')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget3_term01_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+         
+      case(17)
+         ! Pressure covariance: mean(base u_j' partial_j delta p')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget3_term02_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+         
+      case(18)
+         ! Pressure covariance: mean(delta u_j' partial_j base p')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget3_term03_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+         
+      case(19)
+         ! Transport: mean(delta u_i' delta u_j' partial_j delta u_i')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget3_term19_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+         
+      case(20)
+         ! Transport: mean(delta u_i' base u_j' partial_j delta u_i')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget3_term18_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+
+      case(21)
+         ! Transport: mean(delta u_i' delta u_j' partial_j base u_i')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget3_term17_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+      
+      case(22)
+         ! Transport: mean(base u_i' delta u_j' partial_j delta u_i')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget3_term16_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+         
+      case(23)
+         ! Transport: mean(delta u_i' base u_j' partial_j base u_i')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget3_term15_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+
+      case(24)
+         ! Transport: mean(base u_i' base u_j' partial_j delta u_i')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget3_term14_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+
+      case(25)
+         ! Transport: mean(base u_i' delta u_j' partial_j base u_i')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget3_term13_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+         
+      case(26)
+         ! SGS transport: partial_j mean(base u_i' delta tau_ij')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget3_term04_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+        
+      case(27)
+         ! SGS transport: partial_j mean(delta u_i' base tau_ij')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget3_term05_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+
+      case(28)
+         ! SGS transport: partial_j mean(delta u_i' delta tau_ij')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget3_term06_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+         
+      case(29)
+         ! SGS Dissipation: mean(delta tau_ij' partial_j base u_i')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget3_term07_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer = -bf
+
+      case(30)
+         ! SGS Dissipation: mean(base tau_ij' partial_j delta u_i')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget3_term08_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer = -bf
+         
+      case(31)
+         ! SGS Dissipation: mean(delta tau_ij' partial_j delta u_i')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget3_term09_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer = -bf
+      end select
+
+      ! Average this budget term across the box
+      if(do_box_averaging) call integrate_box_yz(buffer, TKEprofiles(:,idx))
+
+      ! Write to file calculated dependent variables if requested
+      if(writeDependentVariables .and. depedent_variable(4, idx))then
+         write(idx_str, '(I2.2)') idx
+         call dump_budget_field(buffer, idx_str, '4', trim(key), trim(stamp))
+      end if
+   end do
+   deallocate(bf1)
+  end subroutine
+
+  subroutine MKEbudget(crid, cbrid, key, stamp)
+   implicit none
+   character(len=*), intent(in) :: crid, cbrid, key, stamp
+   character(len=2) :: idx_str
+   integer :: idx
+   
+   do idx = 1, 26
+      select case(idx)
+      case(1)
+         ! Advection: delta u_i base u_j partial_j base u_i
+         buffer=zero
+         call ddx_R2R(ubase, bf); buffer = buffer + du * ubase * bf
+         call ddy_R2R(ubase, bf); buffer = buffer + du * vbase * bf
+         call ddz_R2R(ubase, bf, uBC_bottom, uBC_top); buffer = buffer + du * wbase * bf
+         call ddx_R2R(vbase, bf); buffer = buffer + dv * ubase * bf
+         call ddy_R2R(vbase, bf); buffer = buffer + dv * vbase * bf
+         call ddz_R2R(vbase, bf, vBC_bottom, vBC_top); buffer = buffer + dv * wbase * bf
+         call ddx_R2R(wbase, bf); buffer = buffer + dw * ubase * bf
+         call ddy_R2R(wbase, bf); buffer = buffer + dw * vbase * bf
+         call ddz_R2R(wbase, bf, wBC_bottom, wBC_top); buffer = buffer + dw * wbase * bf
+
+      case(2)
+         ! Advection: base u_i base u_j partial_j delta u_i
+         buffer=zero
+         call ddx_R2R(du, bf); buffer = buffer + ubase * ubase * bf
+         call ddy_R2R(du, bf); buffer = buffer + ubase * vbase * bf
+         call ddz_R2R(du, bf, uBC_bottom, uBC_top); buffer = buffer + ubase * wbase * bf
+         call ddx_R2R(dv, bf); buffer = buffer + vbase * ubase * bf
+         call ddy_R2R(dv, bf); buffer = buffer + vbase * vbase * bf
+         call ddz_R2R(dv, bf, vBC_bottom, vBC_top); buffer = buffer + vbase * wbase * bf
+         call ddx_R2R(dw, bf); buffer = buffer + wbase * ubase * bf
+         call ddy_R2R(dw, bf); buffer = buffer + wbase * vbase * bf
+         call ddz_R2R(dw, bf, wBC_bottom, wBC_top); buffer = buffer + wbase * wbase * bf
+
+      case(3)
+         ! Advection: delta u_i base u_j partial_j delta u_i
+         buffer=zero
+         call ddx_R2R(du, bf); buffer = buffer + du * ubase * bf
+         call ddy_R2R(du, bf); buffer = buffer + du * vbase * bf
+         call ddz_R2R(du, bf, uBC_bottom, uBC_top); buffer = buffer + du * wbase * bf
+         call ddx_R2R(dv, bf); buffer = buffer + dv * ubase * bf
+         call ddy_R2R(dv, bf); buffer = buffer + dv * vbase * bf
+         call ddz_R2R(dv, bf, vBC_bottom, vBC_top); buffer = buffer + dv * wbase * bf
+         call ddx_R2R(dw, bf); buffer = buffer + dw * ubase * bf
+         call ddy_R2R(dw, bf); buffer = buffer + dw * vbase * bf
+         call ddz_R2R(dw, bf, wBC_bottom, wBC_top); buffer = buffer + dw * wbase * bf
+
+      case(4)
+         ! Advection: base u_i delta u_j partial_j base u_i
+         buffer=zero
+         call ddx_R2R(ubase, bf); buffer = buffer + ubase * du * bf
+         call ddy_R2R(ubase, bf); buffer = buffer + ubase * dv * bf
+         call ddz_R2R(ubase, bf, uBC_bottom, uBC_top); buffer = buffer + ubase * dw * bf
+         call ddx_R2R(vbase, bf); buffer = buffer + vbase * du * bf
+         call ddy_R2R(vbase, bf); buffer = buffer + vbase * dv * bf
+         call ddz_R2R(vbase, bf, vBC_bottom, vBC_top); buffer = buffer + vbase * dw * bf
+         call ddx_R2R(wbase, bf); buffer = buffer + wbase * du * bf
+         call ddy_R2R(wbase, bf); buffer = buffer + wbase * dv * bf
+         call ddz_R2R(wbase, bf, wBC_bottom, wBC_top); buffer = buffer + wbase * dw * bf
+
+      case(5)
+         ! Advection: delta u_i delta u_j partial_j base u_i
+         buffer=zero
+         call ddx_R2R(ubase, bf); buffer = buffer + du * du * bf
+         call ddy_R2R(ubase, bf); buffer = buffer + du * dv * bf
+         call ddz_R2R(ubase, bf, uBC_bottom, uBC_top); buffer = buffer + du * dw * bf
+         call ddx_R2R(vbase, bf); buffer = buffer + dv * du * bf
+         call ddy_R2R(vbase, bf); buffer = buffer + dv * dv * bf
+         call ddz_R2R(vbase, bf, vBC_bottom, vBC_top); buffer = buffer + dv * dw * bf
+         call ddx_R2R(wbase, bf); buffer = buffer + dw * du * bf
+         call ddy_R2R(wbase, bf); buffer = buffer + dw * dv * bf
+         call ddz_R2R(wbase, bf, wBC_bottom, wBC_top); buffer = buffer + dw * dw * bf
+
+      case(6)
+         ! Advection: base u_i delta u_j partial_j delta u_i
+         buffer=zero
+         call ddx_R2R(du, bf); buffer = buffer + ubase * du * bf
+         call ddy_R2R(du, bf); buffer = buffer + ubase * dv * bf
+         call ddz_R2R(du, bf, uBC_bottom, uBC_top); buffer = buffer + ubase * dw * bf
+         call ddx_R2R(dv, bf); buffer = buffer + vbase * du * bf
+         call ddy_R2R(dv, bf); buffer = buffer + vbase * dv * bf
+         call ddz_R2R(dv, bf, vBC_bottom, vBC_top); buffer = buffer + vbase * dw * bf
+         call ddx_R2R(dw, bf); buffer = buffer + wbase * du * bf
+         call ddy_R2R(dw, bf); buffer = buffer + wbase * dv * bf
+         call ddz_R2R(dw, bf, wBC_bottom, wBC_top); buffer = buffer + wbase * dw * bf
+
+      case(7)
+         ! Advection: delta u_i delta u_j partial_j delta u_i
+         buffer=zero
+         call ddx_R2R(du, bf); buffer = buffer + du * du * bf
+         call ddy_R2R(du, bf); buffer = buffer + du * dv * bf
+         call ddz_R2R(du, bf, uBC_bottom, uBC_top); buffer = buffer + du * dw * bf
+         call ddx_R2R(dv, bf); buffer = buffer + dv * du * bf
+         call ddy_R2R(dv, bf); buffer = buffer + dv * dv * bf
+         call ddz_R2R(dv, bf, vBC_bottom, vBC_top); buffer = buffer + dv * dw * bf
+         call ddx_R2R(dw, bf); buffer = buffer + dw * du * bf
+         call ddy_R2R(dw, bf); buffer = buffer + dw * dv * bf
+         call ddz_R2R(dw, bf, wBC_bottom, wBC_top); buffer = buffer + dw * dw * bf
+
+      case(8)
+         ! Buoyancy: delta wb * delta w
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term17_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer = - bf * dw
+
+      case(9)
+         ! Buoyancy: delta wb * base w
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term17_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer = - bf * wbase
+
+      case(10)
+         ! Buoyancy: base wb * delta w
+         ! Make sure that squeeze was .true. in the main simulation
+         ! This is overloading an existing budget term in budget0.
+         call read_file('Run'//trim(cbrid)//'_budget0_term25_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer = - bf * dw
+
+      case(11)
+         ! Pressure gradient: delta u_i * d_i delta p
+         buffer=zero
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term18_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + du * bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term19_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + dv * bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term20_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + dw * bf
+
+      case(12)
+         ! Pressure gradient: base u_i * d_i delta p
+         buffer=zero
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term18_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + ubase * bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term19_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + vbase * bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term20_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + wbase * bf
+
+      case(13)
+         ! Pressure gradient: delta u_i * d_i base p
+         ! Make sure that squeeze was .true. in the main simulation
+         buffer=zero
+         call read_file('Run'//trim(cbrid)//'_budget0_term17_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + du * bf
+         call read_file('Run'//trim(cbrid)//'_budget0_term18_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + dv * bf
+         call read_file('Run'//trim(cbrid)//'_budget0_term19_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + dw * bf
+
+      case(14)
+         ! SGS stresses: delta u_i * d_j delta tau_ij
+         buffer=zero
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term12_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + du * bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term13_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + dv * bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term14_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + dw * bf
+
+      case(15)
+         ! SGS stresses: base u_i * d_j delta tau_ij
+         buffer=zero
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term12_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + ubase * bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term13_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + vbase * bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term14_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + wbase * bf
+
+      case(16)
+         ! SGS stresses: delta u_i * d_j base tau_ij
+         ! Make sure that squeeze was .true. in the main simulation
+         buffer=zero
+         call read_file('Run'//trim(cbrid)//'_budget0_term20_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + du * bf
+         call read_file('Run'//trim(cbrid)//'_budget0_term21_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + dv * bf
+         call read_file('Run'//trim(cbrid)//'_budget0_term22_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + dw * bf
+
+      case(17)
+         ! Production: delta u_i * mean(delta u_j' d_j delta u_i')
+         buffer=zero
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget2_term01_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + du * bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget2_term02_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + dv * bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget2_term03_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + dw * bf
+         
+      case(18)
+         ! Production: delta u_i * mean(delta u_j' d_j base u_i')
+         buffer=zero
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget2_term04_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + du * bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget2_term05_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + dv * bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget2_term06_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + dw * bf
+
+      case(19)
+         ! Production: delta u_i * mean(base u_j' d_j delta u_i')
+         buffer=zero
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget2_term07_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + du * bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget2_term08_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + dv * bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget2_term09_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + dw * bf
+
+      case(20)
+         ! Production: delta u_i * mean(base u_j' d_j base u_i')
+         buffer=zero
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget2_term10_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + du * bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget2_term11_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + dv * bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget2_term12_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + dw * bf
+
+      case(21)
+         ! Production: base u_i * mean(delta u_j' d_j delta u_i')
+         buffer=zero
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget2_term01_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + ubase * bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget2_term02_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + vbase * bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget2_term03_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + wbase * bf
+
+      case(22)
+         ! Production: base u_i * mean(delta u_j' d_j base u_i')
+         buffer=zero
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget2_term04_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + ubase * bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget2_term05_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + vbase * bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget2_term06_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + wbase * bf
+         
+      case(23)
+         ! Production: base u_i * mean(base u_j' d_j delta u_i')
+         buffer=zero
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget2_term07_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + ubase * bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget2_term08_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + vbase * bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget2_term09_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer=buffer + wbase * bf
+         
+      case(24)
+         ! Coriolis: delta u_i * delta ucor_i
+         buffer=zero
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term15_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer = buffer - du * bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term16_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer = buffer - dv * bf
+         
+      case(25)
+         ! Coriolis: delta u_i * base ucor_i
+         ! Make sure that squeeze was .true. in the main simulation
+         buffer=zero
+         call read_file('Run'//trim(cbrid)//'_budget0_term23_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer = buffer - du * bf
+         call read_file('Run'//trim(cbrid)//'_budget0_term24_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer = buffer - dv * bf
+
+      case(26)
+         ! Coriolis: base u_i * delta ucor_i
+         buffer=zero
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term15_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer = buffer - ubase * bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term16_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer = buffer - vbase * bf
+      end select
+
+      ! Average this budget term across the box
+      if(do_box_averaging) call integrate_box_yz(buffer, MKEprofiles(:,idx))
+
+      ! Write to file calculated dependent variables if requested
+      if(writeDependentVariables .and. depedent_variable(5, idx))then
+         write(idx_str, '(I2.2)') idx
+         call dump_budget_field(buffer, idx_str, '8', trim(key), trim(stamp))
+      end if
+   end do
+
+  end subroutine
+
+  subroutine TMPbudget(crid, key, stamp)
+   implicit none
+   character(len=*), intent(in) :: crid, key, stamp
+   character(len=2) :: idx_str
+   integer :: idx
+   real(rkind), dimension(:,:,:), allocatable :: bf1
+
+   allocate(bf1(gpC%xsz(1),gpC%xsz(2),gpC%xsz(3)))
+   do idx = 1, 3
+      select case(idx)
+      case(1)
+         ! Advection: base u_j * partial_j (delta u_i' delta u_i')/2
+         buffer=zero
+         bf1=zero
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term01_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); bf1=bf1+bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term04_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); bf1=bf1+bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term06_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); bf1=bf1+bf
+         bf1 = half*bf1
+         call ddx_R2R(bf1, bf); buffer = buffer + bf * ubase
+
+         bf1=zero
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term07_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); bf1=bf1+bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term12_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); bf1=bf1+bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term15_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); bf1=bf1+bf
+         call ddx_R2R(bf1, bf); buffer = buffer + bf * ubase
+         
+      case(2)
+         ! Advection: base u_j * partial_j (delta u_i' delta u_i')/2
+         buffer=zero
+         bf1=zero
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term01_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); bf1=bf1+bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term04_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); bf1=bf1+bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term06_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); bf1=bf1+bf
+         bf1 = half*bf1
+         call ddy_R2R(bf1, bf); buffer = buffer + bf * vbase
+
+         bf1=zero
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term07_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); bf1=bf1+bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term12_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); bf1=bf1+bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term15_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); bf1=bf1+bf
+         call ddy_R2R(bf1, bf); buffer = buffer + bf * vbase
+         
+      case(3)
+         ! Advection: base u_j * partial_j (delta u_i' delta u_i')/2
+         buffer=zero
+         bf1=zero
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term01_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); bf1=bf1+bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term04_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); bf1=bf1+bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term06_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); bf1=bf1+bf
+         bf1 = half*bf1
+         call ddz_R2R(bf1, bf, 1, 1); buffer = buffer + bf * wbase
+
+         bf1=zero
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term07_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); bf1=bf1+bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term12_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); bf1=bf1+bf
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term15_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf); bf1=bf1+bf
+         call ddz_R2R(bf1, bf, 1, 1); buffer = buffer + bf * wbase
+      end select
+
+      ! Average this budget term across the box
+      if(do_box_averaging) call integrate_box_yz(buffer, TMPprofiles(:,idx))
+
+      ! Write to file calculated dependent variables if requested
+      if(writeDependentVariables .and. depedent_variable(6, idx))then
+         write(idx_str, '(I2.2)') idx
+         call dump_budget_field(buffer, idx_str, '9', trim(key), trim(stamp))
+      end if
+   end do
+   deallocate(bf1)
   end subroutine
 
 end module constructDeficitBudgets_mod
@@ -1703,12 +1902,14 @@ program constructDeficitBudgets
    integer :: ioUnit, ierr, k
    logical :: periodicbcs(3)
    character(len=clen) :: inputfile, ers
+   character(len=2) :: crid, cbrid
 
    namelist /INPUT/ inputdir, outputdir, nx, ny, nz, Lx, Ly, Lz, prow, pcol, RID, &
-                    BRID, budgettype, writeDependentVariables, startIDX, endIDX, tag, &
-                    do_box_averaging
-   namelist /NUMERICS/ NumericalSchemeVert
-   namelist /BCs/ PeriodicInZ, botWall, topWall, botBC_temp
+                    BRID, writeDependentVariables, startIDX, endIDX, &
+                    do_box_averaging, NumericalSchemeVert, &
+                    PeriodicInZ, botWall, topWall, botBC_temp, &
+                    do_x_budget, do_y_budget, do_z_budget, do_TKE_budget, do_MKE_budget, &
+                    do_TMP_budget
    namelist /BOX/ x1, x2, y1, y2, z1, z2
 
    ! Do MPI stuff
@@ -1722,16 +1923,6 @@ program constructDeficitBudgets
    if (ierr/=0)then
       write(ers,'(I0)')ierr
       call gracefulExit("Reading failed for INPUT with error "//trim(ers), 101)
-   end if
-   read(unit=ioUnit, NML=NUMERICS, IOSTAT=ierr)
-   if (ierr/=0)then
-      write(ers,'(I0)')ierr
-      call gracefulExit("Reading failed for NUMERICS with error "//trim(ers), 102)
-   end if
-   read(unit=ioUnit, NML=BCs, IOSTAT=ierr)
-   if (ierr/=0)then
-      write(ers,'(I0)')ierr
-      call gracefulExit("Reading failed for BCs with error "//trim(ers), 103)
    end if
    read(unit=ioUnit, NML=BOX, IOSTAT=ierr)
    if (ierr/=0)then
@@ -1756,30 +1947,59 @@ program constructDeficitBudgets
 
    ! Get file list and sort by time  
    call get_keys_stamps()
+   write(crid, '(I2.2)') RID
+   write(cbrid, '(I2.2)') BRID
 
    ! Loop through time frames
    do k = 1, size(sorted_keys)
       call tic()
 
       if(.not. TimeWithinRange(trim(sorted_keys(k)), startIDX, endIDX)) cycle
-
       call message(0, 'Time Index: '//trim(sorted_keys(k))//', # Frames: '//trim(sorted_stamps(k)))
+      call read_velocity(crid, cbrid, trim(sorted_keys(k)), trim(sorted_stamps(k)))
 
-      ! Read Budgets
-      call readBudgets(trim(sorted_keys(k)), trim(sorted_stamps(k)))
-
-      ! Compute gradients
-      call compute_duidxj()
-
-      ! Compute Budgets
-      call compute_budgets(trim(sorted_keys(k)), trim(sorted_stamps(k)))  
-
-      ! Export profiles
-      if((nrank == 0) .and. do_box_averaging)then
-         call export_csv(trim(sorted_keys(k)), trim(sorted_stamps(k)))
+      if(do_x_budget)then 
+         call xbudget(crid, trim(sorted_keys(k)), trim(sorted_stamps(k)))
+         if((nrank == 0) .and. do_box_averaging)then
+            call export_csv(csv_file_name(trim(sorted_keys(k)), trim(sorted_stamps(k)), "X"), xprofiles)
+         end if
       end if
 
-      call resetEverything()
+      if(do_y_budget)then 
+         call ybudget(crid, trim(sorted_keys(k)), trim(sorted_stamps(k)))
+         if((nrank == 0) .and. do_box_averaging)then
+            call export_csv(csv_file_name(trim(sorted_keys(k)), trim(sorted_stamps(k)), "Y"), yprofiles)
+         end if
+      end if
+
+      if(do_z_budget)then 
+         call zbudget(crid, trim(sorted_keys(k)), trim(sorted_stamps(k)))
+         if((nrank == 0) .and. do_box_averaging)then
+            call export_csv(csv_file_name(trim(sorted_keys(k)), trim(sorted_stamps(k)), "Z"), zprofiles)
+         end if
+      end if
+
+      if(do_TKE_budget)then 
+         call TKEbudget(crid, cbrid, trim(sorted_keys(k)), trim(sorted_stamps(k)))
+         if((nrank == 0) .and. do_box_averaging)then
+            call export_csv(csv_file_name(trim(sorted_keys(k)), trim(sorted_stamps(k)), "TKE"), TKEprofiles)
+         end if
+      end if
+
+      if(do_MKE_budget)then 
+         call MKEbudget(crid, cbrid, trim(sorted_keys(k)), trim(sorted_stamps(k)))
+         if((nrank == 0) .and. do_box_averaging)then
+            call export_csv(csv_file_name(trim(sorted_keys(k)), trim(sorted_stamps(k)), "MKE"), MKEprofiles)
+         end if
+      end if
+
+      if(do_TMP_budget)then 
+         call TMPbudget(crid, trim(sorted_keys(k)), trim(sorted_stamps(k)))
+         if((nrank == 0) .and. do_box_averaging)then
+            call export_csv(csv_file_name(trim(sorted_keys(k)), trim(sorted_stamps(k)), "TMP"), TMPprofiles)
+         end if
+      end if
+
       call message(0, ' ')
       call MPI_Barrier(MPI_COMM_WORLD, ierr)
       call toc()

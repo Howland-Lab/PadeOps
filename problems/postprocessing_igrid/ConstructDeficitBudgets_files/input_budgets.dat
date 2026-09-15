@@ -13,17 +13,17 @@ RID                      = 7
 BRID                     = 6 ! Base run index (precursor)
 startIDX                 = 100
 endIDX                   = 200
-tag                      = 'box1'
-! BudgetType               = 5    ! 1: x-Momentum, 2: y-Momentum, 3: z-Momentum, 4: MKE, 5: TKE
-/
-&NUMERICS
 NumericalSchemeVert      = 1
-/
-&BCs
 botWall                  = 3
 topWall                  = 2
 botBC_temp               = 1
 PeriodicInZ              = .false.
+do_x_budget              = .true. 
+do_y_budget              = .false. 
+do_z_budget              = .false. 
+do_TKE_budget            = .false. 
+do_MKE_budget            = .false. 
+do_TMP_budget            = .false. 
 /
 &BOX
 x1                       = 25.0
