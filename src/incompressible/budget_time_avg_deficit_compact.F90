@@ -31,7 +31,7 @@ module budgets_time_avg_deficit_compact_mod
         integer :: size_budget_0, size_budget_1, size_budget_2, size_budget_3
         real(rkind), dimension(:,:,:,:), allocatable :: MCG
         logical :: doMCG = .false.
-        integer :: counter
+        integer :: counter, turbine_counter
         real(rkind) :: timeSum, weight
         character(len=clen) :: budgets_dir
         logical :: time_weighted_average=.false.
@@ -43,6 +43,7 @@ module budgets_time_avg_deficit_compact_mod
         real(rkind) :: time_budget_start 
         logical :: do_budgets
         logical :: forceDump
+        logical :: restart_missing_turbine_terms = .false.
 
         ! Avoid allocating a new holder of delta_tauij with every budget sample
         real(rkind), dimension(:,:,:,:), allocatable :: delta_tauij
@@ -60,9 +61,11 @@ module budgets_time_avg_deficit_compact_mod
         procedure, private  :: dump_budget_field 
         
         procedure, private  :: AssembleBudget0
+        procedure, private  :: AssembleBudget0MissingTurbineTerms
         procedure, private  :: AssembleBudget1
         procedure, private  :: AssembleBudget2
         procedure, private  :: AssembleBudget3
+        procedure, private  :: AssembleBudget3MissingTurbineTerms
         procedure, private  :: AssembleMCG
         procedure, private  :: restartMCG   
         procedure, private  :: getProductOfMeans
@@ -88,11 +91,12 @@ module budgets_time_avg_deficit_compact_mod
         real(rkind) :: time_budget_start = -1.0d0
         logical :: use_time_weighted_average=.false.
         logical :: do_budgets = .false. 
+        logical :: restart_missing_turbine_terms = .false.
         logical :: do_budget0=.false., do_budget1=.false., do_budget2=.false., do_budget3=.false.
         namelist /BUDGET_TIME_AVG_DEFICIT_COMPACT/ budgets_dir, restart_budgets, restart_dir, &
             restart_rid, restart_tid, restart_counter, tidx_dump, tidx_compute, do_budgets, &
             use_time_weighted_average, tidx_budget_start, time_budget_start, &
-            do_budget0, do_budget1, do_budget2, do_budget3 
+            do_budget0, do_budget1, do_budget2, do_budget3, restart_missing_turbine_terms
 
         ! STEP 1: Read in inputs, link pointers and allocate budget vectors
         ioUnit = 534
@@ -114,9 +118,7 @@ module budgets_time_avg_deficit_compact_mod
         end if
         this%tidx_budget_start = tidx_budget_start  
         this%time_budget_start = time_budget_start  
-        ! Turbine-force budget terms are intentionally disabled in this compact
-        ! module. Re-enable this assignment together with terms 20-21 in Budget 3.
-        !this%useWindTurbines = this%prim_igrid_sim%useWindTurbines
+        this%useWindTurbines = this%prim_igrid_sim%useWindTurbines
         this%isStratified    = this%prim_igrid_sim%isStratified
         this%useCoriolis    = this%prim_igrid_sim%useCoriolis
         ! Time weighting is intentionally disabled until the precursor and
@@ -124,26 +126,38 @@ module budgets_time_avg_deficit_compact_mod
         !this%time_weighted_average = use_time_weighted_average
         this%time_weighted_average = .False.
         this%forceDump = .false.
+        this%restart_missing_turbine_terms = restart_missing_turbine_terms
         this%do_budget0 = do_budget0
         this%do_budget1 = do_budget1
         this%do_budget2 = do_budget2
         this%do_budget3 = do_budget3
-        
-        if(this%do_budget1)this%do_budget0=.true.
-        if(this%do_budget2)this%do_budget0=.true.
-        if(this%do_budget3)then
-            this%do_budget0=.true.
-            this%do_budget1=.true.
-            this%do_budget2=.true.
+
+        if(this%restart_missing_turbine_terms)then
+            this%do_budget0 = .true.
+            this%do_budget1 = .false.
+            this%do_budget2 = .false.
+            this%do_budget3 = .true.
+            this%doMCG = .false.
+            if(.not. this%useWindTurbines) then
+                call GracefulExit("restart_missing_turbine_terms requires useWindTurbines.", 126)
+            end if
+        else
+            if(this%do_budget1)this%do_budget0=.true.
+            if(this%do_budget2)this%do_budget0=.true.
+            if(this%do_budget3)then
+                this%do_budget0=.true.
+                this%do_budget1=.true.
+                this%do_budget2=.true.
+            end if
+            if(this%do_budget2) this%doMCG = .true.
         end if
-        if(this%do_budget2) this%doMCG = .true.
         this%budgets_dir = budgets_dir
 
         if(this%do_budgets) then 
             if(.not. allocated(this%pre_budget%budget_0)) then
                 call GracefulExit("Compact deficit budgets require initialized precursor budget_0.", 124)
             end if
-            if(this%do_budget3 .and. (.not. this%pre_budget%isSqueezed()) .and. (.not. allocated(this%pre_budget%budget_1))) then
+            if((.not. this%restart_missing_turbine_terms) .and. this%do_budget3 .and. (.not. this%pre_budget%isSqueezed()) .and. (.not. allocated(this%pre_budget%budget_1))) then
                 call GracefulExit("Compact deficit budget3 requires precursor budget_1. Use base budgetType > 0.", 125)
             end if
 
@@ -152,7 +166,9 @@ module budgets_time_avg_deficit_compact_mod
             endif
 
             if(this%do_budget0)then
-                if(this%useWindTurbines)then
+                if(this%restart_missing_turbine_terms)then
+                    this%size_budget_0 = 4
+                else if(this%useWindTurbines)then
                     this%size_budget_0 = 22
                 else
                     this%size_budget_0 = 20
@@ -171,7 +187,9 @@ module budgets_time_avg_deficit_compact_mod
             end if
 
             if(this%do_budget3)then
-                if(this%useWindTurbines)then
+                if(this%restart_missing_turbine_terms)then
+                    this%size_budget_3 = 2
+                else if(this%useWindTurbines)then
                     this%size_budget_3 = 21
                 else
                     this%size_budget_3 = 19
@@ -179,7 +197,7 @@ module budgets_time_avg_deficit_compact_mod
                 allocate(this%budget_3(this%nx,this%ny,this%nz,this%size_budget_3))
             end if
 
-            if(this%do_budget0) allocate(this%delta_tauij(this%nx,this%ny,this%nz,6))
+            if(this%do_budget0 .and. (.not. this%restart_missing_turbine_terms)) allocate(this%delta_tauij(this%nx,this%ny,this%nz,6))
 
             if(this%doMCG)allocate(this%MCG(this%nx,this%ny,this%nz,18))
 
@@ -227,7 +245,7 @@ module budgets_time_avg_deficit_compact_mod
                 call prim_igrid_sim%instrumentForDeficitBudgets(this%uc, this%vc, this%wc, this%usgs, this%vsgs, this%wsgs, this%px, this%py, this%pz, & 
                     this%ucor, this%vcor, this%wcor, this%wb) 
             end if             
-        end if 
+        end if
      end subroutine
 
      subroutine doBudgets(this, forceDump)
@@ -263,6 +281,16 @@ module budgets_time_avg_deficit_compact_mod
     subroutine updateBudget(this)
         class(budgets_time_avg_deficit_compact), intent(inout) :: this
 
+        if(this%restart_missing_turbine_terms) then
+            call this%prim_igrid_sim%getMomentumTerms()
+            call this%pre_budget%igrid_sim%getMomentumTerms()
+            call this%AssembleBudget0MissingTurbineTerms()
+            call this%AssembleBudget3MissingTurbineTerms()
+            this%counter = this%counter + 1
+            this%turbine_counter = this%turbine_counter + 1
+            return
+        end if
+
         ! This step computes the pressure field of the primary and precursor simulations.
         call this%prim_igrid_sim%getMomentumTerms()  
         call this%pre_budget%igrid_sim%getMomentumTerms()  
@@ -286,10 +314,43 @@ module budgets_time_avg_deficit_compact_mod
     subroutine DumpBudget(this)
         class(budgets_time_avg_deficit_compact), intent(inout), target :: this
         real(rkind) :: totalWeight
-        integer :: idx, budgetid, budgetsize
+        integer :: idx, budgetid, budgetsize, saved_counter
         real(rkind), dimension(:,:,:), pointer :: buffer
         real(rkind), dimension(:,:,:,:), pointer :: budget
         logical :: doBudget, preBudgetSqueezed
+
+        if(this%restart_missing_turbine_terms) then
+            buffer => this%prim_igrid_sim%rbuffxC(:,:,:,4)
+            totalWeight = real(this%counter,rkind) + 1.d-18
+            this%budget_0(:,:,:,1:2) = this%budget_0(:,:,:,1:2)/totalWeight
+            this%pre_budget%budget_0(:,:,:,1:2) = this%pre_budget%budget_0(:,:,:,1:2)/totalWeight
+            call this%dump_budget_field(this%budget_0(:,:,:,1), 1, 0)
+            call this%dump_budget_field(this%budget_0(:,:,:,2), 2, 0)
+
+            totalWeight = real(this%turbine_counter,rkind) + 1.d-18
+            saved_counter = this%counter
+            this%counter = this%turbine_counter
+            this%budget_0(:,:,:,3:4) = this%budget_0(:,:,:,3:4)/totalWeight
+            this%budget_3(:,:,:,1:2) = this%budget_3(:,:,:,1:2)/totalWeight
+            call this%dump_budget_field(this%budget_0(:,:,:,3), 21, 0)
+            call this%dump_budget_field(this%budget_0(:,:,:,4), 22, 0)
+            
+            call this%getProductOfMeans(3, 20, buffer)
+            buffer = this%budget_3(:,:,:,1) - buffer
+            call this%dump_budget_field(buffer, 20, 3)
+            
+            call this%getProductOfMeans(3, 21, buffer)
+            buffer = this%budget_3(:,:,:,2) - buffer
+            call this%dump_budget_field(buffer, 21, 3)
+            
+            this%budget_0(:,:,:,3:4) = this%budget_0(:,:,:,3:4)*totalWeight
+            this%budget_3(:,:,:,1:2) = this%budget_3(:,:,:,1:2)*totalWeight
+            this%counter = saved_counter
+            totalWeight = real(this%counter,rkind) + 1.d-18
+            this%budget_0(:,:,:,1:2) = this%budget_0(:,:,:,1:2)*totalWeight
+            this%pre_budget%budget_0(:,:,:,1:2) = this%pre_budget%budget_0(:,:,:,1:2)*totalWeight
+            return
+        end if
 
         preBudgetSqueezed = this%pre_budget%isSqueezed()
         totalWeight = real(this%counter,rkind) + 1.d-18
@@ -502,6 +563,28 @@ module budgets_time_avg_deficit_compact_mod
         end if
 
         nullify(rbuffxE1, rbuffxC1, rbuffxC2, cbuffyC1, cbuffyE1)
+    end subroutine
+
+    subroutine AssembleBudget0MissingTurbineTerms(this)
+        class(budgets_time_avg_deficit_compact), intent(inout), target :: this
+        real(rkind), dimension(:,:,:), pointer :: rbuffxC1
+        complex(rkind), dimension(:,:,:), pointer :: cbuffyC1
+
+        cbuffyC1 => this%prim_igrid_sim%cbuffyC(:,:,:,2)
+        rbuffxC1 => this%prim_igrid_sim%rbuffxC(:,:,:,1)
+
+        this%budget_0(:,:,:,1) = this%budget_0(:,:,:,1) + (this%prim_igrid_sim%u - this%pre_budget%igrid_sim%u)
+        this%budget_0(:,:,:,2) = this%budget_0(:,:,:,2) + (this%prim_igrid_sim%v - this%pre_budget%igrid_sim%v)
+
+        cbuffyC1 = this%uturb - this%pre_budget%uturb
+        call this%prim_igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
+        this%budget_0(:,:,:,3) = this%budget_0(:,:,:,3) + rbuffxC1
+
+        cbuffyC1 = this%vturb - this%pre_budget%vturb
+        call this%prim_igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
+        this%budget_0(:,:,:,4) = this%budget_0(:,:,:,4) + rbuffxC1
+
+        nullify(rbuffxC1, cbuffyC1)
     end subroutine
 
     ! ---------------------- Budget 1 ------------------------
@@ -882,22 +965,50 @@ module budgets_time_avg_deficit_compact_mod
         this%budget_3(:,:,:,16) = this%budget_3(:,:,:,16) + wbase * buffer
         this%budget_3(:,:,:,19) = this%budget_3(:,:,:,19) + dw * buffer
 
-        ! if (this%useWindTurbines)then
-        !     cbuffyC1 = this%uturb - this%pre_budget%uturb
-        !     call this%prim_igrid_sim%spectC%ifft(cbuffyC1, buffer)
-        !     this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) + du * buffer 
-        !     this%budget_3(:,:,:,21) = this%budget_3(:,:,:,21) + ubase * buffer
+        if (this%useWindTurbines)then
+            cbuffyC1 = this%uturb - this%pre_budget%uturb
+            call this%prim_igrid_sim%spectC%ifft(cbuffyC1, buffer)
+            this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) + du * buffer
+            this%budget_3(:,:,:,21) = this%budget_3(:,:,:,21) + ubase * buffer
 
-        !     cbuffyC1 = this%vturb - this%pre_budget%vturb
-        !     call this%prim_igrid_sim%spectC%ifft(cbuffyC1, buffer)
-        !     this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) + dv * buffer 
-        !     this%budget_3(:,:,:,21) = this%budget_3(:,:,:,21) + vbase * buffer
-        ! end if 
+            cbuffyC1 = this%vturb - this%pre_budget%vturb
+            call this%prim_igrid_sim%spectC%ifft(cbuffyC1, buffer)
+            this%budget_3(:,:,:,20) = this%budget_3(:,:,:,20) + dv * buffer
+            this%budget_3(:,:,:,21) = this%budget_3(:,:,:,21) + vbase * buffer
+        end if
 
         nullify(du, dv, dw, rbuffxE1, rbuffxE2, buffer, cbuffyE1, cbuffyC1, ubase, vbase, wbase)  
         nullify(dudxC_prim, dudyC_prim, dudzC_prim, dudxC_pre, dudyC_pre, dudzC_pre)
         nullify(dvdxC_prim, dvdyC_prim, dvdzC_prim, dvdxC_pre, dvdyC_pre, dvdzC_pre)
         nullify(dwdxC_prim, dwdyC_prim, dwdzC_prim, dwdxC_pre, dwdyC_pre, dwdzC_pre)      
+    end subroutine
+
+    subroutine AssembleBudget3MissingTurbineTerms(this)
+        class(budgets_time_avg_deficit_compact), intent(inout), target :: this
+        real(rkind), dimension(:,:,:), pointer :: du, dv, ubase, vbase, buffer
+        complex(rkind), dimension(:,:,:), pointer :: cbuffyC1
+
+        du => this%prim_igrid_sim%rbuffxC(:,:,:,1)
+        dv => this%prim_igrid_sim%rbuffxC(:,:,:,2)
+        buffer => this%prim_igrid_sim%rbuffxC(:,:,:,4)
+        cbuffyC1 => this%prim_igrid_sim%cbuffyC(:,:,:,2)
+        ubase => this%pre_budget%igrid_sim%u
+        vbase => this%pre_budget%igrid_sim%v
+
+        du = this%prim_igrid_sim%u - this%pre_budget%igrid_sim%u
+        dv = this%prim_igrid_sim%v - this%pre_budget%igrid_sim%v
+
+        cbuffyC1 = this%uturb - this%pre_budget%uturb
+        call this%prim_igrid_sim%spectC%ifft(cbuffyC1, buffer)
+        this%budget_3(:,:,:,1) = this%budget_3(:,:,:,1) + du * buffer
+        this%budget_3(:,:,:,2) = this%budget_3(:,:,:,2) + ubase * buffer
+
+        cbuffyC1 = this%vturb - this%pre_budget%vturb
+        call this%prim_igrid_sim%spectC%ifft(cbuffyC1, buffer)
+        this%budget_3(:,:,:,1) = this%budget_3(:,:,:,1) + dv * buffer
+        this%budget_3(:,:,:,2) = this%budget_3(:,:,:,2) + vbase * buffer
+
+        nullify(du, dv, ubase, vbase, buffer, cbuffyC1)
     end subroutine
 
     subroutine getProductOfMeans(this, budgetid, idx, buffer)
@@ -1271,10 +1382,22 @@ module budgets_time_avg_deficit_compact_mod
                     this%MCG(:,:,:,8) * (this%budget_1(:,:,:,5) - two*this%budget_0(:,:,:,3)*this%budget_0(:,:,:,2)) + &
                     this%MCG(:,:,:,9) * (this%budget_1(:,:,:,6) - two*this%budget_0(:,:,:,3)*this%budget_0(:,:,:,3))
 
-            ! case(20)
-            !     buffer = this%budget_0(:,:,:,1)*this%budget_0(:,:,:,21) + this%budget_0(:,:,:,2)*this%budget_0(:,:,:,22)
-            ! case(21)
-            !     buffer = this%pre_budget%budget_0(:,:,:,1)*this%budget_0(:,:,:,21) + this%pre_budget%budget_0(:,:,:,2)*this%budget_0(:,:,:,22)
+            case(20)
+                if(this%restart_missing_turbine_terms)then
+                    buffer = this%budget_0(:,:,:,1)*this%budget_0(:,:,:,3) + &
+                             this%budget_0(:,:,:,2)*this%budget_0(:,:,:,4)
+                else
+                    buffer = this%budget_0(:,:,:,1)*this%budget_0(:,:,:,21) + &
+                             this%budget_0(:,:,:,2)*this%budget_0(:,:,:,22)
+                end if
+            case(21)
+                if(this%restart_missing_turbine_terms)then
+                    buffer = this%pre_budget%budget_0(:,:,:,1)*this%budget_0(:,:,:,3) + &
+                             this%pre_budget%budget_0(:,:,:,2)*this%budget_0(:,:,:,4)
+                else
+                    buffer = this%pre_budget%budget_0(:,:,:,1)*this%budget_0(:,:,:,21) + &
+                             this%pre_budget%budget_0(:,:,:,2)*this%budget_0(:,:,:,22)
+                end if
             end select
         end if
 
@@ -1359,6 +1482,14 @@ module budgets_time_avg_deficit_compact_mod
         if(allocated(this%budget_2)) this%budget_2 = zero
         if(allocated(this%budget_3)) this%budget_3 = zero
         if(allocated(this%MCG)) this%MCG = zero
+
+        if(this%restart_missing_turbine_terms) then
+            call this%restart_budget_field(this%budget_0(:,:,:,1), dir, rid, tid, cid, 0, 1)
+            call this%restart_budget_field(this%budget_0(:,:,:,2), dir, rid, tid, cid, 0, 2)
+            this%budget_0(:,:,:,1:2) = this%budget_0(:,:,:,1:2)*totalWeight
+            this%turbine_counter = 0
+            return
+        end if
 
         ! The precursor budget must already be restarted and in raw-sum mode,
         ! with the same historical sample count as this compact budget.
@@ -1485,6 +1616,7 @@ module budgets_time_avg_deficit_compact_mod
         class(budgets_time_avg_deficit_compact), intent(inout) :: this
         
         this%counter = 0
+        this%turbine_counter = 0
         this%timeSum = zero
         if(allocated(this%budget_0)) this%budget_0 = zero
         if(allocated(this%budget_1)) this%budget_1 = zero 

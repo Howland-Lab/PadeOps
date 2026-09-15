@@ -184,7 +184,8 @@ module budgets_time_avg_mod
         logical :: do_budgets
         logical :: forceDump
         logical :: splitPressureDNS
-        logical :: squeeze = .false. ! if ture, limits the number of dumped budgets 
+        logical :: squeeze = .false. ! if ture, limits the number of dumped budgets
+        logical :: restart_missing_turbine_terms = .false.
 
     contains
         procedure           :: init        
@@ -202,7 +203,9 @@ module budgets_time_avg_mod
         procedure, private  :: dump_budget4_field 
         
         procedure, private  :: AssembleBudget0
+        procedure, private  :: AssembleBudget0MissingTurbineTerms
         procedure, private  :: DumpBudget0 
+        procedure, private  :: DumpBudget0MissingTurbineTerms
         
         procedure, private  :: AssembleBudget1
         procedure, private  :: DumpBudget1
@@ -261,8 +264,8 @@ contains
         integer :: tidx_compute = 1000000, tidx_dump = 1000000, tidx_budget_start = -100
         real(rkind) :: time_budget_start = -1.0d0
         logical :: do_budgets = .false. 
-        logical :: squeeze = .false.
-        namelist /BUDGET_TIME_AVG/ budgetType, budgets_dir, restart_budgets, restart_dir, restart_rid, restart_tid, restart_counter, tidx_dump, tidx_compute, do_budgets, tidx_budget_start, time_budget_start, squeeze
+        logical :: squeeze = .false., restart_missing_turbine_terms = .false.
+        namelist /BUDGET_TIME_AVG/ budgetType, budgets_dir, restart_budgets, restart_dir, restart_rid, restart_tid, restart_counter, tidx_dump, tidx_compute, do_budgets, tidx_budget_start, time_budget_start, squeeze, restart_missing_turbine_terms
         
         restart_dir = "NULL"
 
@@ -285,6 +288,7 @@ contains
         this%useCoriolis    = igrid_sim%useCoriolis
         this%forceDump = .false.
         this%squeeze = squeeze
+        this%restart_missing_turbine_terms = restart_missing_turbine_terms
 
         this%budgets_dir = budgets_dir
         this%budgetType = budgetType
@@ -299,44 +303,48 @@ contains
 
         if(this%do_budgets) then
             ! allocate budget 0 -> minimum needed!
-            if (this%HaveScalars) then
-                allocate(this%budget_0(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),31+2*this%igrid_sim%n_scalars))
+            if (this%restart_missing_turbine_terms)then
+                allocate(this%budget_0(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),2))
             else
-                allocate(this%budget_0(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),31))
+                if (this%HaveScalars) then
+                    allocate(this%budget_0(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),31+2*this%igrid_sim%n_scalars))
+                else
+                    allocate(this%budget_0(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),31))
+                end if
+                ! allocate budget 1
+                if (this%budgetType > 0) then
+                    allocate(this%budget_1(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),16))
+                end if
+                ! allocate budget 2
+                if (this%budgetType > 1) then
+                    allocate(this%budget_2(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
+                end if
+                ! allocate budget 3
+                if (this%budgetType > 2) then
+                    allocate(this%budget_3(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),08))
+                end if
+                ! allocate budget 4
+                if (this%budgetType > 3) then
+                    allocate(this%budget_4_11(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
+                    allocate(this%budget_4_22(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
+                    allocate(this%budget_4_13(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
+                    allocate(this%budget_4_23(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
+                    allocate(this%budget_4_33(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
+                end if
+                ! allocate additional fields needed for budget 3 and above!
+                if (this%budgetType > 2) then
+                    ! allocate(this%tke(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
+                    ! allocate(this%tke_old(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
+
+                    ! allocate(this%u_old(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
+                    ! allocate(this%v_old(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
+                    ! allocate(this%wC_old(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
+
+                    allocate(this%dUdt(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
+                    allocate(this%dVdt(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
+                    allocate(this%dWdt(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
+                end if
             end if
-            ! allocate budget 1
-            if (this%budgetType > 0) then
-                allocate(this%budget_1(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),16))
-            end if
-            ! allocate budget 2
-            if (this%budgetType > 1) then
-                allocate(this%budget_2(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
-            end if
-            ! allocate budget 3
-            if (this%budgetType > 2) then
-                allocate(this%budget_3(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),08))
-            end if
-            ! allocate budget 4
-            if (this%budgetType > 3) then
-                allocate(this%budget_4_11(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
-                allocate(this%budget_4_22(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
-                allocate(this%budget_4_13(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
-                allocate(this%budget_4_23(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
-                allocate(this%budget_4_33(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3),10))
-            end if
-            ! allocate additional fields needed for budget 3 and above!
-            if (this%budgetType > 2) then
-                ! allocate(this%tke(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
-                ! allocate(this%tke_old(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
-                                
-                ! allocate(this%u_old(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
-                ! allocate(this%v_old(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
-                ! allocate(this%wC_old(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
-                
-                allocate(this%dUdt(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
-                allocate(this%dVdt(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
-                allocate(this%dWdt(this%igrid_sim%gpC%xsz(1),this%igrid_sim%gpC%xsz(2),this%igrid_sim%gpC%xsz(3)))
-            end if 
 
             ! set buget output directory if not provided
             if ((trim(budgets_dir) .eq. "null") .or.(trim(budgets_dir) .eq. "NULL")) then
@@ -439,6 +447,12 @@ contains
     subroutine updateBudget(this)
         class(budgets_time_avg), intent(inout) :: this
    
+        if(this%restart_missing_turbine_terms) then
+            call this%AssembleBudget0MissingTurbineTerms()
+            this%counter = this%counter + 1
+            return
+        end if
+
         call this%igrid_sim%getMomentumTerms()  
 
         if(this%squeeze) then
@@ -480,6 +494,11 @@ contains
 
     subroutine DumpBudget(this)
         class(budgets_time_avg), intent(inout) :: this
+
+        if(this%restart_missing_turbine_terms) then
+            call this%DumpBudget0MissingTurbineTerms()
+            return
+        end if
         
         ! MKE budget is only assembled before dumping
         if ((this%budgetType>1) .and. (.not. this%squeeze)) call this%AssembleBudget2() 
@@ -514,6 +533,17 @@ contains
         ! Scalar and Turbine Stats
         call this%DumpScalarStats()
     end subroutine 
+
+    subroutine DumpBudget0MissingTurbineTerms(this)
+        class(budgets_time_avg), intent(inout) :: this
+        real(rkind) :: totalWeight
+
+        totalWeight = real(this%counter,rkind) + 1.d-18
+        this%budget_0(:,:,:,1:2) = this%budget_0(:,:,:,1:2)/totalWeight
+        call this%dump_budget_field(this%budget_0(:,:,:,1),1,0)
+        call this%dump_budget_field(this%budget_0(:,:,:,2),2,0)
+        this%budget_0(:,:,:,1:2) = this%budget_0(:,:,:,1:2)*totalWeight
+    end subroutine
 
     ! ---------------------- Budget 0 ------------------------
     subroutine DumpBudget0(this)
@@ -831,6 +861,13 @@ contains
             this%budget_1(:,:,:,14) = this%budget_1(:,:,:,14) + this%igrid_sim%rbuffxC(:,:,:,3)
         end if 
         
+    end subroutine
+
+    subroutine AssembleBudget0MissingTurbineTerms(this)
+        class(budgets_time_avg), intent(inout) :: this
+
+        this%budget_0(:,:,:,1) = this%budget_0(:,:,:,1) + this%igrid_sim%u
+        this%budget_0(:,:,:,2) = this%budget_0(:,:,:,2) + this%igrid_sim%v
     end subroutine
 
     subroutine DumpBudget1(this)
@@ -2254,6 +2291,13 @@ subroutine DumpBudget4_23(this)
         if(allocated(this%budget_4_33)) this%budget_4_33 = 0.d0
         if(allocated(this%budget_4_13)) this%budget_4_13 = 0.d0
         if(allocated(this%budget_4_23)) this%budget_4_23 = 0.d0
+
+        if(this%restart_missing_turbine_terms) then
+            call this%restart_budget_field(this%budget_0(:,:,:,1), dir, rid, tid, cid, 0, 1)
+            call this%restart_budget_field(this%budget_0(:,:,:,2), dir, rid, tid, cid, 0, 2)
+            this%budget_0(:,:,:,1:2) = this%budget_0(:,:,:,1:2)*(real(cid,rkind) + 1.d-18)
+            return
+        end if
 
         ! Budget 0: 
         do idx = 1,size(this%budget_0,4)
