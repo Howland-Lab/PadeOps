@@ -168,9 +168,19 @@ module budgets_time_avg_deficit_compact_mod
 
             if(this%do_budget0)then
                 if(this%restart_missing_turbine_terms)then
-                    this%size_budget_0 = 4
+                    ! Delta u, Delta v, and turbine forcing u/v.  T023 is
+                    ! added only when turbine pressure was requested.
+                    if(this%prim_igrid_sim%computeTurbinePressure)then
+                        this%size_budget_0 = 5
+                    else
+                        this%size_budget_0 = 4
+                    end if
                 else if(this%useWindTurbines)then
-                    this%size_budget_0 = 22
+                    if(this%prim_igrid_sim%computeTurbinePressure)then
+                        this%size_budget_0 = 23
+                    else
+                        this%size_budget_0 = 22
+                    end if
                 else
                     this%size_budget_0 = 20
                 end if
@@ -332,9 +342,15 @@ module budgets_time_avg_deficit_compact_mod
             saved_counter = this%counter
             this%counter = this%turbine_counter
             this%budget_0(:,:,:,3:4) = this%budget_0(:,:,:,3:4)/totalWeight
+            if(this%prim_igrid_sim%computeTurbinePressure)then
+                this%budget_0(:,:,:,5) = this%budget_0(:,:,:,5)/totalWeight
+            end if
             this%budget_3(:,:,:,1:2) = this%budget_3(:,:,:,1:2)/totalWeight
             call this%dump_budget_field(this%budget_0(:,:,:,3), 21, 0)
             call this%dump_budget_field(this%budget_0(:,:,:,4), 22, 0)
+            if(this%prim_igrid_sim%computeTurbinePressure)then
+                call this%dump_budget_field(this%budget_0(:,:,:,5), 23, 0)
+            end if
             
             call this%dealias(this%budget_3(:,:,:,1))
             call this%dealias(this%budget_3(:,:,:,2))
@@ -348,6 +364,9 @@ module budgets_time_avg_deficit_compact_mod
             call this%dump_budget_field(buffer, 21, 3)
             
             this%budget_0(:,:,:,3:4) = this%budget_0(:,:,:,3:4)*totalWeight
+            if(this%prim_igrid_sim%computeTurbinePressure)then
+                this%budget_0(:,:,:,5) = this%budget_0(:,:,:,5)*totalWeight
+            end if
             this%budget_3(:,:,:,1:2) = this%budget_3(:,:,:,1:2)*totalWeight
             this%counter = saved_counter
             totalWeight = real(this%counter,rkind) + 1.d-18
@@ -564,6 +583,12 @@ module budgets_time_avg_deficit_compact_mod
             cbuffyC1 = this%vturb - this%pre_budget%vturb
             call this%prim_igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
             this%budget_0(:,:,:,22) = this%budget_0(:,:,:,22) + rbuffxC1
+
+            if(this%prim_igrid_sim%computeTurbinePressure)then
+                ! Isolated turbine pressure scalar.  Its x-gradient is left
+                ! to offline post-processing using the same spectral derivative.
+                this%budget_0(:,:,:,23) = this%budget_0(:,:,:,23) + this%prim_igrid_sim%pressure_turbine
+            end if
         end if
 
         nullify(rbuffxE1, rbuffxC1, rbuffxC2, cbuffyC1, cbuffyE1)
@@ -587,6 +612,12 @@ module budgets_time_avg_deficit_compact_mod
         cbuffyC1 = this%vturb - this%pre_budget%vturb
         call this%prim_igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
         this%budget_0(:,:,:,4) = this%budget_0(:,:,:,4) + rbuffxC1
+
+        if(this%prim_igrid_sim%computeTurbinePressure)then
+            ! Keep the isolated turbine pressure as the third turbine-specific
+            ! Budget-0 field in the restart-turbine route.
+            this%budget_0(:,:,:,5) = this%budget_0(:,:,:,5) + this%prim_igrid_sim%pressure_turbine
+        end if
 
         nullify(rbuffxC1, cbuffyC1)
     end subroutine
