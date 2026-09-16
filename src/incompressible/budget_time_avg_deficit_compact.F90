@@ -141,6 +141,7 @@ module budgets_time_avg_deficit_compact_mod
             if(.not. this%useWindTurbines) then
                 call GracefulExit("restart_missing_turbine_terms requires useWindTurbines.", 126)
             end if
+            restart_budgets = .true.
         else
             if(this%do_budget1)this%do_budget0=.true.
             if(this%do_budget2)this%do_budget0=.true.
@@ -335,6 +336,9 @@ module budgets_time_avg_deficit_compact_mod
             call this%dump_budget_field(this%budget_0(:,:,:,3), 21, 0)
             call this%dump_budget_field(this%budget_0(:,:,:,4), 22, 0)
             
+            call this%dealias(this%budget_3(:,:,:,1))
+            call this%dealias(this%budget_3(:,:,:,2))
+
             call this%getProductOfMeans(3, 20, buffer)
             buffer = this%budget_3(:,:,:,1) - buffer
             call this%dump_budget_field(buffer, 20, 3)
