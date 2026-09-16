@@ -168,21 +168,25 @@ module budgets_time_avg_deficit_compact_mod
 
             if(this%do_budget0)then
                 if(this%restart_missing_turbine_terms)then
-                    ! Delta u, Delta v, and turbine forcing u/v.  T023 is
-                    ! added only when turbine pressure was requested.
-                    if(this%prim_igrid_sim%computeTurbinePressure)then
-                        this%size_budget_0 = 5
-                    else
-                        this%size_budget_0 = 4
-                    end if
-                else if(this%useWindTurbines)then
-                    if(this%prim_igrid_sim%computeTurbinePressure)then
-                        this%size_budget_0 = 23
-                    else
-                        this%size_budget_0 = 22
+                    ! Fields 1-4 are always Delta u/v and geostrophic
+                    ! forcing x/y. Turbine fields are appended optionally.
+                    this%size_budget_0 = 4
+                    if(this%useWindTurbines)then
+                        this%size_budget_0 = 6
+                        if(this%prim_igrid_sim%computeTurbinePressure)then
+                            this%size_budget_0 = 7
+                        end if
                     end if
                 else
-                    this%size_budget_0 = 20
+                    ! Terms 1-22 have fixed meanings. Turbine terms are
+                    ! appended as T023-T025 when enabled.
+                    this%size_budget_0 = 22
+                    if(this%useWindTurbines)then
+                        this%size_budget_0 = 24
+                        if(this%prim_igrid_sim%computeTurbinePressure)then
+                            this%size_budget_0 = 25
+                        end if
+                    end if
                 end if
                 allocate(this%budget_0(this%nx,this%ny,this%nz,this%size_budget_0))
             end if
@@ -342,14 +346,21 @@ module budgets_time_avg_deficit_compact_mod
             saved_counter = this%counter
             this%counter = this%turbine_counter
             this%budget_0(:,:,:,3:4) = this%budget_0(:,:,:,3:4)/totalWeight
-            if(this%prim_igrid_sim%computeTurbinePressure)then
-                this%budget_0(:,:,:,5) = this%budget_0(:,:,:,5)/totalWeight
+            if(this%useWindTurbines)then
+                this%budget_0(:,:,:,5:6) = this%budget_0(:,:,:,5:6)/totalWeight
+                if(this%prim_igrid_sim%computeTurbinePressure)then
+                    this%budget_0(:,:,:,7) = this%budget_0(:,:,:,7)/totalWeight
+                end if
             end if
             this%budget_3(:,:,:,1:2) = this%budget_3(:,:,:,1:2)/totalWeight
             call this%dump_budget_field(this%budget_0(:,:,:,3), 21, 0)
             call this%dump_budget_field(this%budget_0(:,:,:,4), 22, 0)
-            if(this%prim_igrid_sim%computeTurbinePressure)then
+            if(this%useWindTurbines)then
                 call this%dump_budget_field(this%budget_0(:,:,:,5), 23, 0)
+                call this%dump_budget_field(this%budget_0(:,:,:,6), 24, 0)
+                if(this%prim_igrid_sim%computeTurbinePressure)then
+                    call this%dump_budget_field(this%budget_0(:,:,:,7), 25, 0)
+                end if
             end if
             
             call this%dealias(this%budget_3(:,:,:,1))
@@ -364,8 +375,11 @@ module budgets_time_avg_deficit_compact_mod
             call this%dump_budget_field(buffer, 21, 3)
             
             this%budget_0(:,:,:,3:4) = this%budget_0(:,:,:,3:4)*totalWeight
-            if(this%prim_igrid_sim%computeTurbinePressure)then
-                this%budget_0(:,:,:,5) = this%budget_0(:,:,:,5)*totalWeight
+            if(this%useWindTurbines)then
+                this%budget_0(:,:,:,5:6) = this%budget_0(:,:,:,5:6)*totalWeight
+                if(this%prim_igrid_sim%computeTurbinePressure)then
+                    this%budget_0(:,:,:,7) = this%budget_0(:,:,:,7)*totalWeight
+                end if
             end if
             this%budget_3(:,:,:,1:2) = this%budget_3(:,:,:,1:2)*totalWeight
             this%counter = saved_counter
@@ -536,14 +550,19 @@ module budgets_time_avg_deficit_compact_mod
         
         ! Step 6: Coriolis
         if(this%useCoriolis) then
-            ! Remove the geostrophic forcing term from exported Coriolis force  
+            ! Remove the geostrophic forcing term from the exported Coriolis
+            ! force, while retaining it explicitly in terms 21-22.
             call this%pre_budget%igrid_sim%get_geostrophic_forcing(rbuffxC1, rbuffxC2)  
             this%budget_0(:,:,:,15) = this%budget_0(:,:,:,15) + rbuffxC1
             this%budget_0(:,:,:,16) = this%budget_0(:,:,:,16) + rbuffxC2      
+            this%budget_0(:,:,:,21) = this%budget_0(:,:,:,21) - rbuffxC1
+            this%budget_0(:,:,:,22) = this%budget_0(:,:,:,22) - rbuffxC2
 
             call this%prim_igrid_sim%get_geostrophic_forcing(rbuffxC1, rbuffxC2)
             this%budget_0(:,:,:,15) = this%budget_0(:,:,:,15) - rbuffxC1
             this%budget_0(:,:,:,16) = this%budget_0(:,:,:,16) - rbuffxC2              
+            this%budget_0(:,:,:,21) = this%budget_0(:,:,:,21) + rbuffxC1
+            this%budget_0(:,:,:,22) = this%budget_0(:,:,:,22) + rbuffxC2
             
             ! Coriolis term, X 
             cbuffyC1 = this%ucor - this%pre_budget%ucor      
@@ -578,16 +597,16 @@ module budgets_time_avg_deficit_compact_mod
         if(this%useWindTurbines)then        
             cbuffyC1 = this%uturb - this%pre_budget%uturb
             call this%prim_igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
-            this%budget_0(:,:,:,21) = this%budget_0(:,:,:,21) + rbuffxC1
+            this%budget_0(:,:,:,23) = this%budget_0(:,:,:,23) + rbuffxC1
 
             cbuffyC1 = this%vturb - this%pre_budget%vturb
             call this%prim_igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
-            this%budget_0(:,:,:,22) = this%budget_0(:,:,:,22) + rbuffxC1
+            this%budget_0(:,:,:,24) = this%budget_0(:,:,:,24) + rbuffxC1
 
             if(this%prim_igrid_sim%computeTurbinePressure)then
                 ! Isolated turbine pressure scalar.  Its x-gradient is left
                 ! to offline post-processing using the same spectral derivative.
-                this%budget_0(:,:,:,23) = this%budget_0(:,:,:,23) + this%prim_igrid_sim%pressure_turbine
+                this%budget_0(:,:,:,25) = this%budget_0(:,:,:,25) + this%prim_igrid_sim%pressure_turbine
             end if
         end if
 
@@ -596,30 +615,40 @@ module budgets_time_avg_deficit_compact_mod
 
     subroutine AssembleBudget0MissingTurbineTerms(this)
         class(budgets_time_avg_deficit_compact), intent(inout), target :: this
-        real(rkind), dimension(:,:,:), pointer :: rbuffxC1
+        real(rkind), dimension(:,:,:), pointer :: rbuffxC1, rbuffxC2
         complex(rkind), dimension(:,:,:), pointer :: cbuffyC1
 
         cbuffyC1 => this%prim_igrid_sim%cbuffyC(:,:,:,2)
         rbuffxC1 => this%prim_igrid_sim%rbuffxC(:,:,:,1)
+        rbuffxC2 => this%prim_igrid_sim%rbuffxC(:,:,:,2)
 
         this%budget_0(:,:,:,1) = this%budget_0(:,:,:,1) + (this%prim_igrid_sim%u - this%pre_budget%igrid_sim%u)
         this%budget_0(:,:,:,2) = this%budget_0(:,:,:,2) + (this%prim_igrid_sim%v - this%pre_budget%igrid_sim%v)
 
-        cbuffyC1 = this%uturb - this%pre_budget%uturb
-        call this%prim_igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
+        call this%pre_budget%igrid_sim%get_geostrophic_forcing(rbuffxC1, rbuffxC2)
+        this%budget_0(:,:,:,3) = this%budget_0(:,:,:,3) - rbuffxC1
+        this%budget_0(:,:,:,4) = this%budget_0(:,:,:,4) - rbuffxC2
+        call this%prim_igrid_sim%get_geostrophic_forcing(rbuffxC1, rbuffxC2)
         this%budget_0(:,:,:,3) = this%budget_0(:,:,:,3) + rbuffxC1
+        this%budget_0(:,:,:,4) = this%budget_0(:,:,:,4) + rbuffxC2
 
-        cbuffyC1 = this%vturb - this%pre_budget%vturb
-        call this%prim_igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
-        this%budget_0(:,:,:,4) = this%budget_0(:,:,:,4) + rbuffxC1
+        if(this%useWindTurbines)then
+            cbuffyC1 = this%uturb - this%pre_budget%uturb
+            call this%prim_igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
+            this%budget_0(:,:,:,5) = this%budget_0(:,:,:,5) + rbuffxC1
 
-        if(this%prim_igrid_sim%computeTurbinePressure)then
-            ! Keep the isolated turbine pressure as the third turbine-specific
-            ! Budget-0 field in the restart-turbine route.
-            this%budget_0(:,:,:,5) = this%budget_0(:,:,:,5) + this%prim_igrid_sim%pressure_turbine
+            cbuffyC1 = this%vturb - this%pre_budget%vturb
+            call this%prim_igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
+            this%budget_0(:,:,:,6) = this%budget_0(:,:,:,6) + rbuffxC1
+
+            if(this%prim_igrid_sim%computeTurbinePressure)then
+                ! Keep the isolated turbine pressure as the third turbine-specific
+                ! Budget-0 field in the restart-turbine route.
+                this%budget_0(:,:,:,7) = this%budget_0(:,:,:,7) + this%prim_igrid_sim%pressure_turbine
+            end if
         end if
 
-        nullify(rbuffxC1, cbuffyC1)
+        nullify(rbuffxC1, rbuffxC2, cbuffyC1)
     end subroutine
 
     ! ---------------------- Budget 1 ------------------------
@@ -1419,19 +1448,19 @@ module budgets_time_avg_deficit_compact_mod
 
             case(20)
                 if(this%restart_missing_turbine_terms)then
-                    buffer = this%budget_0(:,:,:,1)*this%budget_0(:,:,:,3) + &
-                             this%budget_0(:,:,:,2)*this%budget_0(:,:,:,4)
+                    buffer = this%budget_0(:,:,:,1)*this%budget_0(:,:,:,5) + &
+                             this%budget_0(:,:,:,2)*this%budget_0(:,:,:,6)
                 else
-                    buffer = this%budget_0(:,:,:,1)*this%budget_0(:,:,:,21) + &
-                             this%budget_0(:,:,:,2)*this%budget_0(:,:,:,22)
+                    buffer = this%budget_0(:,:,:,1)*this%budget_0(:,:,:,23) + &
+                             this%budget_0(:,:,:,2)*this%budget_0(:,:,:,24)
                 end if
             case(21)
                 if(this%restart_missing_turbine_terms)then
-                    buffer = this%pre_budget%budget_0(:,:,:,1)*this%budget_0(:,:,:,3) + &
-                             this%pre_budget%budget_0(:,:,:,2)*this%budget_0(:,:,:,4)
+                    buffer = this%pre_budget%budget_0(:,:,:,1)*this%budget_0(:,:,:,5) + &
+                             this%pre_budget%budget_0(:,:,:,2)*this%budget_0(:,:,:,6)
                 else
-                    buffer = this%pre_budget%budget_0(:,:,:,1)*this%budget_0(:,:,:,21) + &
-                             this%pre_budget%budget_0(:,:,:,2)*this%budget_0(:,:,:,22)
+                    buffer = this%pre_budget%budget_0(:,:,:,1)*this%budget_0(:,:,:,23) + &
+                             this%pre_budget%budget_0(:,:,:,2)*this%budget_0(:,:,:,24)
                 end if
             end select
         end if
