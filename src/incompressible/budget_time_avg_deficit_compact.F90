@@ -85,7 +85,8 @@ module budgets_time_avg_deficit_compact_mod
         type(igrid), intent(inout), target :: prim_igrid_sim
         character(len=clen) :: budgets_dir = "NULL"
         character(len=clen) :: restart_dir = "NULL"
-        integer :: ioUnit, ierr,  restart_tid = 0, restart_rid = 0, restart_counter = 0
+        integer :: ioUnit, ierr, restart_tid = 0, restart_rid = 0, restart_counter = 0
+        integer :: restart_turbine_counter = 0
         logical :: restart_budgets = .false. 
         integer :: tidx_compute = 10000, tidx_dump = 10000, tidx_budget_start = -100
         real(rkind) :: time_budget_start = -1.0d0
@@ -94,7 +95,7 @@ module budgets_time_avg_deficit_compact_mod
         logical :: restart_missing_turbine_terms = .false.
         logical :: do_budget0=.false., do_budget1=.false., do_budget2=.false., do_budget3=.false.
         namelist /BUDGET_TIME_AVG_DEFICIT_COMPACT/ budgets_dir, restart_budgets, restart_dir, &
-            restart_rid, restart_tid, restart_counter, tidx_dump, tidx_compute, do_budgets, &
+            restart_rid, restart_tid, restart_counter, restart_turbine_counter, tidx_dump, tidx_compute, do_budgets, &
             use_time_weighted_average, tidx_budget_start, time_budget_start, &
             do_budget0, do_budget1, do_budget2, do_budget3, restart_missing_turbine_terms
 
@@ -168,23 +169,23 @@ module budgets_time_avg_deficit_compact_mod
 
             if(this%do_budget0)then
                 if(this%restart_missing_turbine_terms)then
-                    ! Fields 1-4 are always Delta u/v and geostrophic
-                    ! forcing x/y. Turbine fields are appended optionally.
-                    this%size_budget_0 = 4
+                    ! Fields 1-2 are always Delta u/v. Turbine fields are
+                    ! appended optionally.
+                    this%size_budget_0 = 2
                     if(this%useWindTurbines)then
-                        this%size_budget_0 = 6
+                        this%size_budget_0 = 4
                         if(this%prim_igrid_sim%computeTurbinePressure)then
-                            this%size_budget_0 = 7
+                            this%size_budget_0 = 5
                         end if
                     end if
                 else
-                    ! Terms 1-22 have fixed meanings. Turbine terms are
-                    ! appended as T023-T025 when enabled.
-                    this%size_budget_0 = 22
+                    ! Terms 1-20 have fixed meanings. Turbine terms are
+                    ! appended as T021-T023 when enabled.
+                    this%size_budget_0 = 20
                     if(this%useWindTurbines)then
-                        this%size_budget_0 = 24
+                        this%size_budget_0 = 22
                         if(this%prim_igrid_sim%computeTurbinePressure)then
-                            this%size_budget_0 = 25
+                            this%size_budget_0 = 23
                         end if
                     end if
                 end if
@@ -226,7 +227,7 @@ module budgets_time_avg_deficit_compact_mod
 
             if (restart_budgets) then
                 call message(0,"Budget deficit restart")
-                call this%RestartBudget(restart_dir, restart_rid, restart_tid, restart_counter)
+                call this%RestartBudget(restart_dir, restart_rid, restart_tid, restart_counter, restart_turbine_counter)
             else
                 call this%resetBudget()
             end if 
@@ -345,21 +346,18 @@ module budgets_time_avg_deficit_compact_mod
             totalWeight = real(this%turbine_counter,rkind) + 1.d-18
             saved_counter = this%counter
             this%counter = this%turbine_counter
-            this%budget_0(:,:,:,3:4) = this%budget_0(:,:,:,3:4)/totalWeight
             if(this%useWindTurbines)then
-                this%budget_0(:,:,:,5:6) = this%budget_0(:,:,:,5:6)/totalWeight
+                this%budget_0(:,:,:,3:4) = this%budget_0(:,:,:,3:4)/totalWeight
                 if(this%prim_igrid_sim%computeTurbinePressure)then
-                    this%budget_0(:,:,:,7) = this%budget_0(:,:,:,7)/totalWeight
+                    this%budget_0(:,:,:,5) = this%budget_0(:,:,:,5)/totalWeight
                 end if
             end if
             this%budget_3(:,:,:,1:2) = this%budget_3(:,:,:,1:2)/totalWeight
-            call this%dump_budget_field(this%budget_0(:,:,:,3), 21, 0)
-            call this%dump_budget_field(this%budget_0(:,:,:,4), 22, 0)
             if(this%useWindTurbines)then
-                call this%dump_budget_field(this%budget_0(:,:,:,5), 23, 0)
-                call this%dump_budget_field(this%budget_0(:,:,:,6), 24, 0)
+                call this%dump_budget_field(this%budget_0(:,:,:,3), 21, 0)
+                call this%dump_budget_field(this%budget_0(:,:,:,4), 22, 0)
                 if(this%prim_igrid_sim%computeTurbinePressure)then
-                    call this%dump_budget_field(this%budget_0(:,:,:,7), 25, 0)
+                    call this%dump_budget_field(this%budget_0(:,:,:,5), 23, 0)
                 end if
             end if
             
@@ -374,11 +372,10 @@ module budgets_time_avg_deficit_compact_mod
             buffer = this%budget_3(:,:,:,2) - buffer
             call this%dump_budget_field(buffer, 21, 3)
             
-            this%budget_0(:,:,:,3:4) = this%budget_0(:,:,:,3:4)*totalWeight
             if(this%useWindTurbines)then
-                this%budget_0(:,:,:,5:6) = this%budget_0(:,:,:,5:6)*totalWeight
+                this%budget_0(:,:,:,3:4) = this%budget_0(:,:,:,3:4)*totalWeight
                 if(this%prim_igrid_sim%computeTurbinePressure)then
-                    this%budget_0(:,:,:,7) = this%budget_0(:,:,:,7)*totalWeight
+                    this%budget_0(:,:,:,5) = this%budget_0(:,:,:,5)*totalWeight
                 end if
             end if
             this%budget_3(:,:,:,1:2) = this%budget_3(:,:,:,1:2)*totalWeight
@@ -501,7 +498,7 @@ module budgets_time_avg_deficit_compact_mod
     ! ---------------------- Budget 0 ------------------------
     subroutine AssembleBudget0(this)
         class(budgets_time_avg_deficit_compact), intent(inout), target :: this
-        real(rkind), dimension(:,:,:), pointer :: rbuffxE1, rbuffxC1, rbuffxC2 
+        real(rkind), dimension(:,:,:), pointer :: rbuffxE1, rbuffxC1
         complex(rkind), dimension(:,:,:), pointer :: cbuffyE1, cbuffyC1
         
         ! Link pointers
@@ -509,7 +506,6 @@ module budgets_time_avg_deficit_compact_mod
         cbuffyC1 => this%prim_igrid_sim%cbuffyC(:,:,:,2) ! 1 is used in ddx, ddy, ddz routines        
         rbuffxE1 => this%prim_igrid_sim%rbuffxE(:,:,:,1)
         rbuffxC1 => this%prim_igrid_sim%rbuffxC(:,:,:,1)
-        rbuffxC2 => this%prim_igrid_sim%rbuffxC(:,:,:,2)        
         
         ! STEP 1: Compute mean Delta U, Delta V, and Delta W
         this%budget_0(:,:,:,1) = this%budget_0(:,:,:,1) + (this%prim_igrid_sim%u  - this%pre_budget%igrid_sim%u)
@@ -550,20 +546,8 @@ module budgets_time_avg_deficit_compact_mod
         
         ! Step 6: Coriolis
         if(this%useCoriolis) then
-            ! Remove the geostrophic forcing term from the exported Coriolis
-            ! force, while retaining it explicitly in terms 21-22.
-            call this%pre_budget%igrid_sim%get_geostrophic_forcing(rbuffxC1, rbuffxC2)  
-            this%budget_0(:,:,:,15) = this%budget_0(:,:,:,15) + rbuffxC1
-            this%budget_0(:,:,:,16) = this%budget_0(:,:,:,16) + rbuffxC2      
-            this%budget_0(:,:,:,21) = this%budget_0(:,:,:,21) - rbuffxC1
-            this%budget_0(:,:,:,22) = this%budget_0(:,:,:,22) - rbuffxC2
-
-            call this%prim_igrid_sim%get_geostrophic_forcing(rbuffxC1, rbuffxC2)
-            this%budget_0(:,:,:,15) = this%budget_0(:,:,:,15) - rbuffxC1
-            this%budget_0(:,:,:,16) = this%budget_0(:,:,:,16) - rbuffxC2              
-            this%budget_0(:,:,:,21) = this%budget_0(:,:,:,21) + rbuffxC1
-            this%budget_0(:,:,:,22) = this%budget_0(:,:,:,22) + rbuffxC2
-            
+            ! The precursor and concurrent geostrophic forcings are identical,
+            ! so their difference is omitted from the compact export.
             ! Coriolis term, X 
             cbuffyC1 = this%ucor - this%pre_budget%ucor      
             call this%prim_igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
@@ -597,58 +581,50 @@ module budgets_time_avg_deficit_compact_mod
         if(this%useWindTurbines)then        
             cbuffyC1 = this%uturb - this%pre_budget%uturb
             call this%prim_igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
-            this%budget_0(:,:,:,23) = this%budget_0(:,:,:,23) + rbuffxC1
+            this%budget_0(:,:,:,21) = this%budget_0(:,:,:,21) + rbuffxC1
 
             cbuffyC1 = this%vturb - this%pre_budget%vturb
             call this%prim_igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
-            this%budget_0(:,:,:,24) = this%budget_0(:,:,:,24) + rbuffxC1
+            this%budget_0(:,:,:,22) = this%budget_0(:,:,:,22) + rbuffxC1
 
             if(this%prim_igrid_sim%computeTurbinePressure)then
                 ! Isolated turbine pressure scalar.  Its x-gradient is left
                 ! to offline post-processing using the same spectral derivative.
-                this%budget_0(:,:,:,25) = this%budget_0(:,:,:,25) + this%prim_igrid_sim%pressure_turbine
+                this%budget_0(:,:,:,23) = this%budget_0(:,:,:,23) + this%prim_igrid_sim%pressure_turbine
             end if
         end if
 
-        nullify(rbuffxE1, rbuffxC1, rbuffxC2, cbuffyC1, cbuffyE1)
+        nullify(rbuffxE1, rbuffxC1, cbuffyC1, cbuffyE1)
     end subroutine
 
     subroutine AssembleBudget0MissingTurbineTerms(this)
         class(budgets_time_avg_deficit_compact), intent(inout), target :: this
-        real(rkind), dimension(:,:,:), pointer :: rbuffxC1, rbuffxC2
+        real(rkind), dimension(:,:,:), pointer :: rbuffxC1
         complex(rkind), dimension(:,:,:), pointer :: cbuffyC1
 
         cbuffyC1 => this%prim_igrid_sim%cbuffyC(:,:,:,2)
         rbuffxC1 => this%prim_igrid_sim%rbuffxC(:,:,:,1)
-        rbuffxC2 => this%prim_igrid_sim%rbuffxC(:,:,:,2)
 
         this%budget_0(:,:,:,1) = this%budget_0(:,:,:,1) + (this%prim_igrid_sim%u - this%pre_budget%igrid_sim%u)
         this%budget_0(:,:,:,2) = this%budget_0(:,:,:,2) + (this%prim_igrid_sim%v - this%pre_budget%igrid_sim%v)
 
-        call this%pre_budget%igrid_sim%get_geostrophic_forcing(rbuffxC1, rbuffxC2)
-        this%budget_0(:,:,:,3) = this%budget_0(:,:,:,3) - rbuffxC1
-        this%budget_0(:,:,:,4) = this%budget_0(:,:,:,4) - rbuffxC2
-        call this%prim_igrid_sim%get_geostrophic_forcing(rbuffxC1, rbuffxC2)
-        this%budget_0(:,:,:,3) = this%budget_0(:,:,:,3) + rbuffxC1
-        this%budget_0(:,:,:,4) = this%budget_0(:,:,:,4) + rbuffxC2
-
         if(this%useWindTurbines)then
             cbuffyC1 = this%uturb - this%pre_budget%uturb
             call this%prim_igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
-            this%budget_0(:,:,:,5) = this%budget_0(:,:,:,5) + rbuffxC1
+            this%budget_0(:,:,:,3) = this%budget_0(:,:,:,3) + rbuffxC1
 
             cbuffyC1 = this%vturb - this%pre_budget%vturb
             call this%prim_igrid_sim%spectC%ifft(cbuffyC1, rbuffxC1)
-            this%budget_0(:,:,:,6) = this%budget_0(:,:,:,6) + rbuffxC1
+            this%budget_0(:,:,:,4) = this%budget_0(:,:,:,4) + rbuffxC1
 
             if(this%prim_igrid_sim%computeTurbinePressure)then
                 ! Keep the isolated turbine pressure as the third turbine-specific
                 ! Budget-0 field in the restart-turbine route.
-                this%budget_0(:,:,:,7) = this%budget_0(:,:,:,7) + this%prim_igrid_sim%pressure_turbine
+                this%budget_0(:,:,:,5) = this%budget_0(:,:,:,5) + this%prim_igrid_sim%pressure_turbine
             end if
         end if
 
-        nullify(rbuffxC1, rbuffxC2, cbuffyC1)
+        nullify(rbuffxC1, cbuffyC1)
     end subroutine
 
     ! ---------------------- Budget 1 ------------------------
@@ -1448,19 +1424,19 @@ module budgets_time_avg_deficit_compact_mod
 
             case(20)
                 if(this%restart_missing_turbine_terms)then
-                    buffer = this%budget_0(:,:,:,1)*this%budget_0(:,:,:,5) + &
-                             this%budget_0(:,:,:,2)*this%budget_0(:,:,:,6)
+                    buffer = this%budget_0(:,:,:,1)*this%budget_0(:,:,:,3) + &
+                             this%budget_0(:,:,:,2)*this%budget_0(:,:,:,4)
                 else
-                    buffer = this%budget_0(:,:,:,1)*this%budget_0(:,:,:,23) + &
-                             this%budget_0(:,:,:,2)*this%budget_0(:,:,:,24)
+                    buffer = this%budget_0(:,:,:,1)*this%budget_0(:,:,:,21) + &
+                             this%budget_0(:,:,:,2)*this%budget_0(:,:,:,22)
                 end if
             case(21)
                 if(this%restart_missing_turbine_terms)then
-                    buffer = this%pre_budget%budget_0(:,:,:,1)*this%budget_0(:,:,:,5) + &
-                             this%pre_budget%budget_0(:,:,:,2)*this%budget_0(:,:,:,6)
+                    buffer = this%pre_budget%budget_0(:,:,:,1)*this%budget_0(:,:,:,3) + &
+                             this%pre_budget%budget_0(:,:,:,2)*this%budget_0(:,:,:,4)
                 else
-                    buffer = this%pre_budget%budget_0(:,:,:,1)*this%budget_0(:,:,:,23) + &
-                             this%pre_budget%budget_0(:,:,:,2)*this%budget_0(:,:,:,24)
+                    buffer = this%pre_budget%budget_0(:,:,:,1)*this%budget_0(:,:,:,21) + &
+                             this%pre_budget%budget_0(:,:,:,2)*this%budget_0(:,:,:,22)
                 end if
             end select
         end if
@@ -1525,13 +1501,13 @@ module budgets_time_avg_deficit_compact_mod
         call decomp_2d_read_one(1,field,fname, this%prim_igrid_sim%gpC)           
      end subroutine 
 
-     subroutine RestartBudget(this, dir, rid, tid, cid)
+     subroutine RestartBudget(this, dir, rid, tid, cid, turbine_cid)
         class(budgets_time_avg_deficit_compact), intent(inout), target :: this
-        integer, intent(in) :: rid, cid, tid
+        integer, intent(in) :: rid, cid, tid, turbine_cid
         character(len=clen) :: dir
         integer :: idx
         real(rkind), dimension(:,:,:), pointer :: buffer
-        real(rkind) :: totalWeight
+        real(rkind) :: totalWeight, turbineWeight
         logical :: preBudgetSqueezed
 
         preBudgetSqueezed = this%pre_budget%isSqueezed()
@@ -1548,10 +1524,45 @@ module budgets_time_avg_deficit_compact_mod
         if(allocated(this%MCG)) this%MCG = zero
 
         if(this%restart_missing_turbine_terms) then
+            ! Delta u/v retain the sample count of the finished LES plus all
+            ! previous spin samples.  The turbine-only fields begin at zero
+            ! for the first spin and therefore have a separate counter.
             call this%restart_budget_field(this%budget_0(:,:,:,1), dir, rid, tid, cid, 0, 1)
             call this%restart_budget_field(this%budget_0(:,:,:,2), dir, rid, tid, cid, 0, 2)
             this%budget_0(:,:,:,1:2) = this%budget_0(:,:,:,1:2)*totalWeight
-            this%turbine_counter = 0
+
+            this%turbine_counter = turbine_cid
+            if(turbine_cid > 0) then
+                turbineWeight = real(this%turbine_counter,rkind) + 1.d-18
+
+                call this%restart_budget_field(this%budget_0(:,:,:,3), dir, rid, tid, turbine_cid, 0, 21)
+                call this%restart_budget_field(this%budget_0(:,:,:,4), dir, rid, tid, turbine_cid, 0, 22)
+                if(this%prim_igrid_sim%computeTurbinePressure) then
+                    call this%restart_budget_field(this%budget_0(:,:,:,5), dir, rid, tid, turbine_cid, 0, 23)
+                end if
+                this%budget_0(:,:,:,3:4) = this%budget_0(:,:,:,3:4)*turbineWeight
+                if(this%prim_igrid_sim%computeTurbinePressure) then
+                    this%budget_0(:,:,:,5) = this%budget_0(:,:,:,5)*turbineWeight
+                end if
+
+                ! Budget-3 files hold covariance terms.  Convert them back to
+                ! raw product moments before appending new spin samples.
+                this%budget_0(:,:,:,1:2) = this%budget_0(:,:,:,1:2)/totalWeight
+                this%pre_budget%budget_0(:,:,:,1:2) = this%pre_budget%budget_0(:,:,:,1:2)/totalWeight
+                this%budget_0(:,:,:,3:4) = this%budget_0(:,:,:,3:4)/turbineWeight
+
+                call this%restart_budget_field(this%budget_3(:,:,:,1), dir, rid, tid, turbine_cid, 3, 20)
+                call this%getProductOfMeans(3, 20, buffer)
+                this%budget_3(:,:,:,1) = (this%budget_3(:,:,:,1) + buffer)*turbineWeight
+                call this%restart_budget_field(this%budget_3(:,:,:,2), dir, rid, tid, turbine_cid, 3, 21)
+                call this%getProductOfMeans(3, 21, buffer)
+                this%budget_3(:,:,:,2) = (this%budget_3(:,:,:,2) + buffer)*turbineWeight
+
+                this%budget_0(:,:,:,3:4) = this%budget_0(:,:,:,3:4)*turbineWeight
+                this%pre_budget%budget_0(:,:,:,1:2) = this%pre_budget%budget_0(:,:,:,1:2)*totalWeight
+                this%budget_0(:,:,:,1:2) = this%budget_0(:,:,:,1:2)*totalWeight
+            end if
+            nullify(buffer)
             return
         end if
 
