@@ -13,6 +13,6 @@ export CC=mpiicc
 export CXX=mpiicpc
 export FFTW_PATH=${TACC_FFTW3_DIR}
 export DECOMP_PATH=${CWD}/dependencies/impi/2decomp_fft
-export HDF5_PATH=${TACC_HDF5_DIR}
+export HDF5_PATH=${TACC_PHDF5_DIR}
 export FFTPACK_PATH=dummy
 export ARCH_OPT_FLAG="-xCORE-AVX512"
