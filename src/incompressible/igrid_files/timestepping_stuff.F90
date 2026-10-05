@@ -359,7 +359,10 @@
        ! STEP 1: Update Time, BCs and record probe data
        this%step = this%step + 1; this%tsim = this%tsim + this%dt
        this%newTimeStep = .true. 
-       if (this%useControl .AND. abs(180.d0/pi*this%angleHubHeight) > this%angleTrigger) then
+       ! Apply the increment belonging to the command used during this step.
+       ! Do not re-test the final-stage angle: it may have entered the deadband
+       ! while a nonzero command was acting. An inactive command returns zero.
+       if (this%useControl) then
            this%G_alpha = this%G_alpha - this%deltaGalpha
            this%frameAngle = this%frameAngle + this%deltaGalpha 
        end if

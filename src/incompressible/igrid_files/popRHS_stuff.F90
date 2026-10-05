@@ -280,7 +280,7 @@
        end if 
 
        ! Step 9: Frame rotatio PI controller to fix yaw angle at a given height
-       if (this%useControl .AND. abs(180.d0/pi*this%angleHubHeight)>0.0d0) then
+       if (this%useControl) then
             pass_cntrl_logic = this%dummy_controller 
             if (this%dummy_controller) then
                 if(ASSOCIATED(this%angCont_yaw_dummy))then
@@ -291,6 +291,8 @@
                     this%angCont_yaw%phi = this%angCont_yaw_dummy%phi
                     this%angCont_yaw%wFilt = this%angCont_yaw_dummy%wFilt
                     this%angCont_yaw%wFilt_n = this%angCont_yaw_dummy%wFilt_n
+                    this%angCont_yaw%deltaGalpha = this%angCont_yaw_dummy%deltaGalpha
+                    this%angCont_yaw%angleTrigger = this%angCont_yaw_dummy%angleTrigger
                     
                     ! Do the same for igrid attributes
                     this%angleHubHeight = this%angCont_yaw_dummy%phi_n
@@ -313,7 +315,6 @@
                 this%wFilt, this%deltaGalpha, this%zHubIndex, this%angleTrigger, &
                 pass_cntrl_logic)
            this%totalAngle = this%totalAngle + this%angleHubHeight
-           this%angleHubHeight = 1.d0  ! HOTFIX - do not use angleHubHeight for the hub height wind angle
        end if 
 
        ! Step 10: Populate RHS for scalars

@@ -69,7 +69,7 @@ contains
       wFilt_n = this%wFilt_n
       deltaGalpha = this%deltaGalpha
       z_hub = this%z_ref
-      trigger = zero
+      trigger = this%angleTrigger
 
       ! Only do the following if it is not a dummy controller
       if (.NOT. dumcntl) then
@@ -97,7 +97,18 @@ contains
       
       !call message(1, "update_RHS_control: computed phi_n", phi_n)
       !call message(1, "update_RHS_control: phi_ref: ", this%phi_ref)
-      if (newTimestep .AND. abs((phi_n - this%phi_ref) * 180.d0 / pi) > this%angleTrigger) then
+      ! Choose one command per timestep and hold it through the RK stages.
+      ! Inside the deadband, clear the command rather than retaining the last
+      ! rotation rate. Refresh history so reactivation has no stale derivative.
+      if (newTimestep) then
+        if (abs((phi_n - this%phi_ref) * 180.d0 / pi) <= this%angleTrigger) then
+            this%phi = phi_n
+            this%wFilt = zero
+            this%wFilt_n = zero
+            this%deltaGalpha = zero
+            wFilt_n = zero
+            deltaGalpha = zero
+        else
          
          if (this%controlType == 1) then
             ! Meneveau 2014 psuedo force paper
@@ -130,6 +141,7 @@ contains
             wFilt_n = 0.d0    
 
          endif        
+        end if
       end if
       end if
 
@@ -234,6 +246,8 @@ contains
       this%alpha = alpha
       this%controlType = controlType
       this%phi = phiRestart
+      this%phi_n = phiRestart
+      this%deltaGalpha = 0.d0
       this%wFilt_n = 0.d0
       this%angleTrigger = angleTrigger
       call message(0, "Control initialized successfully.")
