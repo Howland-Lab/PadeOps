@@ -833,13 +833,13 @@ contains
            call this%spectC%alloc_r2c_out(this%GyHat)
            call this%spectE%alloc_r2c_out(this%GxHat_Edge)
            call this%spectE%alloc_r2c_out(this%GyHat_Edge)
-           this%rbuffxC(:,:,:,1) = this%G_GEOSTROPHIC*cos(G_ALPHA*pi/180.d0)
+           this%rbuffxC(:,:,:,1) = this%G_GEOSTROPHIC*cos(this%G_alpha*pi/180.d0)
            call this%spectC%fft(this%rbuffxC(:,:,:,1),this%Gxhat)
-           this%rbuffxE(:,:,:,1) = this%G_GEOSTROPHIC*cos(G_ALPHA*pi/180.d0)
+           this%rbuffxE(:,:,:,1) = this%G_GEOSTROPHIC*cos(this%G_alpha*pi/180.d0)
            call this%spectE%fft(this%rbuffxE(:,:,:,1),this%Gxhat_Edge)
-           this%rbuffxC(:,:,:,1) = this%G_GEOSTROPHIC*sin(G_ALPHA*pi/180.d0)
+           this%rbuffxC(:,:,:,1) = this%G_GEOSTROPHIC*sin(this%G_alpha*pi/180.d0)
            call this%spectC%fft(this%rbuffxC(:,:,:,1),this%Gyhat)
-           this%rbuffxE(:,:,:,1) = this%G_GEOSTROPHIC*sin(G_ALPHA*pi/180.d0)
+           this%rbuffxE(:,:,:,1) = this%G_GEOSTROPHIC*sin(this%G_alpha*pi/180.d0)
            call this%spectE%fft(this%rbuffxE(:,:,:,1),this%Gyhat_Edge)
 
            this%latitude = latitude

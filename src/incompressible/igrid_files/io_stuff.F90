@@ -33,10 +33,13 @@
        if (nrank == 0) then
            write(tempname,"(A7,A4,I2.2,A6,I6.6)") "RESTART", "_Run",this%runID, "_info.",this%step
            fname = this%OutputDir(:len_trim(this%OutputDir))//"/"//trim(tempname)
-           OPEN(UNIT=10, FILE=trim(fname))
-           write(10,"(100g15.5)") this%tsim
+           OPEN(UNIT=10, FILE=trim(fname), STATUS="REPLACE", ACTION="WRITE")
+           write(10,"(ES25.17E3)") this%tsim
+           ! Line 2 is always the geostrophic direction in degrees.
+           write(10,"(ES25.17E3)") this%G_alpha
            if (this%useControl) then
-              write(10,"(100g15.5)") this%G_alpha
+              ! Optional line 3 is controller history in radians.
+              write(10,"(ES25.17E3)") this%angCont_yaw%getPhi()
            end if
            close(10)
        end if 
@@ -472,11 +475,11 @@
    subroutine readRestartFile(this, tid, rid)
        use decomp_2d_io
        use mpi
-       use exits, only: message
+       use exits, only: message, gracefulExit
        use kind_parameters, only: mpirkind
        class(igrid), intent(inout) :: this
        integer, intent(in) :: tid, rid
-       character(len=clen) :: tempname, fname
+       character(len=clen) :: tempname, fname, info_line
        integer :: ierr, fid, io_status
 
        write(tempname,"(A7,A4,I2.2,A3,I6.6)") "RESTART", "_Run",rid, "_u.",tid
@@ -503,20 +506,43 @@
            fname = this%InputDir(:len_trim(this%InputDir))//"/"//trim(tempname)
            fid = 10
            open(unit=fid,file=trim(fname),status="old",action="read")
-           read (fid, "(100g15.5)", iostat=io_status)  this%tsim
-           if (this%useControl) then
-              read(fid,"(100g15.5)", iostat=io_status) this%restartPhi
-              if (io_status < 0) then
-                 ! end of file found, no second line input
-                 call message(0, "useControl is .TRUE., but no RESTARTPHI found in the RESTART file")
-                 call message(1, "using G_ALPHA from the input file for RESTARTPHI: G_ALPHA", this%g_alpha)
-                 this%restartPhi = this%g_alpha
+           read (fid, *, iostat=io_status) this%tsim
+           if (io_status /= 0) call gracefulExit("Invalid simulation time in restart info file", 123)
+           ! Read records separately so blank lines retain their positions.
+           ! A legacy time-only file retains the input geostrophic direction.
+           this%restartPhi = zero
+           read(fid,"(A)", iostat=io_status) info_line
+           if (io_status < 0) then
+              call message(0, "No restart G_alpha: retaining input G_alpha (degrees)")
+              if (this%useControl) call message(0, "No restart phi: using zero radians")
+           else
+              if (io_status /= 0) call gracefulExit("Cannot read restart G_alpha record", 123)
+              if (len_trim(info_line) > 0) then
+                 read(info_line, *, iostat=io_status) this%G_alpha
+                 if (io_status /= 0) call gracefulExit("Invalid restart G_alpha (expected degrees)", 123)
+              else
+                 call message(0, "Blank restart G_alpha: retaining input G_alpha (degrees)")
+              end if
+              if (this%useControl) then
+                 read(fid,"(A)", iostat=io_status) info_line
+                 if (io_status < 0) then
+                    call message(0, "No restart phi: using zero radians")
+                 else
+                    if (io_status /= 0) call gracefulExit("Cannot read restart phi record", 123)
+                    if (len_trim(info_line) > 0) then
+                       read(info_line, *, iostat=io_status) this%restartPhi
+                       if (io_status /= 0) call gracefulExit("Invalid restart phi (expected radians)", 123)
+                    else
+                       call message(0, "Blank restart phi: using zero radians")
+                    end if
+                 end if
               end if
            end if
            close(fid)
        end if 
        call mpi_barrier(mpi_comm_world, ierr)
        call mpi_bcast(this%tsim,1,mpirkind,0,mpi_comm_world,ierr)
+       call mpi_bcast(this%G_alpha,1,mpirkind,0,mpi_comm_world,ierr)
        if (this%useControl) then
            ! The angle controller must restart from identical state on every rank.
            call mpi_bcast(this%restartPhi,1,mpirkind,0,mpi_comm_world,ierr)
