@@ -309,7 +309,7 @@ module IncompressibleGrid
         logical :: StoreForBudgets = .false. 
         complex(rkind), dimension(:,:,:), pointer :: ucon, vcon, wcon, usgs, vsgs, wsgs, uvisc, vvisc, wvisc, px, py, pz, wb, ucor, vcor, wcor, uturb, pxdns, pydns, pzdns, vturb, wturb, HITforcing_x, HITforcing_y, HITforcing_z 
 
-        integer :: buoyancyDirection 
+        integer :: buoyancyDirection = 3
 
         contains
             procedure          :: init
@@ -499,6 +499,10 @@ contains
         this%nx = nx; this%ny = ny; this%nz = nz; this%meanfact = one/(real(nx,rkind)*real(ny,rkind)); 
         this%dt = dt; this%dtby2 = dt/two ; this%Re = Re; this%useSponge = useSpongeLayer
         this%outputdir = outputdir; this%inputdir = inputdir; this%isStratified = isStratified
+        ! The initial ComputePressure call populates and caches the first RHS.
+        ! Its buoyancy settings must already be valid on every rank.
+        this%buoyancyDirection = buoyancyDirection
+        this%useforcedStratification = useforcedStratification
         this%WallMtype = WallMType; this%runID = runID; this%tstop = tstop; this%t_dataDump = t_dataDump
         this%CFL = CFL; this%dumpPlanes = dumpPlanes; this%useGeostrophicForcing = useGeostrophicForcing
         this%timeSteppingScheme = timeSteppingScheme; this%useSystemInteractions = useSystemInteractions
@@ -1385,11 +1389,6 @@ contains
        this%dtOld = this%dt
        this%dtRat = one 
       
-
-       ! STEP 29: Set the buoyancy direction
-       this%buoyancyDirection = buoyancyDirection
-       this%useforcedStratification = useforcedStratification
-
 
        ! STEP 30: Safeguard against user invalid user inputs
        if ((this%vizDump_Schedule == 1) .and. (.not. this%useCFL)) then
