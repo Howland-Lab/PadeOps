@@ -127,8 +127,11 @@ module constructDeficitBudgets_mod
       logical :: depedent_variable
 
       depedent_variable = .false.
-      if((budgetType == 1) .or. (budgetType == 2) .or. (budgetType == 3))then
-         ! X, Y, or Z momentum equation
+      if((budgetType == 1) .or. (budgetType == 2))then
+         ! X, Y momentum equation
+         if((idx < 10) .or. ((idx > 15) .AND. (idx < 25))) depedent_variable = .true.
+      elseif(budgetType == 3)then
+         ! Z momentum equation
          if((idx < 10) .or. (idx > 15)) depedent_variable = .true.
       elseif(budgetType == 4)then
          ! TKE equation
@@ -837,10 +840,10 @@ module constructDeficitBudgets_mod
       end if
       
       if(do_box_averaging) then
-         if(do_x_budget)allocate(xprofiles(nx_box, 24))
-         if(do_y_budget)allocate(yprofiles(nx_box, 24))
+         if(do_x_budget)allocate(xprofiles(nx_box, 25))
+         if(do_y_budget)allocate(yprofiles(nx_box, 25))
          if(do_z_budget)allocate(zprofiles(nx_box, 24))
-         if(do_TKE_budget)allocate(TKEprofiles(nx_box, 31))
+         if(do_TKE_budget)allocate(TKEprofiles(nx_box, 33))
          if(do_MKE_budget)allocate(MKEprofiles(nx_box, 26))
          if(do_TMP_budget)allocate(TMPprofiles(nx_box, 3))
       end if
@@ -993,7 +996,7 @@ module constructDeficitBudgets_mod
    character(len=2) :: idx_str
    integer :: idx
 
-   do idx = 1, 24
+   do idx = 1, 25
       select case(idx)
       case(1)
          ! Advection: delta u_1 * partial_1 (delta u_2)
@@ -1080,6 +1083,10 @@ module constructDeficitBudgets_mod
          ! Divergence of Reynolds stresses: partial_3 mean(base u_2' delta u_3')
          call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term14_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
          call ddz_R2R(bf, buffer, -1, -1)
+      case(25)
+         ! Turbine forcing
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term22_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+         buffer = - buffer ! Put it on the left hand side
       end select
 
       ! Average this budget term across the box
@@ -1100,7 +1107,7 @@ module constructDeficitBudgets_mod
    character(len=2) :: idx_str
    integer :: idx
 
-   do idx = 1, 24
+   do idx = 1, 25
       select case(idx)
       case(1)
          ! Advection: delta u_1 * partial_1 (delta u_1)
@@ -1187,6 +1194,10 @@ module constructDeficitBudgets_mod
          ! Divergence of Reynolds stresses: partial_3 mean(base u_1' delta u_3')
          call read_file('Run'//trim(crid)//'_comp_deficit_budget1_term11_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
          call ddz_R2R(bf, buffer, -1, -1)
+      case(25)
+         ! Turbine forcing
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget0_term21_t'//trim(key)//'_n'//trim(stamp)//'.s3D', buffer)
+         buffer = - buffer ! Put it on the left hand side
       end select
 
       ! Average this budget term across the box
@@ -1209,7 +1220,7 @@ module constructDeficitBudgets_mod
    real(rkind), dimension(:,:,:), allocatable :: bf1
 
    allocate(bf1(gpC%xsz(1),gpC%xsz(2),gpC%xsz(3)))
-   do idx = 1, 31
+   do idx = 1, 33
       select case(idx)
       case(1)
          ! Advection: delta u_j * partial_j (delta u_i' delta u_i')/2 
@@ -1522,6 +1533,16 @@ module constructDeficitBudgets_mod
          ! SGS Dissipation: mean(delta tau_ij' partial_j delta u_i')
          call read_file('Run'//trim(crid)//'_comp_deficit_budget3_term09_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
          buffer = -bf
+
+      case(32)
+         ! Turbine Work: mean(delta f_i' delta u_i')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget3_term20_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer = - bf
+
+      case(33)
+         ! Turbine Work: mean(delta f_i' base u_i')
+         call read_file('Run'//trim(crid)//'_comp_deficit_budget3_term21_t'//trim(key)//'_n'//trim(stamp)//'.s3D', bf)
+         buffer = - bf
       end select
 
       ! Average this budget term across the box
