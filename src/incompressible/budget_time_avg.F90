@@ -383,11 +383,11 @@ contains
               
             call igrid_sim%spectC%alloc_r2c_out(this%pxdns)
             call igrid_sim%spectC%alloc_r2c_out(this%pydns)
-            call igrid_sim%spectC%alloc_r2c_out(this%pzdns)
+            call igrid_sim%spectE%alloc_r2c_out(this%pzdns)
             
             call igrid_sim%spectC%alloc_r2c_out(this%uvisc)
             call igrid_sim%spectC%alloc_r2c_out(this%vvisc)
-            call igrid_sim%spectC%alloc_r2c_out(this%wvisc)
+            call igrid_sim%spectE%alloc_r2c_out(this%wvisc)
             
             call igrid_sim%spectC%alloc_r2c_out(this%ucor)
             call igrid_sim%spectC%alloc_r2c_out(this%vcor)
@@ -968,11 +968,8 @@ contains
             this%budget_2(:,:,:,5) = this%budget_2(:,:,:,5) - this%budget_2(:,:,:,6)
 
             ! 7:  Actuator disk sink        (J)
-            !!!!!!!!!!!!!!!!!!!
-            ! this assumes that the turbine forcing is only in the x direction
-            ! according to the u velocity
-            !!!!!!!!!!!!!!!!!!!
-            this%budget_2(:,:,:,7) = Umn*this%budget_1(:,:,:,4)
+            ! Horizontal turbine work, including yawed turbines.
+            this%budget_2(:,:,:,7) = Umn*this%budget_1(:,:,:,4) + Vmn*this%budget_1(:,:,:,15)
 
             ! 8: Coriolis terms
             if (this%useCoriolis) then
@@ -1171,7 +1168,7 @@ contains
         ! 6. SGS + viscous dissipation   (H+I)
         this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) - this%budget_2(:,:,:,6)
         ! 7. Actuator disk/Turbine sink  (J)
-        this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) - Umn*this%budget_1(:,:,:,4)
+        this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) - Umn*this%budget_1(:,:,:,4) - Vmn*this%budget_1(:,:,:,15)
 
         ! 8. Buoyancy
         this%budget_3(:,:,:,8) = this%budget_3(:,:,:,8) - Wmn*theta
@@ -1188,7 +1185,7 @@ contains
         ! important throughout this subroutine, particularly indices 5 and 6)
         ! this%budget_3(:,:,:,9) = this%budget_3(:,:,:,9) +  Umn*this%dUdt + Vmn*this%dVdt + Wmn*this%dWdt 
         this%budget_3(:,:,:,8) = this%budget_3(:,:,:,8) + Wmn*theta
-        this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + Umn*this%budget_1(:,:,:,4)
+        this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + Umn*this%budget_1(:,:,:,4) + Vmn*this%budget_1(:,:,:,15)
         this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + this%budget_2(:,:,:,6)
         this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) + this%budget_3(:,:,:,6) + this%budget_2(:,:,:,5) !+ this%budget_2(:,:,:,6) kktodo
         this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + this%budget_2(:,:,:,4)
@@ -2385,7 +2382,8 @@ subroutine DumpBudget4_23(this)
            end do
            ! Revert arrays to the correct state for Assemble (Order is very
            ! important throughout this subroutine, particularly indices 5 and 6)
-           this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + this%budget_0(:,:,:,1)*this%budget_1(:,:,:,4)
+           this%budget_3(:,:,:,7) = this%budget_3(:,:,:,7) + this%budget_0(:,:,:,1)*this%budget_1(:,:,:,4) &
+                + this%budget_0(:,:,:,2)*this%budget_1(:,:,:,15)
            this%budget_3(:,:,:,6) = this%budget_3(:,:,:,6) + this%budget_2(:,:,:,6)
            this%budget_3(:,:,:,5) = this%budget_3(:,:,:,5) + this%budget_3(:,:,:,6) + this%budget_2(:,:,:,5) !+ this%budget_2(:,:,:,6) kktodo
            this%budget_3(:,:,:,4) = this%budget_3(:,:,:,4) + this%budget_2(:,:,:,4)

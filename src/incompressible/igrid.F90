@@ -354,6 +354,7 @@ module IncompressibleGrid
             procedure, private :: compute_stats3D 
             procedure, private :: dealiasFields
             procedure, private :: dealias_rhs
+            procedure, private :: dealias_budget_terms
             procedure, private :: ApplyCompactFilter 
             procedure, private :: addNonLinearTerm_skewSymm
             procedure, private :: populate_rhs

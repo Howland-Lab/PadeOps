@@ -250,7 +250,7 @@ module budgets_time_avg_deficit_compact_mod
             end if
             call prim_igrid_sim%spectC%alloc_r2c_out(this%ucor)
             call prim_igrid_sim%spectC%alloc_r2c_out(this%vcor)
-            call prim_igrid_sim%spectC%alloc_r2c_out(this%wcor)
+            call prim_igrid_sim%spectE%alloc_r2c_out(this%wcor)
             call prim_igrid_sim%spectE%alloc_r2c_out(this%wb)
 
             ! STEP 3: Now instrument igrid -> links pointers in the grid object to arrays created for budget
@@ -361,15 +361,14 @@ module budgets_time_avg_deficit_compact_mod
                 end if
             end if
             
-            call this%dealias(this%budget_3(:,:,:,1))
-            call this%dealias(this%budget_3(:,:,:,2))
-
             call this%getProductOfMeans(3, 20, buffer)
             buffer = this%budget_3(:,:,:,1) - buffer
+            call this%dealias(buffer)
             call this%dump_budget_field(buffer, 20, 3)
             
             call this%getProductOfMeans(3, 21, buffer)
             buffer = this%budget_3(:,:,:,2) - buffer
+            call this%dealias(buffer)
             call this%dump_budget_field(buffer, 21, 3)
             
             if(this%useWindTurbines)then
@@ -419,23 +418,6 @@ module budgets_time_avg_deficit_compact_mod
             end do
         end if
 
-        ! Dealias budgets 1-3 as they hold product of multiple fields
-        if(this%do_budget1)then
-            do idx = 1, this%size_budget_1
-                call this%dealias(this%budget_1(:,:,:,idx))
-            end do
-        end if
-        if(this%do_budget2)then
-            do idx = 1, this%size_budget_2
-                call this%dealias(this%budget_2(:,:,:,idx))
-            end do
-        end if
-        if(this%do_budget3)then
-            do idx = 1, this%size_budget_3
-                call this%dealias(this%budget_3(:,:,:,idx))
-            end do
-        end if
-
         do budgetid=1,3
             select case(budgetid)
             case(1)
@@ -466,8 +448,11 @@ module budgets_time_avg_deficit_compact_mod
                     ! output buffer; keep the stored arrays as raw moments.
                     call this%getProductOfMeans(budgetid, idx, buffer)
 
-                    ! Remove product of means. The original budget is not impacted
+                    ! Filter the completed covariance once: G(M - P) = G(M) - G(P).
+                    ! Never filter the accumulator in place; repeated dumps must
+                    ! not re-filter older samples.
                     buffer = budget(:,:,:,idx) - buffer
+                    call this%dealias(buffer)
 
                     ! Dump
                     call this%dump_budget_field(buffer, idx, budgetid)
@@ -1441,8 +1426,9 @@ module budgets_time_avg_deficit_compact_mod
             end select
         end if
 
-        ! Dealias the product of means
-        call this%dealias(buffer)
+        ! Return the unfiltered correction. DumpBudget filters the completed
+        ! covariance; RestartBudget filters this correction before adding it
+        ! back to the filtered covariance stored on disk.
         
         ! Nullify pointers
         nullify(bf, bf2)
@@ -1553,9 +1539,11 @@ module budgets_time_avg_deficit_compact_mod
 
                 call this%restart_budget_field(this%budget_3(:,:,:,1), dir, rid, tid, turbine_cid, 3, 20)
                 call this%getProductOfMeans(3, 20, buffer)
+                call this%dealias(buffer)
                 this%budget_3(:,:,:,1) = (this%budget_3(:,:,:,1) + buffer)*turbineWeight
                 call this%restart_budget_field(this%budget_3(:,:,:,2), dir, rid, tid, turbine_cid, 3, 21)
                 call this%getProductOfMeans(3, 21, buffer)
+                call this%dealias(buffer)
                 this%budget_3(:,:,:,2) = (this%budget_3(:,:,:,2) + buffer)*turbineWeight
 
                 this%budget_0(:,:,:,3:4) = this%budget_0(:,:,:,3:4)*turbineWeight
@@ -1596,6 +1584,7 @@ module budgets_time_avg_deficit_compact_mod
             do idx = 1, this%size_budget_1
                 call this%restart_budget_field(this%budget_1(:,:,:,idx), dir, rid, tid, cid, 1, idx)
                 call this%getProductOfMeans(1, idx, buffer)
+                call this%dealias(buffer)
                 this%budget_1(:,:,:,idx) = this%budget_1(:,:,:,idx) + buffer
             end do
         end if
@@ -1605,6 +1594,7 @@ module budgets_time_avg_deficit_compact_mod
             do idx = 1, this%size_budget_2
                 call this%restart_budget_field(this%budget_2(:,:,:,idx), dir, rid, tid, cid, 2, idx)
                 call this%getProductOfMeans(2, idx, buffer)
+                call this%dealias(buffer)
                 this%budget_2(:,:,:,idx) = this%budget_2(:,:,:,idx) + buffer
             end do
         end if
@@ -1618,6 +1608,7 @@ module budgets_time_avg_deficit_compact_mod
 
                 call this%restart_budget_field(this%budget_3(:,:,:,idx), dir, rid, tid, cid, 3, idx)
                 call this%getProductOfMeans(3, idx, buffer)
+                call this%dealias(buffer)
                 this%budget_3(:,:,:,idx) = this%budget_3(:,:,:,idx) + buffer
             end do
         end if
@@ -1738,6 +1729,7 @@ module budgets_time_avg_deficit_compact_mod
         real(rkind), dimension(this%nx,this%ny,this%nz), intent(inout) :: f
         complex(rkind), dimension(:,:,:), pointer :: cbuffyC
 
+        if (this%prim_igrid_sim%donot_dealias) return
         cbuffyC => this%prim_igrid_sim%cbuffyC(:,:,:,1)
         
         call this%prim_igrid_sim%spectC%fft(f, cbuffyC)

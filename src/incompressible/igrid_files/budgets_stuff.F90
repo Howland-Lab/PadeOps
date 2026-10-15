@@ -277,6 +277,56 @@ subroutine set_budget_rhs_to_zero(this)
 
 end subroutine 
 
+! Filter only the saved budget copies, after the pressure-source RHS has been
+! assembled and filtered. Filtering before assembly would apply a smooth filter
+! twice to the solver RHS. Do this before forming any velocity-force products.
+subroutine dealias_budget_terms(this)
+    class(igrid), intent(inout) :: this
+
+    if (this%donot_dealias) return
+
+    call filter_cell(this%ucon)
+    call filter_cell(this%vcon)
+    call filter_edge(this%wcon)
+    call filter_cell(this%usgs)
+    call filter_cell(this%vsgs)
+    call filter_edge(this%wsgs)
+    call filter_cell(this%uvisc)
+    call filter_cell(this%vvisc)
+    call filter_edge(this%wvisc)
+    call filter_cell(this%ucor)
+    call filter_cell(this%vcor)
+    call filter_edge(this%wcor)
+    call filter_edge(this%wb)
+    call filter_cell(this%uturb)
+    call filter_cell(this%vturb)
+    call filter_edge(this%wturb)
+    call filter_cell(this%HITforcing_x)
+    call filter_cell(this%HITforcing_y)
+    call filter_edge(this%HITforcing_z)
+
+contains
+
+    subroutine filter_cell(field)
+        complex(rkind), pointer, intent(inout) :: field(:,:,:)
+        if (associated(field)) call this%spectC%dealias(field)
+    end subroutine
+
+    subroutine filter_edge(field)
+        complex(rkind), pointer, intent(inout) :: field(:,:,:)
+        if (.not. associated(field)) return
+        ! Match dealias_rhs, including the periodic edge-field layout.
+        if (this%PeriodicInZ) then
+            call transpose_y_to_z(field, this%cbuffzE(:,:,:,1), this%sp_gpE)
+            call this%spectC%dealias_edgeField(this%cbuffzE(:,:,:,1))
+            call transpose_z_to_y(this%cbuffzE(:,:,:,1), field, this%sp_gpE)
+        else
+            call this%spectE%dealias(field)
+        end if
+    end subroutine
+
+end subroutine dealias_budget_terms
+
 subroutine getMomentumTerms(this)
     class(igrid), intent(inout) :: this
 
@@ -285,6 +335,7 @@ subroutine getMomentumTerms(this)
         
         
         call this%ComputePressure(ComputeRHSForBudget=.true.)
+        call this%dealias_budget_terms()
         
         ! Step 2: compute the pressure gradient term 
         call this%spectC%fft(this%Pressure, this%cbuffyC(:,:,:,1))
@@ -322,4 +373,3 @@ subroutine getMomentumTerms(this)
     end if 
 
 end subroutine 
-
