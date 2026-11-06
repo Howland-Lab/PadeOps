@@ -1,3 +1,8 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!! MODULE IS NOT IMPORTED -- SEE HIT_SHEAR_FILES/INITIALIZE.F90 !!!
+!!! -KSH 2026                                                    !!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
 module HIT_shear_parameters
 
     use exits, only: message

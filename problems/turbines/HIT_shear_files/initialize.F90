@@ -40,7 +40,7 @@ contains
 
         select case(InflowProfileType)
           case(-1)
-            ! read inflow from ASCII files - look for inflow_data.txt with columns
+            ! read inflow from ASCII files - look for .txt file (`fname_inflow`) with columns
             ! z | u | v | T
             call read_2d_ascii(inflow_arr, trim(fname_inflow))
             z1d = z(1,1,:)
@@ -285,7 +285,7 @@ contains
         do
             read(10,'(A)', iostat=iunit) line
             if (iunit /= 0) exit
-            ! find lines beginning with "Fr " or "Ro ": 
+            ! find lines beginning with "isstratified": 
             if (index(to_lower(adjustl(line)), "isstratified") == 1) then
                 ! strip comments: 
                 if (index(line, "!") > 0) line = line(:index(line, "!")-1)

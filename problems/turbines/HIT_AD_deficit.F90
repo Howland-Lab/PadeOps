@@ -44,13 +44,12 @@ program HIT_deficit
     integer, dimension(:), allocatable :: pid
     integer :: fid, nfilters = 2, tid_FIL_FullField = 75, tid_FIL_Planes = 4, TI_xid
     integer :: aniso_x = 1
-    logical :: applyFilters = .false., freeze_HIT = .false., control_TI = .false., TI_at_rotor = .true., isStratified = .false.
+    logical :: applyFilters = .false., freeze_HIT = .false., control_TI = .false., TI_at_rotor = .true.
     logical, parameter :: synchronize_RK_substeps = .true.
 
     namelist /concurrent/ HIT_InputFile, AD_InputFile, Empty_InputFile, InflowSpeed, &
         k_bandpass_left, k_bandpass_right, & 
-        TI_target, TI_xloc, TI_fact, freeze_HIT, advect_shear, KIinv_TI, Kp_TI, time_stop_TIcont, TI_at_rotor, &
-        isStratified
+        TI_target, TI_xloc, TI_fact, freeze_HIT, advect_shear, KIinv_TI, Kp_TI, time_stop_TIcont, TI_at_rotor
     namelist /FILTER_INFO/ applyfilters, nfilters, fof_dir, tid_FIL_FullField, tid_FIL_Planes, filoutdir
 
     call MPI_Init(ierr)
@@ -76,7 +75,7 @@ program HIT_deficit
     ! initialize igrid objects
     simulationID = 1
     call adsim%init(AD_InputFile, .true.)  ! initialize decomposition
-    call adsim%start_io(.true.)  ! don't start IO
+    call adsim%start_io(.true.)  ! initial time step IO
     call adsim%printDivergence()
 
     call mpi_barrier(mpi_comm_world, ierr)
@@ -118,7 +117,6 @@ program HIT_deficit
     allocate(vtarget0(adsim%gpC%xsz(1), adsim%gpC%xsz(2), adsim%gpC%xsz(3)))
     allocate(wtarget0(adsim%gpE%xsz(1), adsim%gpE%xsz(2), adsim%gpE%xsz(3)))
     allocate(Ttarget0(adsim%gpC%xsz(1), adsim%gpC%xsz(2), adsim%gpC%xsz(3)))
-    ! if (adsim%isStratified) allocate(Ttarget0(adsim%gpC%xsz(1), adsim%gpC%xsz(2), adsim%gpC%xsz(3)))
     call init_fringe_targets(AD_inputfile, adsim%mesh)  ! populates utarget0, vtarget0, wtarget0
 
     ! allocate moving (turbulent) targets
@@ -277,7 +275,6 @@ program HIT_deficit
     deallocate(utarget, vtarget, wtarget)
     deallocate(utarget_1d, vtarget_1d)
     deallocate(z_global)
-    ! if (adsim%isStratified) deallocate(Ttarget0)
 
     call MPI_Finalize(ierr)
 
