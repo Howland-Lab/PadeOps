@@ -38,16 +38,18 @@ program HIT_deficit
     real(rkind), dimension(:,:,:), allocatable :: utarget, vtarget, wtarget
     real(rkind) :: dt1 = one, dt2 = one, dt3 = one, dt = one
     real(rkind) :: k_bandpass_left = 10.d0, k_bandpass_right = 64.d0, TI_xloc = 0
+    real(rkind) :: TI_target = -1, TI_fact = -1, KIinv_TI = 0.5d0, Kp_TI = 1.d0, integral_err = zero, time_stop_TIcont = -1
+
     type(fof), dimension(:), allocatable :: filt
     integer, dimension(:), allocatable :: pid
     integer :: fid, nfilters = 2, tid_FIL_FullField = 75, tid_FIL_Planes = 4, TI_xid
     integer :: aniso_x = 1
-    logical :: applyFilters = .false., freeze_HIT = .false., control_TI = .false.
+    logical :: applyFilters = .false., freeze_HIT = .false., control_TI = .false., TI_at_rotor = .true.
     logical, parameter :: synchronize_RK_substeps = .true.
 
     namelist /concurrent/ HIT_InputFile, AD_InputFile, Empty_InputFile, InflowSpeed, &
         k_bandpass_left, k_bandpass_right, & 
-        TI_target, TI_xloc, TI_fact, freeze_HIT, advect_shear
+        TI_target, TI_xloc, TI_fact, freeze_HIT, advect_shear, KIinv_TI, Kp_TI, time_stop_TIcont, TI_at_rotor
     namelist /FILTER_INFO/ applyfilters, nfilters, fof_dir, tid_FIL_FullField, tid_FIL_Planes, filoutdir
 
     call MPI_Init(ierr)
@@ -68,10 +70,12 @@ program HIT_deficit
         allocate(igrid :: hit)
     end if
 
+    call get_is_stratified(AD_inputfile)  ! whether to load T field in initialization - glean from &PHYSICS
+
     ! initialize igrid objects
     simulationID = 1
     call adsim%init(AD_InputFile, .true.)  ! initialize decomposition
-    call adsim%start_io(.false.)  ! don't start IO
+    call adsim%start_io(.true.)  ! initial time step IO
     call adsim%printDivergence()
 
     call mpi_barrier(mpi_comm_world, ierr)
@@ -84,9 +88,7 @@ program HIT_deficit
     call message("Initialized EMPTY PRECURSOR simulation")
 
     ! check to make sure the simulations have the same grid, required for deficit budgets
-    if (.not. all(adsim%mesh == emptysim%mesh)) then
-        call GracefulExit("EMPTY and AD simulations mesh dimensions must match", 234)
-    end if
+    if (.not. all(adsim%mesh == emptysim%mesh)) call GracefulExit("EMPTY and AD simulations mesh dimensions must match", 234)
     call mpi_barrier(mpi_comm_world, ierr)
 
     simulationID = 2  ! HIT box
@@ -110,27 +112,11 @@ program HIT_deficit
     call make_global_zaxis(adsim)  ! allocate the global-z axis variables
     nxfringe = min(nxadsim * aniso_x, nxhitsim)  ! determine domain range from HIT to use in fringe targets
 
-    !!!!!!!!!!!!! decide whether to turn on the TI controller !!!!!!!!!!!!!
-    control_TI = .false.
-    if (TI_target > 0) then
-        TI_fact = one
-        TI_xid = minloc(abs(adsim%mesh(:,1,1,1) - TI_xloc), 1)  ! xid corresponding to TI sampling location
-        control_TI = .true.
-        call message(0, "TI controller activated")
-        call message(1, "tracking x-location:", adsim%mesh(TI_xid,1,1,1))
-        call message(1, "target TI: ", TI_target)
-    else if (TI_fact >= 0) then
-        call message(0, "TI controller not used")
-        call message(1, "Using fixed TI gain/loss: ", TI_fact)
-    else
-        call message(0, "No TI settings provided, superimposing HIT fluctuations")
-        TI_fact = one
-    end if
-
     !!!!!!!!!!!!! allocate target cells for the fringe !!!!!!!!!!!!!
     allocate(utarget0(adsim%gpC%xsz(1), adsim%gpC%xsz(2), adsim%gpC%xsz(3)))
     allocate(vtarget0(adsim%gpC%xsz(1), adsim%gpC%xsz(2), adsim%gpC%xsz(3)))
     allocate(wtarget0(adsim%gpE%xsz(1), adsim%gpE%xsz(2), adsim%gpE%xsz(3)))
+    allocate(Ttarget0(adsim%gpC%xsz(1), adsim%gpC%xsz(2), adsim%gpC%xsz(3)))
     call init_fringe_targets(AD_inputfile, adsim%mesh)  ! populates utarget0, vtarget0, wtarget0
 
     ! allocate moving (turbulent) targets
@@ -150,17 +136,44 @@ program HIT_deficit
     if (adsim%usedoublefringex) then
         call message(0, "Setting double fringe targets")
         ! first fringe is re-laminarization
-        call adsim%fringe_x1%associateFringeTargets(utarget0, vtarget0, wtarget0)
-        call emptysim%fringe_x1%associateFringeTargets(utarget0, vtarget0, wtarget0)
+        call adsim%fringe_x1%associateFringeTargets(utarget0, vtarget0, wtarget0, Ttarget0)
+        call adsim%fringe_x1%associateFringeTarget_scalar(Ttarget0)
+        call emptysim%fringe_x1%associateFringeTargets(utarget0, vtarget0, wtarget0, Ttarget0)
+        call emptysim%fringe_x1%associateFringeTarget_scalar(Ttarget0)
 
         ! second fringe is turbulent
-        call adsim%fringe_x2%associateFringeTargets(utarget, vtarget, wtarget)
-        call emptysim%fringe_x2%associateFringeTargets(utarget, vtarget, wtarget)
+        call adsim%fringe_x2%associateFringeTargets(utarget, vtarget, wtarget, Ttarget0)
+        call adsim%fringe_x2%associateFringeTarget_scalar(Ttarget0)
+        call emptysim%fringe_x2%associateFringeTargets(utarget, vtarget, wtarget, Ttarget0)
+        call emptysim%fringe_x2%associateFringeTarget_scalar(Ttarget0)
     else
         call message(0, "Setting fringe targets")
         ! first (only) fringe is turbulent
-        call adsim%fringe_x%associateFringeTargets(utarget, vtarget, wtarget)
-        call emptysim%fringe_x%associateFringeTargets(utarget, vtarget, wtarget)
+        call adsim%fringe_x%associateFringeTargets(utarget, vtarget, wtarget, Ttarget0)
+        call adsim%fringe_x%associateFringeTarget_scalar(Ttarget0)
+        call emptysim%fringe_x%associateFringeTargets(utarget, vtarget, wtarget, Ttarget0)
+        call emptysim%fringe_x%associateFringeTarget_scalar(Ttarget0)
+    end if
+
+    !!!!!!!!!!!!! decide whether to turn on the TI controller !!!!!!!!!!!!!
+    control_TI = .false.
+    if (TI_target > 0) then
+        TI_fact = one
+        TI_xid = minloc(abs(adsim%mesh(:,1,1,1) - TI_xloc), 1)  ! xid corresponding to TI sampling location
+        control_TI = .true.
+        call message(0, "TI controller activated")
+        call message(1, "TI controller parameters")
+        call message(2, "Kp", Kp_TI)
+        call message(2, "KIinv", KIinv_TI)
+        call message(1, "tracking x-location:", adsim%mesh(TI_xid,1,1,1))
+        call message(1, "target TI: ", TI_target)
+        if (TI_at_rotor) call message(1, "zmid_for_TI (+/- 0.5):", zmid_for_TI)
+    else if (TI_fact >= 0) then
+        call message(0, "TI controller not used")
+        call message(1, "Using fixed TI gain/loss: ", TI_fact)
+    else
+        call message(0, "No TI settings provided, superimposing HIT fluctuations")
+        TI_fact = one
     end if
 
     ! phaseshift turbulent fringe targets using the laminar fringe targets
@@ -235,12 +248,7 @@ program HIT_deficit
         if (.not. freeze_HIT) call doTemporalStuff(hit, 2)
     end do
 
-    ! wrapup tasks
-    call budg_tavg%doBudgets(.true.)   !<--- force dump if budget calculation had started
-    call budg_vavg%doBudgets(.true.)   !<--- force dump if budget calculation had started
-    call budg_tavg_empty%doBudgets(.true.)   !<--- force dump if budget calculation had started
-    call budg_tavg_deficit%doBudgets(.true.) !<--- force dump if budget calculation had started
-
+    ! wrapup tasks - dump forced on last time step by default
     call budg_tavg%destroy()           !<-- release memory taken by the budget class
     call budg_vavg%destroy()           !<-- release memory taken by the budget class
     call budg_tavg_empty%destroy()           !<-- release memory taken by the budget class
@@ -262,8 +270,8 @@ program HIT_deficit
 
     deallocate(hit, adsim)
 
-! deallocate fringe targets
-    deallocate(utarget0, vtarget0, wtarget0)
+    ! deallocate fringe targets
+    deallocate(utarget0, vtarget0, wtarget0, Ttarget0)
     deallocate(utarget, vtarget, wtarget)
     deallocate(utarget_1d, vtarget_1d)
     deallocate(z_global)
@@ -312,23 +320,32 @@ contains
         use constants, only          : zero, one, two, three
         use reductions, only         : p_sum
         use exits, only              : message
+        use HIT_shear_parameters, only: zmid_for_TI
 
         class(igrid), allocatable, target, intent(in) :: sim
         real(rkind), dimension(sim%gpC%xsz(2), sim%gpC%xsz(3)) :: buff1
-        real(rkind) :: TI_inst, tke_avg
+        real(rkind) :: TI_inst, tke_avg, error
+        integer :: nz_norm = 1
         logical, intent(in) :: first_timestep
 
-        if (TI_target < 0) then
-            return  ! Doesn't compute/update anything
-        end if
+        if (TI_target < 0) return  ! Doesn't compute/update anything
 
         ! need to compute TKE, TI
         buff1 = 0.5 * ((sim%u(TI_xid,:,:)-utarget0(TI_xid,:,:))**2 + (sim%v(TI_xid,:,:)-vtarget0(TI_xid,:,:))**2 + (sim%wC(TI_xid,:,:))**2)  ! TKE
-        tke_avg = p_sum(buff1) / (sim%ny*sim%nz)
+        if (TI_at_rotor) then
+            where (abs(sim%mesh(TI_xid,:,:,3) - zmid_for_TI) > 0.5)
+                buff1 = zero  ! mask points outside of the rotor region
+            end where
+            nz_norm = 1 / sim%dz  ! number of points inside masked region
+        else
+            nz_norm = sim%nz
+        end if
+        tke_avg = p_sum(buff1) / (sim%ny*nz_norm)
         TI_inst = sqrt(two / three * tke_avg) / InflowSpeed
 
         if (first_timestep) then
             ! try to start with a reasonable guess for the gain variable
+            !!! BETTER SOLUTION FOR RESTARTS: JUST WRITE TI_FACT TO A FILE !!!
             if (TI_inst .ge. 1e-6) then  
                 ! If TI_inst is not machine zero, then this is probably from restart files
                 TI_fact = sqrt(three / two / hit%getMeanKE()) * TI_inst
@@ -336,8 +353,12 @@ contains
                 ! If TI_inst is basically zero, then set the "guess" for TI_fact based on TI_target
                 TI_fact = sqrt(three / two / hit%getMeanKE()) * TI_target
             end if
+        else if (time_stop_TIcont > 0 .and. sim%tsim > time_stop_TIcont) then
+            continue  !!! do not update the controller anymore !!! (but still print debug messages)
         else
-            TI_fact = max(zero, TI_fact + ((TI_target - TI_inst) * sim.dt / Tp_TI))
+            error = TI_target - TI_inst
+            integral_err = integral_err + (error * sim.dt / KIinv_TI)
+            TI_fact = max(zero, Kp_TI * error + integral_err)
         end if
 
         if (debug_TI_gain) then

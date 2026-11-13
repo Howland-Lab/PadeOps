@@ -197,6 +197,8 @@ subroutine init(this, gpC, gpE, spectC, spectE, dx, dy, dz, inputfile, zMeshE, z
   if (this%useScalarBounding) then 
       allocate(this%kappa_boundingC(gpC%xsz(1),gpC%xsz(2),gpC%xsz(3)))
       allocate(this%kappa_boundingE(gpE%xsz(1),gpE%xsz(2),gpE%xsz(3)))
+      this%kappa_boundingC = zero  ! also enters the first time step (see allocateMemory_EddyViscosity)
+      this%kappa_boundingE = zero
       ierr = this%gaussianX%init(gpC%xsz(1), .true.)
       ierr = this%gaussianY%init(gpC%ysz(2), .true.)
       ierr = this%gaussianZ%init(gpC%zsz(3), this%isPeriodic)

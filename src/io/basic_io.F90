@@ -56,7 +56,7 @@ contains
         
         nc = 0
         do i = 1,len(columncount)
-            if (columncount(i:i) == 'e') nc = nc +1
+            if (columncount(i:i) == 'E' .or. columncount(i:i) == 'e') nc = nc +1
         end do 
  
         nr = 0

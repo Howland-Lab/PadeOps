@@ -9,6 +9,8 @@ TI_target                     = 0.08d0     ! Target turbulence intensity sqrt(2/
 TI_xloc                       = 4.d0       ! x-location to compute TI for the TI controller and TI_target
 TI_fact                       = -1         ! Amplifier for HIT fluctuations. Set to > 0 to enable manually
 freeze_HIT                    = .false.    ! Freeze HIT targets? (e.g. for Mann turbulence)
+time_stop_TIcont              = -1.d0      ! Time to turn off the TI controller, set to <0 for controller to remain on
+TI_at_rotor                   = .true.     ! If true, uses TI computed in the rotor plane (-0.5 < z-z_h < 0.5) rather than the entire domain
 /
 /
 &BUDGET_TIME_AVG_DEFICIT
